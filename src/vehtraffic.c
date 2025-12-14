@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file vehtraffic.c
  *     Pathfinding triangulation support required by the 3D engine.
@@ -527,7 +527,7 @@ void VNAV_preprocess_bezier_turns(ulong nturns)
 
             p_thing = &things[thing];
             if ((p_thing->Type == TT_BUILDING)
-              && (p_thing->SubType == SubTT_BLD_15))
+              && (p_thing->SubType == SubTT_BLD_BEZIER_ROAD))
                 VNAV_process_bezier(p_thing);
             thing = p_thing->LinkChild;
             i--;
@@ -657,7 +657,7 @@ void process_next_tnode(struct Thing *p_vehicle)
         if ((p_tnode->GateLink != 0) && ((p_tnode->Flags & TNdF_Unkn8000) == 0) && (nxdist_sq < 0x10000))
         {
             p_gtveh = &things[p_tnode->GateLink];
-            p_gtveh->Flag |= TngF_Unkn0100;
+            p_gtveh->Flag |= TngF_VehUnkn0100;
         }
     }
 
@@ -886,6 +886,5 @@ void process_next_tnode(struct Thing *p_vehicle)
 
     vehicle_workplace_states_finish(p_vehicle);
 }
-
 
 /******************************************************************************/

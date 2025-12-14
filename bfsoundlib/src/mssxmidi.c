@@ -713,7 +713,7 @@ MDI_DRIVER *XMI_construct_MDI_driver(AIL_DRIVER *drvr, const SNDCARD_IO_PARMS *i
     WildMidi_MasterVolume(100);
 #endif
 
-    mdidrv->system_data[0] = smp_rate;
+    mdidrv->system_data[MdiSD_SAMPLE_RATE] = smp_rate;
 
     // Allocate timer for XMIDI sequencing
     mdidrv->timer = AIL_register_timer(XMI_serve);
@@ -1649,7 +1649,7 @@ int32_t AIL2OAL_API_init_sequence(SNDSEQUENCE *seq, const void *start,  int32_t 
     // Find requested sequence in XMIDI image
     image = XMI_find_sequence(start, sequence_num);
     if (image == NULL) {
-        AIL_set_error("Invalid XMIDI sequence.");
+        AIL_set_error("Invalid XMIDI sequence, cannot find num.");
         return 0;
     }
 
@@ -1680,7 +1680,7 @@ int32_t AIL2OAL_API_init_sequence(SNDSEQUENCE *seq, const void *start,  int32_t 
 
     // Sequence must contain EVNT chunk
     if (seq->EVNT == NULL) {
-        AIL_set_error("Invalid XMIDI sequence.");
+        AIL_set_error("Invalid XMIDI sequence, EVNT missing.");
         return 0;
     }
 

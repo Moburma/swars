@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file weapon.c
  *     Weapons related functions.
@@ -18,6 +18,7 @@
 /******************************************************************************/
 #include "weapon.h"
 
+#include "bfmath.h"
 #include "bfmemory.h"
 #include "bfendian.h"
 #include "bffile.h"
@@ -26,18 +27,21 @@
 #include "ssampply.h"
 
 #include "bigmap.h"
-#include "network.h"
-#include "thing.h"
-#include "player.h"
+#include "building.h"
+#include "enginsngtxtr.h"
 #include "game.h"
 #include "game_data.h"
 #include "game_speed.h"
+#include "game_sprani.h"
+#include "network.h"
+#include "thing.h"
+#include "player.h"
 #include "research.h"
 #include "thing_search.h"
 #include "wadfile.h"
 #include "sound.h"
-#include "vehicle.h"
 #include "swlog.h"
+#include "vehicle.h"
 /******************************************************************************/
 
 struct WeaponDef weapon_defs[] = {
@@ -128,6 +132,10 @@ const struct TbNamedEnum weapons_conf_weapon_cmds[] = {
   {NULL,		0},
 };
 
+extern ubyte byte_1DD8F8;
+
+/******************************************************************************/
+
 void read_weapons_conf_file(void)
 {
     char conf_fname[DISKPATH_SIZE];
@@ -140,7 +148,7 @@ void read_weapons_conf_file(void)
     char *conf_buf;
     struct TbIniParser parser;
     int conf_len;
-    int weapons_count, wtype;
+    WeaponType weapons_count, wtype;
 
     pinfo = &game_dirs[DirPlace_Config];
     snprintf(conf_fname, DISKPATH_SIZE-1, "%s/weapons.ini", pinfo->directory);
@@ -210,7 +218,7 @@ void read_weapons_conf_file(void)
         struct WeaponDefAdd *wdefa;
 
         // Parse the [weaponN] sections of loaded file
-        sprintf(sect_name, "weapon%d", wtype);
+        sprintf(sect_name, "weapon%d", (int)wtype);
         wdef = &weapon_defs[wtype];
         wdefa = &weapon_defs_a[wtype];
         if (LbIniFindSection(&parser, sect_name) != Lb_SUCCESS) {
@@ -381,7 +389,7 @@ void read_weapons_conf_file(void)
     LbMemoryFree(conf_buf);
 
     i = 0;
-    for (wtype = 1; wtype < weapons_count; wtype++)
+    for (wtype = WEP_NULL + 1; wtype < weapons_count; wtype++)
     {
         struct WeaponDefAdd *wdefa;
 
@@ -396,7 +404,7 @@ void read_weapons_conf_file(void)
     weapon_names[i].num = 0;
 }
 
-const char *weapon_codename(ushort wtype)
+const char *weapon_codename(WeaponType wtype)
 {
     struct WeaponDefAdd *wdefa;
 
@@ -534,7 +542,7 @@ void init_weapon_text(void)
     }
 }
 
-ushort weapon_sprite_index(ushort wtype, TbBool enabled)
+ushort weapon_sprite_index(WeaponType wtype, TbBool enabled)
 {
     ushort sprid;
     struct WeaponDef *wdef;
@@ -556,29 +564,44 @@ ushort weapon_sprite_index(ushort wtype, TbBool enabled)
     return sprid;
 }
 
-TbBool weapon_is_deployed_at_wielder_pos(ushort wtype)
+TbBool weapon_is_for_throwing(WeaponType wtype)
 {
-    return (wtype == WEP_ELEMINE) || (wtype == WEP_EXPLMINE) ||
-      (wtype == WEP_AIRSTRIKE) || (wtype == WEP_CEREBUSIFF) ||
-      (wtype == WEP_RAZORWIRE) || (wtype == WEP_EXPLWIRE);
+    return (wtype == WEP_NUCLGREN) || (wtype == WEP_CRAZYGAS) || (wtype == WEP_KOGAS);
 }
 
-TbBool weapon_is_for_throwing(ushort weptype)
+TbBool weapon_is_for_planting(WeaponType wtype)
 {
-    return (weptype == WEP_NUCLGREN) || (weptype == WEP_CRAZYGAS) || (weptype == WEP_KOGAS);
+    return (wtype == WEP_ELEMINE) || (wtype == WEP_EXPLMINE);
 }
 
-TbBool weapon_is_breaking_will(ushort weptype)
+TbBool weapon_is_for_deploying(WeaponType wtype)
 {
-    return (weptype == WEP_PERSUADRTRN) || (weptype == WEP_PERSUADER2);
+    return (wtype == WEP_AIRSTRIKE) || (wtype == WEP_CEREBUSIFF);
 }
 
-TbBool weapon_is_self_affecting(ushort weptype)
+TbBool weapon_is_for_spreading_on_ground(WeaponType wtype)
 {
-    return (weptype == WEP_MEDI1) || (weptype == WEP_MEDI2) || (weptype == WEP_CLONESHLD);
+    return (wtype == WEP_RAZORWIRE) || (wtype == WEP_EXPLWIRE);
 }
 
-ushort weapon_fourpack_index(ushort wtype)
+TbBool weapon_is_deployed_at_wielder_pos(WeaponType wtype)
+{
+    return weapon_is_for_planting(wtype) ||
+      weapon_is_for_deploying(wtype) ||
+      weapon_is_for_spreading_on_ground(wtype);
+}
+
+TbBool weapon_is_breaking_will(WeaponType wtype)
+{
+    return (wtype == WEP_PERSUADRTRN) || (wtype == WEP_PERSUADER2);
+}
+
+TbBool weapon_is_self_affecting(WeaponType wtype)
+{
+    return (wtype == WEP_MEDI1) || (wtype == WEP_MEDI2) || (wtype == WEP_CLONESHLD);
+}
+
+ushort weapon_fourpack_index(WeaponType wtype)
 {
     switch (wtype)
     {
@@ -596,7 +619,7 @@ ushort weapon_fourpack_index(ushort wtype)
     return WFRPK_COUNT;
 }
 
-TbBool weapon_is_consumable(ushort wtype)
+TbBool weapon_is_consumable(WeaponType wtype)
 {
     ushort fp;
 
@@ -611,33 +634,31 @@ TbBool weapon_is_consumable(ushort wtype)
     return false;
 }
 
-TbBool weapon_has_targetting(ushort wtype)
+TbBool weapon_has_targetting(WeaponType wtype)
 {
     return (wtype == WEP_RAP);
 }
 
-TbBool weapon_can_be_charged(ushort wtype)
+TbBool weapon_can_be_charged(WeaponType wtype)
 {
     return (wtype == WEP_LASER) || (wtype == WEP_ELLASER)
       || (wtype == WEP_BEAM) || (wtype == WEP_QDEVASTATOR);
 }
 
-TbBool weapons_has_weapon(ulong weapons, ushort wtype)
+TbBool weapons_has_weapon(ulong weapons, WeaponType wtype)
 {
     ulong wepflg = 1 << (wtype-1);
     return (weapons & wepflg) != 0;
 }
 
-/** Returns weapon set in given flags with index below last.
- */
-ushort weapons_prev_weapon(ulong weapons, ushort last_wtype)
+ushort weapons_prev_weapon(ulong weapons, WeaponType last_wtype)
 {
-    ushort wtype;
+    WeaponType wtype;
 
     if (last_wtype < 2)
         return 0;
 
-    for (wtype = last_wtype - 1; wtype > 0; wtype--)
+    for (wtype = last_wtype - 1; wtype > WEP_NULL; wtype--)
     {
         ulong wepflg = 1 << (wtype-1);
         if ((weapons & wepflg) != 0)
@@ -646,7 +667,21 @@ ushort weapons_prev_weapon(ulong weapons, ushort last_wtype)
     return 0;
 }
 
-void weapons_remove_weapon(ulong *p_weapons, struct WeaponsFourPack *p_fourpacks, ushort wtype)
+ushort weapons_count_used_slots(ulong weapons)
+{
+    ushort used_slots;
+    WeaponType wtype;
+
+    used_slots = 0;
+    for (wtype = WEP_NULL + 1; wtype < WEP_TYPES_COUNT; wtype++)
+    {
+        if (weapons_has_weapon(weapons, wtype))
+            used_slots++;
+    }
+    return used_slots;
+}
+
+void weapons_remove_weapon(ulong *p_weapons, struct WeaponsFourPack *p_fourpacks, WeaponType wtype)
 {
     ushort fp;
 
@@ -657,7 +692,7 @@ void weapons_remove_weapon(ulong *p_weapons, struct WeaponsFourPack *p_fourpacks
         p_fourpacks->Amount[fp] = 0;
 }
 
-TbBool weapons_remove_one_from_npc(ulong *p_weapons, ushort wtype)
+TbBool weapons_remove_one_from_npc(ulong *p_weapons, WeaponType wtype)
 {
     ushort fp;
     TbBool was_last;
@@ -675,7 +710,7 @@ TbBool weapons_remove_one_from_npc(ulong *p_weapons, ushort wtype)
     return true;
 }
 
-TbBool weapons_remove_one(ulong *p_weapons, struct WeaponsFourPack *p_fourpacks, ushort wtype)
+TbBool weapons_remove_one(ulong *p_weapons, struct WeaponsFourPack *p_fourpacks, WeaponType wtype)
 {
     ushort fp;
     TbBool was_last;
@@ -699,7 +734,7 @@ TbBool weapons_remove_one(ulong *p_weapons, struct WeaponsFourPack *p_fourpacks,
  * this special function. To be removed when possible.
  */
 TbBool weapons_remove_one_for_player(ulong *p_weapons,
-  ubyte p_plfourpacks[][4], ushort plagent, ushort wtype)
+  ubyte p_plfourpacks[][4], ushort plagent, WeaponType wtype)
 {
     ushort fp;
     TbBool was_last;
@@ -718,19 +753,19 @@ TbBool weapons_remove_one_for_player(ulong *p_weapons,
     return true;
 }
 
-TbBool weapons_add_one(ulong *p_weapons, struct WeaponsFourPack *p_fourpacks, ushort wtype)
+TbBool weapons_add_one(ulong *p_weapons, struct WeaponsFourPack *p_fourpacks, WeaponType wtype)
 {
     ushort fp;
     TbBool is_first;
 
-    if (number_of_set_bits(*p_weapons) >= WEAPONS_CARRIED_MAX_COUNT)
-        return false;
-
     is_first = ((*p_weapons & (1 << (wtype-1))) == 0);
+
+    if ((is_first) && (weapons_count_used_slots(*p_weapons) >= WEAPONS_CARRIED_MAX_COUNT))
+        return false;
 
     fp = weapon_fourpack_index(wtype);
     if (fp < WFRPK_COUNT) {
-        if ((!is_first) && (p_fourpacks->Amount[fp] > 3))
+        if ((!is_first) && (p_fourpacks->Amount[fp] >= WEAPONS_FOURPACK_MAX_COUNT))
             return false;
 
         if (is_first)
@@ -753,19 +788,19 @@ TbBool weapons_add_one(ulong *p_weapons, struct WeaponsFourPack *p_fourpacks, us
  * this special function. To be removed when possible.
  */
 TbBool weapons_add_one_for_player(ulong *p_weapons,
-  ubyte p_plfourpacks[][4], ushort plagent, ushort wtype)
+  ubyte p_plfourpacks[][4], ushort plagent, WeaponType wtype)
 {
     ushort fp;
     TbBool is_first;
 
-    if (number_of_set_bits(*p_weapons) >= WEAPONS_CARRIED_MAX_COUNT)
-        return false;
-
     is_first = ((*p_weapons & (1 << (wtype-1))) == 0);
+
+    if ((is_first) && (weapons_count_used_slots(*p_weapons) >= WEAPONS_CARRIED_MAX_COUNT))
+        return false;
 
     fp = weapon_fourpack_index(wtype);
     if (fp < WFRPK_COUNT) {
-        if ((!is_first) && (p_plfourpacks[fp][plagent] > 3))
+        if ((!is_first) && (p_plfourpacks[fp][plagent] >= WEAPONS_FOURPACK_MAX_COUNT))
             return false;
 
         if (is_first)
@@ -785,7 +820,7 @@ TbBool weapons_add_one_for_player(ulong *p_weapons,
 
 void sanitize_weapon_quantities(ulong *p_weapons, struct WeaponsFourPack *p_fourpacks)
 {
-    ushort wtype;
+    WeaponType wtype;
     ushort n_weapons;
 
     n_weapons = 0;
@@ -817,22 +852,22 @@ void sanitize_weapon_quantities(ulong *p_weapons, struct WeaponsFourPack *p_four
     }
 }
 
-short get_hand_weapon_range(struct Thing *p_person, ushort weptype)
+short get_hand_weapon_range(struct Thing *p_person, WeaponType wtype)
 {
     struct WeaponDef *wdef;
     short range;
 
-    if (weptype >= WEP_TYPES_COUNT)
+    if (wtype >= WEP_TYPES_COUNT)
         return 0;
 
-    wdef = &weapon_defs[weptype];
+    wdef = &weapon_defs[wtype];
 
     range = TILE_TO_MAPCOORD(wdef->RangeBlocks, 0);
 
-    if (weapon_is_for_throwing(weptype))
+    if (weapon_is_for_throwing(wtype))
         range = (85 * range * (3 + cybmod_arms_level(&p_person->U.UPerson.UMod)) + range) >> 8;
 
-    if (weapon_is_breaking_will(weptype))
+    if (weapon_is_breaking_will(wtype))
         range = (85 * range * (3 + cybmod_brain_level(&p_person->U.UPerson.UMod)) + range) >> 8;
 
     return range;
@@ -859,13 +894,13 @@ int get_weapon_range(struct Thing *p_person)
 
 TbBool current_weapon_has_targetting(struct Thing *p_person)
 {
-    ushort weptype;
+    WeaponType wtype;
 
-    weptype = p_person->U.UPerson.CurrentWeapon;
-    if (weptype >= WEP_TYPES_COUNT)
+    wtype = p_person->U.UPerson.CurrentWeapon;
+    if (wtype >= WEP_TYPES_COUNT)
         return false;
 
-    return weapon_has_targetting(weptype);
+    return weapon_has_targetting(wtype);
 }
 
 ubyte find_nth_weapon_held(ushort index, ubyte n)
@@ -879,17 +914,17 @@ ubyte find_nth_weapon_held(ushort index, ubyte n)
 ulong person_carried_weapons_pesuaded_sell_value(struct Thing *p_person)
 {
     ulong credits;
-    ushort weptype;
+    WeaponType wtype;
 
     credits = 0;
-    for (weptype = WEP_TYPES_COUNT-1; weptype > 0; weptype--)
+    for (wtype = WEP_TYPES_COUNT-1; wtype > 0; wtype--)
     {
         struct WeaponDef *wdef;
 
-        if (!person_carries_weapon(p_person, weptype))
+        if (!person_carries_weapon(p_person, wtype))
             continue;
 
-        wdef = &weapon_defs[weptype];
+        wdef = &weapon_defs[wtype];
         credits += wdef->Cost * persuaded_person_weapons_sell_cost_permil / 1000;
     }
     return credits;
@@ -898,20 +933,20 @@ ulong person_carried_weapons_pesuaded_sell_value(struct Thing *p_person)
 void do_weapon_quantities_net_to_player(struct Thing *p_person)
 {
     ushort plyr, plagent;
-    ushort weptype;
+    WeaponType wtype;
 
     plyr = (p_person->U.UPerson.ComCur & 0x1C) >> 2;
     plagent = p_person->U.UPerson.ComCur & 3;
 
-    for (weptype = WEP_TYPES_COUNT-1; weptype > 0; weptype--)
+    for (wtype = WEP_TYPES_COUNT-1; wtype > 0; wtype--)
     {
         ushort fp, n;
 
-        fp = weapon_fourpack_index(weptype);
+        fp = weapon_fourpack_index(wtype);
         if (fp >= WFRPK_COUNT)
             continue;
 
-        if (person_carries_weapon(p_person, weptype))
+        if (person_carries_weapon(p_person, wtype))
             n = net_agents__FourPacks[plyr][plagent].Amount[fp];
         else
             n = 0;
@@ -922,20 +957,20 @@ void do_weapon_quantities_net_to_player(struct Thing *p_person)
 void do_weapon_quantities_player_to_net(struct Thing *p_person)
 {
     ushort plyr, plagent;
-    ushort weptype;
+    WeaponType wtype;
 
     plyr = (p_person->U.UPerson.ComCur & 0x1C) >> 2;
     plagent = p_person->U.UPerson.ComCur & 3;
 
-    for (weptype = WEP_TYPES_COUNT-1; weptype > 0; weptype--)
+    for (wtype = WEP_TYPES_COUNT-1; wtype > 0; wtype--)
     {
         ushort fp, n;
 
-        fp = weapon_fourpack_index(weptype);
+        fp = weapon_fourpack_index(wtype);
         if (fp >= WFRPK_COUNT)
             continue;
 
-        if (person_carries_weapon(p_person, weptype))
+        if (person_carries_weapon(p_person, wtype))
             n = players[plyr].FourPacks[fp][plagent];
         else
             n = 0;
@@ -946,20 +981,20 @@ void do_weapon_quantities_player_to_net(struct Thing *p_person)
 void do_weapon_quantities_cryo_to_player(struct Thing *p_person)
 {
     ushort plyr, plagent;
-    ushort weptype;
+    WeaponType wtype;
 
     plyr = (p_person->U.UPerson.ComCur & 0x1C) >> 2;
     plagent = p_person->U.UPerson.ComCur & 3;
 
-    for (weptype = WEP_TYPES_COUNT-1; weptype > 0; weptype--)
+    for (wtype = WEP_TYPES_COUNT-1; wtype > 0; wtype--)
     {
         ushort fp, n;
 
-        fp = weapon_fourpack_index(weptype);
+        fp = weapon_fourpack_index(wtype);
         if (fp >= WFRPK_COUNT)
             continue;
 
-        if (person_carries_weapon(p_person, weptype))
+        if (person_carries_weapon(p_person, wtype))
             n = cryo_agents.FourPacks[plagent].Amount[fp];
         else
             n = 0;
@@ -970,30 +1005,30 @@ void do_weapon_quantities_cryo_to_player(struct Thing *p_person)
 void do_weapon_quantities_max_to_player(struct Thing *p_person)
 {
     ushort plyr, plagent;
-    ushort weptype;
+    WeaponType wtype;
 
     plyr = (p_person->U.UPerson.ComCur & 0x1C) >> 2;
     plagent = p_person->U.UPerson.ComCur & 3;
 
-    for (weptype = WEP_TYPES_COUNT-1; weptype > 0; weptype--)
+    for (wtype = WEP_TYPES_COUNT-1; wtype > 0; wtype--)
     {
         ushort fp, n;
 
-        fp = weapon_fourpack_index(weptype);
+        fp = weapon_fourpack_index(wtype);
         if (fp >= WFRPK_COUNT)
             continue;
 
-        if (person_carries_weapon(p_person, weptype))
-            n = 4;
+        if (person_carries_weapon(p_person, wtype))
+            n = WEAPONS_FOURPACK_MAX_COUNT;
         else
             n = 0;
         players[plyr].FourPacks[fp][plagent] = n;
     }
 }
 
-void do_weapon_quantities1(struct Thing *p_person)
+void player_agent_set_weapon_quantities_max(struct Thing *p_person)
 {
-    if (in_network_game)
+    if ((in_network_game) || ((p_person->Flag & TngF_PlayerAgent) == 0))
     {
         // No action
     }
@@ -1003,9 +1038,13 @@ void do_weapon_quantities1(struct Thing *p_person)
     }
 }
 
-void do_weapon_quantities_proper1(struct Thing *p_person)
+void player_agent_set_weapon_quantities_proper(struct Thing *p_person)
 {
-    if (in_network_game)
+    if ((p_person->Flag & TngF_PlayerAgent) == 0)
+    {
+        // No action - only player agents have quantities of weapons
+    }
+    else if (in_network_game)
     {
         do_weapon_quantities_player_to_net(p_person);
     }
@@ -1015,10 +1054,268 @@ void do_weapon_quantities_proper1(struct Thing *p_person)
     }
 }
 
-void init_laser(struct Thing *p_person, ushort timer)
+void elec_hit_building(int x, int y, int z, short col)
 {
+    asm volatile ("call ASM_elec_hit_building\n"
+        : : "a" (x), "d" (y), "b" (z), "c" (col));
+}
+
+
+void init_laser(struct Thing *p_owner, ushort start_age)
+{
+#if 0
     asm volatile ("call ASM_init_laser\n"
-        : : "a" (p_person), "d" (timer));
+        : : "a" (p_owner), "d" (start_age));
+#endif
+    struct Thing *p_shot;
+    struct WeaponDef *wdef;
+    int prc_x, prc_y, prc_z;
+    MapCoord cor_x, cor_y, cor_z;
+    u32 rhit;
+    int damage;
+    ThingIdx shottng, target;
+    ubyte wdmgtyp;
+
+    shottng = get_new_thing();
+    if (shottng == 0) {
+        LOGERR("No thing slots for a shot");
+        return;
+    }
+    p_shot = &things[shottng];
+    if ((p_owner->Flag2 & TgF2_ExistsOffMap) != 0)
+    {
+        prc_x = p_owner->X;
+        prc_y = p_owner->Y + 5120;
+        prc_z = p_owner->Z;
+    }
+    else
+    {
+        ubyte angle;
+        angle = p_owner->U.UObject.Angle;
+        prc_x = p_owner->X + (angle_direction[angle].DiX << 7);
+        prc_y = p_owner->Y + 5120;
+        prc_z = p_owner->Z + (angle_direction[angle].DiY << 7);
+    }
+
+    p_shot->U.UObject.Angle = p_owner->U.UObject.Angle;
+    if ((PRCCOORD_TO_MAPCOORD(prc_x) < 0) || (PRCCOORD_TO_MAPCOORD(prc_x) >= MAP_COORD_WIDTH) ||
+      (PRCCOORD_TO_MAPCOORD(prc_z) < 0) || (PRCCOORD_TO_MAPCOORD(prc_z) >= MAP_COORD_HEIGHT)) {
+        remove_thing(shottng);
+        return;
+    }
+
+    target = 0;
+    wdef = &weapon_defs[WEP_LASER];
+    wdmgtyp = DMG_LASER;
+
+    if ((p_owner->Flag & TngF_Unkn20000000) != 0)
+    {
+        p_shot->VX = p_owner->VX;
+        p_shot->VY = p_owner->VY;
+        p_shot->VZ = p_owner->VZ;
+        p_owner->Flag &= ~TngF_Unkn20000000;
+    }
+    else if (p_owner->PTarget != NULL)
+    {
+        struct Thing *p_target;
+        p_target = p_owner->PTarget;
+        p_shot->VX = PRCCOORD_TO_MAPCOORD(p_target->X);
+        p_shot->VY = PRCCOORD_TO_MAPCOORD(p_target->Y) + 10;
+        p_shot->VZ = PRCCOORD_TO_MAPCOORD(p_target->Z);
+        target = p_target->ThingOffset;
+    }
+    else if ((p_owner->Flag & TngF_Unkn1000) != 0)
+    {
+        ushort range;
+        ubyte angle;
+        range = wdef->RangeBlocks;
+        angle = p_owner->U.UObject.Angle;
+        p_shot->VX = PRCCOORD_TO_MAPCOORD(prc_x) + ((range * angle_direction[angle].DiX) >> 16);
+        p_shot->VY = PRCCOORD_TO_MAPCOORD(prc_y);
+        p_shot->VZ = PRCCOORD_TO_MAPCOORD(prc_z) + ((range * angle_direction[angle].DiY) >> 16);
+    }
+    else
+    {
+        remove_thing(shottng);
+        return;
+    }
+
+    p_shot->X = prc_x;
+    p_shot->Y = prc_y;
+    p_shot->Z = prc_z;
+    p_shot->Radius = 50;
+    p_shot->Owner = p_owner->ThingOffset;
+
+    cor_x = PRCCOORD_TO_MAPCOORD(prc_x);
+    cor_y = PRCCOORD_TO_MAPCOORD(prc_y);
+    cor_z = PRCCOORD_TO_MAPCOORD(prc_z);
+    rhit = laser_hit_at(cor_x, cor_y, cor_z, &p_shot->VX, &p_shot->VY, &p_shot->VZ, p_shot);
+
+    if (start_age > 15)
+        start_age = 15;
+    if (start_age < 5)
+        start_age = 5;
+    // For every consecutive turn of damage, deal more of it
+    damage = wdef->HitDamage + ((wdef->HitDamage * (start_age - 5)) >> 3);
+
+    if ((rhit & 0x80000000) != 0) // hit 3D object collision vector
+    {
+        short hitvec;
+
+        hitvec = rhit;
+        if ((p_owner->Flag2 & TgF2_ExistsOffMap) == 0)
+        {
+            bul_hit_vector(p_shot->VX, p_shot->VY, p_shot->VZ, -hitvec, 4 * start_age, wdmgtyp);
+            p_owner->U.UPerson.Flag3 |= 0x40;
+        }
+    }
+    else if ((rhit & 0x20000000) != 0)
+    {
+        // no action
+    }
+    else if ((rhit & 0x40000000) != 0) // hit SimpleThing
+    {
+        struct SimpleThing *p_hitstng;
+        ThingIdx hitstng;
+        hitstng = rhit & ~0x60000000;
+        p_hitstng = &sthings[-hitstng];
+        person_hit_by_bullet((struct Thing *)p_hitstng, damage, p_shot->VX - cor_x,
+          p_shot->VY - cor_y, p_shot->VZ - cor_z, p_owner, wdmgtyp);
+    }
+    else if (rhit != 0) // hit normal thing
+    {
+        struct Thing *p_hittng;
+        ThingIdx hittng;
+        hittng = rhit & ~0x60000000;
+        p_hittng = &things[hittng];
+        person_hit_by_bullet(p_hittng, damage, p_shot->VX - cor_x,
+          p_shot->VY - cor_y, p_shot->VZ - cor_z, p_owner, wdmgtyp);
+    }
+    else // if did not hit anything else, go for original target
+    {
+        if (target != 0)
+        {
+            person_hit_by_bullet(&things[target], damage, p_shot->VX - cor_x,
+              p_shot->VY - cor_y, p_shot->VZ - cor_z, p_owner, wdmgtyp);
+        }
+        else if ((p_owner->Flag2 & TgF2_ExistsOffMap) != 0)
+        {
+            p_shot->VY = p_shot->Y >> 8;
+        }
+    }
+    p_shot->StartTimer1 = start_age;
+    p_shot->Timer1 = start_age;
+    p_shot->Flag = TngF_Unkn0004;
+    p_shot->Type = TT_LASER11;
+    add_node_thing(p_shot->ThingOffset);
+
+    if ((byte_1DD8F8 & 1) != 0)
+        p_shot->Flag |= TngF_Unkn1000;
+    else
+        p_shot->Flag &= ~TngF_Unkn1000;
+}
+
+void init_mgun_laser(struct Thing *p_owner, ushort start_age)
+{
+#if 0
+    asm volatile (
+      "call ASM_init_mgun_laser\n"
+        : : "a" (p_owner), "d" (start_age));
+    return;
+#endif
+    struct Thing *p_shot;
+    struct WeaponDef *wdef;
+    int prc_x, prc_y, prc_z;
+    MapCoord cor_x, cor_y, cor_z;
+    short tgtng_x, tgtng_y, tgtng_z;
+    u32 rhit;
+    ThingIdx shottng;
+    short angle;
+    short damage;
+    ubyte wdmgtyp;
+
+    if (p_owner->PTarget == NULL)
+        return;
+
+    shottng = get_new_thing();
+    if (shottng == 0) {
+        LOGERR("No thing slots for a shot");
+        return;
+    }
+    p_shot = &things[shottng];
+    if (p_owner->U.UMGun.ShotTurn != 0) // which barrel to shoot from
+        angle = p_owner->U.UMGun.AngleY + 48;
+    else
+        angle = p_owner->U.UMGun.AngleY - 48;
+    angle = (angle + 2 * LbFPMath_PI) & LbFPMath_AngleMask;
+    prc_x = p_owner->X + 3 * lbSinTable[angle] / 2;
+    prc_z = p_owner->Z - 3 * lbSinTable[angle + LbFPMath_PI/2] / 2;
+    prc_y = p_owner->Y;
+
+    wdef = &weapon_defs[WEP_LASER];
+    wdmgtyp = DMG_LASER;
+
+    get_thing_position_mapcoords(&tgtng_x, &tgtng_y, &tgtng_z, p_owner->PTarget->ThingOffset);
+
+    p_shot->U.UEffect.Angle = p_owner->U.UMGun.AngleY;
+    p_shot->X = prc_x;
+    p_shot->Y = prc_y;
+    p_shot->Z = prc_z;
+    p_shot->VX = tgtng_x;
+    p_shot->VY = (tgtng_y >> 3) + 10;
+    p_shot->VZ = tgtng_z;
+    p_shot->Radius = 50;
+    p_shot->Owner = p_owner->ThingOffset;
+
+    cor_x = PRCCOORD_TO_MAPCOORD(prc_x);
+    cor_y = PRCCOORD_TO_MAPCOORD(prc_y);
+    cor_z = PRCCOORD_TO_MAPCOORD(prc_z);
+
+    rhit = laser_hit_at(cor_x, cor_y, cor_z, &p_shot->VX, &p_shot->VY, &p_shot->VZ, p_shot);
+
+    if (start_age > 15)
+        start_age = 15;
+    if (start_age < 5)
+        start_age = 5;
+    // For every consecutive turn of damage, deal more of it
+    damage = wdef->HitDamage + (start_age - 5) * wdef->HitDamage;
+
+    if ((rhit & 0x80000000) != 0) // hit 3D object collision vector
+    {
+        short hitvec;
+
+        hitvec = rhit;
+        bul_hit_vector(p_shot->VX, p_shot->VY, p_shot->VZ, -hitvec, 2 * start_age, wdmgtyp);
+    }
+    else if ((rhit & 0x20000000) != 0)
+    {
+        // no action
+    }
+    else if ((rhit & 0x40000000) != 0) // hit SimpleThing
+    {
+        struct SimpleThing *p_hitstng;
+        ThingIdx hittng;
+
+        hittng = rhit & ~0x60000000;
+        p_hitstng = &sthings[-hittng];
+        person_hit_by_bullet((struct Thing *)p_hitstng, damage, p_shot->VX - cor_x,
+          p_shot->VY - cor_y, p_shot->VZ - cor_z, p_owner, wdmgtyp);
+    }
+    else if (rhit != 0) // hit normal thing
+    {
+        struct Thing *p_hittng;
+        ThingIdx hittng;
+
+        hittng = rhit & ~0x60000000;
+        p_hittng = &things[hittng];
+        person_hit_by_bullet(p_hittng, damage, p_shot->VX - cor_x,
+          p_shot->VY - cor_y, p_shot->VZ - cor_z, p_owner, wdmgtyp);
+    }
+    p_shot->StartTimer1 = start_age;
+    p_shot->Timer1 = start_age;
+    p_shot->Flag = TngF_Unkn0004;
+    p_shot->Type = TT_LASER11;
+    add_node_thing(p_shot->ThingOffset);
 }
 
 void init_laser_6shot(struct Thing *p_person, ushort timer)
@@ -1115,10 +1412,182 @@ void init_laser_guided(struct Thing *p_owner, ushort size)
         : : "a" (p_owner), "d" (size));
 }
 
-void init_laser_elec(struct Thing *p_owner, ushort size)
+void weapon_shooting_floor_creates_smoke(MapCoord cor_x, MapCoord cor_z)
 {
+    struct SimpleThing *p_sthing;
+    MapCoord cor_y;
+    ushort textr;
+
+    textr = floor_texture_at_point(cor_x, cor_z);
+    if ((get_my_texture_bits(textr) & 2) != 0)
+    {
+        // Create small smoke effect for weapon discharge into water
+        cor_y = alt_at_point(cor_x, cor_z) >> 8;
+        p_sthing = create_scale_effect(cor_x, cor_y, cor_z, 1090, 8);
+        if (p_sthing != NULL) {
+            p_sthing->SubType = 58;
+        }
+    }
+}
+
+void init_laser_elec(struct Thing *p_owner, ushort start_age)
+{
+#if 0
     asm volatile ("call ASM_init_laser_elec\n"
         : : "a" (p_owner), "d" (size));
+#endif
+    struct Thing *p_shot;
+    struct WeaponDef *wdef;
+    int prc_x, prc_y, prc_z;
+    MapCoord cor_x, cor_y, cor_z;
+    u32 rhit;
+    int damage;
+    ThingIdx shottng, target;
+    ubyte wdmgtyp;
+    TbBool allow_gnd_hit_eff;
+
+    shottng = get_new_thing();
+    if (shottng == 0) {
+        LOGERR("No thing slots for a shot");
+        return;
+    }
+    p_shot = &things[shottng];
+    if ((p_owner->Flag2 & TgF2_ExistsOffMap) != 0)
+    {
+        prc_x = p_owner->X;
+        prc_y = p_owner->Y + 5120;
+        prc_z = p_owner->Z;
+    }
+    else
+    {
+        ubyte angle;
+        angle = p_owner->U.UObject.Angle;
+        prc_x = p_owner->X + (angle_direction[angle].DiX << 7);
+        prc_y = p_owner->Y + 5120;
+        prc_z = p_owner->Z + (angle_direction[angle].DiY << 7);
+    }
+
+    p_shot->U.UObject.Angle = p_owner->U.UObject.Angle;
+    if ((PRCCOORD_TO_MAPCOORD(prc_x) < 0) || (PRCCOORD_TO_MAPCOORD(prc_x) >= MAP_COORD_WIDTH) ||
+      (PRCCOORD_TO_MAPCOORD(prc_z) < 0) || (PRCCOORD_TO_MAPCOORD(prc_z) >= MAP_COORD_HEIGHT)) {
+        remove_thing(shottng);
+        return;
+    }
+
+    target = 0;
+    allow_gnd_hit_eff = false;
+    wdef = &weapon_defs[WEP_ELLASER];
+    wdmgtyp = DMG_ELLASER;
+
+    if ((p_owner->Flag & TngF_Unkn20000000) != 0)
+    {
+        p_shot->VX = p_owner->VX;
+        p_shot->VY = p_owner->VY;
+        p_shot->VZ = p_owner->VZ;
+        p_owner->Flag &= ~TngF_Unkn20000000;
+        allow_gnd_hit_eff = true;
+    }
+    else if (p_owner->PTarget != NULL)
+    {
+        struct Thing *p_target;
+        p_target = p_owner->PTarget;
+        p_shot->VX = PRCCOORD_TO_MAPCOORD(p_target->X);
+        p_shot->VY = PRCCOORD_TO_MAPCOORD(p_target->Y) + 10;
+        p_shot->VZ = PRCCOORD_TO_MAPCOORD(p_target->Z);
+        target = p_target->ThingOffset;
+    }
+    else if ((p_owner->Flag & TngF_Unkn1000) != 0)
+    {
+        ushort range;
+        ubyte angle;
+        range = wdef->RangeBlocks;
+        angle = p_owner->U.UObject.Angle;
+        p_shot->VX = PRCCOORD_TO_MAPCOORD(prc_x) + ((range * angle_direction[angle].DiX) >> 16);
+        p_shot->VY = PRCCOORD_TO_MAPCOORD(prc_y);
+        p_shot->VZ = PRCCOORD_TO_MAPCOORD(prc_z) + ((range * angle_direction[angle].DiY) >> 16);
+    }
+    else
+    {
+        remove_thing(shottng);
+        return;
+    }
+
+    p_shot->X = prc_x;
+    p_shot->Y = prc_y;
+    p_shot->Z = prc_z;
+    p_shot->Radius = 50;
+    p_shot->Owner = p_owner->ThingOffset;
+
+    cor_x = PRCCOORD_TO_MAPCOORD(prc_x);
+    cor_y = PRCCOORD_TO_MAPCOORD(prc_y);
+    cor_z = PRCCOORD_TO_MAPCOORD(prc_z);
+    rhit = laser_hit_at(cor_x, cor_y, cor_z, &p_shot->VX, &p_shot->VY, &p_shot->VZ, p_shot);
+
+    if (start_age > 15)
+        start_age = 15;
+    if (start_age < 5)
+        start_age = 5;
+    // For every consecutive turn of damage, deal more of it
+    damage = wdef->HitDamage + ((wdef->HitDamage * (start_age - 5)) >> 3);
+
+    if ((rhit & 0x80000000) != 0) // hit 3D object collision vector
+    {
+        short hitvec;
+
+        hitvec = rhit;
+        if (hitvec != -9999)
+        {
+            elec_hit_building(p_shot->VX, p_shot->VY, p_shot->VZ, -hitvec);
+        }
+    }
+    else if ((rhit & 0x20000000) != 0)
+    {
+        // no action
+    }
+    else if ((rhit & 0x40000000) != 0) // hit SimpleThing
+    {
+        struct SimpleThing *p_hitstng;
+        ThingIdx hitstng;
+        hitstng = rhit & ~0x60000000;
+        p_hitstng = &sthings[-hitstng];
+        person_hit_by_bullet((struct Thing *)p_hitstng, damage, p_shot->VX - cor_x,
+          p_shot->VY - cor_y, p_shot->VZ - cor_z, p_owner, wdmgtyp);
+    }
+    else if (rhit != 0) // hit normal thing
+    {
+        struct Thing *p_hittng;
+        ThingIdx hittng;
+        hittng = rhit & ~0x60000000;
+        p_hittng = &things[hittng];
+        person_hit_by_bullet(p_hittng, damage, p_shot->VX - cor_x,
+          p_shot->VY - cor_y, p_shot->VZ - cor_z, p_owner, wdmgtyp);
+    }
+    else // if did not hit anything else, go for original target
+    {
+        if (target != 0)
+        {
+            person_hit_by_bullet(&things[target], damage, p_shot->VX - cor_x,
+              p_shot->VY - cor_y, p_shot->VZ - cor_z, p_owner, wdmgtyp);
+        }
+        else
+        {
+            if ((p_owner->Flag2 & TgF2_ExistsOffMap) != 0) {
+                p_shot->VY = PRCCOORD_TO_MAPCOORD(p_shot->Y);
+            }
+            if (allow_gnd_hit_eff) {
+                weapon_shooting_floor_creates_smoke(p_shot->VX, p_shot->VZ);
+            }
+        }
+    }
+    p_shot->StartTimer1 = start_age;
+    p_shot->Timer1 = start_age;
+    if (start_age > 8)
+        start_age = 8;
+    p_shot->SubType = start_age;
+    p_shot->Flag = TngF_Unkn0004;
+    p_shot->Type = TT_LASER_ELEC;
+    p_shot->State = 0;
+    add_node_thing(p_shot->ThingOffset);
 }
 
 void init_laser_q_sep(struct Thing *p_owner, ushort size)
@@ -1157,8 +1626,35 @@ void init_long_range(struct Thing *p_owner)
 
 void init_air_strike(struct Thing *p_owner)
 {
+#if 0
     asm volatile ("call ASM_init_air_strike\n"
         : : "a" (p_owner));
+#endif
+    ThingIdx new_thing;
+    struct Thing *p_thing;
+    ubyte grp;
+
+    new_thing = get_new_thing();
+    if (new_thing == 0) {
+        return;
+    }
+    p_thing = &things[new_thing];
+    p_thing->Type = TT_AIR_STRIKE;
+    p_thing->X = p_owner->X;
+    p_thing->Z = p_owner->Z;
+    p_thing->Y = p_owner->Y;
+    p_thing->Owner = p_owner->ThingOffset;
+    p_thing->Timer1 = 400;
+    p_thing->StartFrame = 1004;
+    p_thing->Frame = nstart_ani[p_thing->StartFrame];
+    p_thing->U.UEffect.Object = 0;
+    p_thing->Flag = TngF_Unkn0004;
+    p_thing->Radius = 50;
+    grp = p_owner->U.UPerson.EffectiveGroup;
+    p_thing->U.UEffect.EffectiveGroup = grp;
+    p_thing->U.UEffect.Group = grp;
+
+    play_dist_sample(p_thing, 66, 127u, 64u, 100, 990, 3);
 }
 
 void init_stasis_gun(struct Thing *p_owner)
@@ -1223,7 +1719,7 @@ void init_fire_weapon(struct Thing *p_person)
     struct WeaponDef *wdef;
     int plagent;
     struct Thing *p_target;
-    ushort wtype;
+    WeaponType wtype;
     short i;
 
     wtype = p_person->U.UPerson.CurrentWeapon;
@@ -1243,7 +1739,7 @@ void init_fire_weapon(struct Thing *p_person)
     {
         if (wtype == WEP_MINIGUN) {
             plagent = p_person->U.UPerson.ComCur & 3;
-            play_dist_sample(p_person, 88 + plagent, 0x7Fu, 0x40u, 100, 0, 2);
+            play_dist_sample(p_person, 88 + plagent, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2);
         }
     }
     else
@@ -1272,7 +1768,7 @@ void init_fire_weapon(struct Thing *p_person)
                 if (p_target != NULL)
                 {
                     if ((p_target->Flag & TngF_Destroyed) == 0)
-                        p_person->Flag2 |= TngF_Unkn00200000;
+                        p_person->Flag2 |= TgF2_Unkn00200000;
                 }
             }
             p_person->U.UPerson.FrameId.Version[4] = 1;
@@ -1290,7 +1786,7 @@ void init_fire_weapon(struct Thing *p_person)
                 else
                     plagent = 0;
 
-                play_dist_sample(p_person, 80 + plagent, 0x7Fu, 0x40u, 100 + i, -1, 3);
+                play_dist_sample(p_person, 80 + plagent, FULL_VOL, EQUL_PAN, NORM_PTCH + i, LOOP_4EVER, 3);
             }
             p_person->Flag2 |= TgF2_Unkn0200;
             break;
@@ -1303,7 +1799,7 @@ void init_fire_weapon(struct Thing *p_person)
                 if (p_target != NULL)
                 {
                     if ((p_target->Flag & TngF_Destroyed) == 0)
-                        p_person->Flag2 |= TngF_Unkn00200000;
+                        p_person->Flag2 |= TgF2_Unkn00200000;
                 }
             }
             p_person->U.UPerson.FrameId.Version[4] = 3;
@@ -1316,7 +1812,7 @@ void init_fire_weapon(struct Thing *p_person)
                 else
                     plagent = 0;
 
-                play_dist_sample(p_person, 84 + plagent, 0x7Fu, 0x40u, 100, -1, 3);
+                play_dist_sample(p_person, 84 + plagent, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 3);
             }
             p_person->Flag2 |= TgF2_Unkn0200;
             break;
@@ -1327,11 +1823,11 @@ void init_fire_weapon(struct Thing *p_person)
                 if (p_target != NULL)
                 {
                     if ((p_target->Flag & TngF_Destroyed) == 0)
-                        p_person->Flag2 |= TngF_Unkn00200000;
+                        p_person->Flag2 |= TgF2_Unkn00200000;
                 }
             }
             if ((p_person->Flag & TngF_Unkn1000) != 0)
-                play_dist_sample(p_person, 7u, 0x7Fu, 0x40u, 100, -1, 3);
+                play_dist_sample(p_person, 7, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 3);
             break;
         case WEP_ELLASER:
             if ((p_person->Flag & TngF_PlayerAgent) != 0)
@@ -1340,12 +1836,12 @@ void init_fire_weapon(struct Thing *p_person)
                 if (p_target != NULL)
                 {
                     if ((p_target->Flag & TngF_Destroyed) == 0)
-                        p_person->Flag2 |= TngF_Unkn00200000;
+                        p_person->Flag2 |= TgF2_Unkn00200000;
                 }
             }
             if (((p_person->Flag2 & TgF2_ExistsOffMap) == 0)
               && ((p_person->Flag & TngF_Unkn1000) != 0))
-                play_dist_sample(p_person, 7u, 0x7Fu, 0x40u, 100, -1, 3);
+                play_dist_sample(p_person, 7, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 3);
             break;
         case WEP_RAP:
             // Targetted shots are created somewhere else
@@ -1357,7 +1853,7 @@ void init_fire_weapon(struct Thing *p_person)
             }
             p_person->U.UPerson.Energy -= wdef->EnergyUsed;
             init_grenade(p_person, 3);
-            play_dist_sample(p_person, 0x24u, 0x7Fu, 0x40u, 100, 0, 2);
+            play_dist_sample(p_person, 36, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2);
             p_person->U.UPerson.WeaponTurn = wdef->ReFireDelay;
             if ((p_person->Flag & TngF_PlayerAgent) == 0)
                 choose_best_weapon_for_range(p_person, 1280);
@@ -1375,7 +1871,7 @@ void init_fire_weapon(struct Thing *p_person)
             }
             p_person->U.UPerson.Energy -= wdef->EnergyUsed;
             init_grenade(p_person, 4);
-            play_dist_sample(p_person, 0x24u, 0x7Fu, 0x40u, 100, 0, 2);
+            play_dist_sample(p_person, 36, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2);
             p_person->U.UPerson.WeaponTurn = wdef->ReFireDelay;
             if ((p_person->Flag & TngF_PlayerAgent) == 0)
                 choose_best_weapon_for_range(p_person, 1280);
@@ -1387,7 +1883,7 @@ void init_fire_weapon(struct Thing *p_person)
             }
             p_person->U.UPerson.Energy -= wdef->EnergyUsed;
             init_grenade(p_person, 5);
-            play_dist_sample(p_person, 0x24u, 0x7Fu, 0x40u, 100, 0, 2);
+            play_dist_sample(p_person, 36, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2);
             p_person->U.UPerson.WeaponTurn = wdef->ReFireDelay;
             if ((p_person->Flag & TngF_PlayerAgent) == 0)
                 choose_best_weapon_for_range(p_person, 1280);
@@ -1411,13 +1907,13 @@ void init_fire_weapon(struct Thing *p_person)
                 if (p_target != NULL)
                 {
                     if ((p_target->Flag & TngF_Destroyed) == 0)
-                        p_person->Flag2 |= TngF_Unkn00200000;
+                        p_person->Flag2 |= TgF2_Unkn00200000;
                 }
             }
             p_person->U.UPerson.FrameId.Version[4] = 1;
             init_long_range(p_person);
             p_person->U.UPerson.WeaponTurn = wdef->ReFireDelay;
-            play_dist_sample(p_person, 0x21u, 0x7Fu, 0x40u, 100, 0, 3);
+            play_dist_sample(p_person, 33, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
             break;
         case WEP_AIRSTRIKE:
             give_take_me_weapon(p_person, wtype, -1, p_person->ThingOffset);
@@ -1430,11 +1926,11 @@ void init_fire_weapon(struct Thing *p_person)
                 if (p_target != NULL)
                 {
                     if ((p_target->Flag & TngF_Destroyed) == 0)
-                        p_person->Flag2 |= TngF_Unkn00200000;
+                        p_person->Flag2 |= TgF2_Unkn00200000;
                 }
             }
             if ((p_person->Flag & TngF_Unkn1000) != 0)
-                play_dist_sample(p_person, 7u, 0x7Fu, 0x40u, 100, -1, 3);
+                play_dist_sample(p_person, 7, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 3);
             break;
         case WEP_QDEVASTATOR:
             if ((p_person->Flag & TngF_PlayerAgent) != 0)
@@ -1443,11 +1939,11 @@ void init_fire_weapon(struct Thing *p_person)
                 if (p_target != NULL)
                 {
                     if ((p_target->Flag & TngF_Destroyed) == 0)
-                        p_person->Flag2 |= TngF_Unkn00200000;
+                        p_person->Flag2 |= TgF2_Unkn00200000;
                 }
             }
             if ((p_person->Flag & TngF_Unkn1000) != 0)
-                play_dist_sample(p_person, 7u, 0x7Fu, 0x40u, 100, -1, 3);
+                play_dist_sample(p_person, 7, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 3);
             break;
         case WEP_STASISFLD:
             p_person->U.UPerson.Energy -= wdef->EnergyUsed;
@@ -1491,7 +1987,7 @@ void init_clone_disguise(struct Thing *p_person)
     if ((p_person->Flag2 & TgF2_Unkn00400000) != 0)
         return;
 
-    p_person->U.UPerson.AnimMode = 0;
+    p_person->U.UPerson.AnimMode = ANIM_PERS_IDLE;
     p_person->U.UPerson.OldSubType = p_person->SubType;
     switch (LbRandomAnyShort() & 3)
     {
@@ -1514,12 +2010,85 @@ void init_clone_disguise(struct Thing *p_person)
     p_person->Flag2 |= TgF2_Unkn00400000;
 }
 
+void reset_clone_disguise(struct Thing *p_person)
+{
+    if ((p_person->Flag2 & TgF2_Unkn00400000) == 0)
+        return;
+
+    p_person->Flag2 &= ~TgF2_Unkn00400000;
+    p_person->SubType = p_person->U.UPerson.OldSubType;
+    reset_person_frame(p_person);
+}
+
 int gun_out_anim(struct Thing *p_person, ubyte shoot_flag)
 {
+#if 0
     int ret;
     asm volatile ("call ASM_gun_out_anim\n"
         : "=r" (ret) : "a" (p_person), "d" (shoot_flag));
     return ret;
+#endif
+    if ((p_person->Flag & TngF_Destroyed) != 0) {
+        return p_person->U.UPerson.AnimMode;
+    }
+
+    switch (p_person->U.UPerson.CurrentWeapon)
+    {
+    case WEP_FLAMER:
+    case WEP_QDEVASTATOR:
+    case WEP_MINIGUN:
+    case WEP_LASER:
+    case WEP_ELLASER:
+    case WEP_LONGRANGE:
+    case WEP_BEAM:
+        if (p_person->SubType == SubTT_PERS_AGENT)
+            p_person->U.UPerson.FrameId.Version[3] = 1;
+        if (shoot_flag == 2)
+            return ANIM_PERS_WEPHEAVY_Unkn07;
+        if (shoot_flag == 1)
+            return ANIM_PERS_WEPHEAVY_Unkn15;
+        return ANIM_PERS_WEPHEAVY_IDLE;
+
+    default:
+    case WEP_NULL:
+    case WEP_NUCLGREN:
+    case WEP_H2HTASER:
+    case WEP_CRAZYGAS:
+    case WEP_KOGAS:
+    case WEP_ELEMINE:
+    case WEP_EXPLMINE:
+    case WEP_NAPALMMINE:
+    case WEP_AIRSTRIKE:
+    case WEP_RAZORWIRE:
+    case WEP_PERSUADER2:
+    case WEP_ENERGYSHLD:
+    case WEP_CEREBUSIFF:
+    case WEP_MEDI1:
+    case WEP_MEDI2:
+    case WEP_EXPLWIRE:
+    case WEP_CLONESHLD:
+    case WEP_UNUSED1F:
+        if (p_person->SubType == SubTT_PERS_AGENT)
+            p_person->U.UPerson.FrameId.Version[3] = 0;
+        if (p_person->State == PerSt_WAIT)
+            return ANIM_PERS_Unkn21;
+        return ANIM_PERS_IDLE;
+
+    case WEP_UZI:
+    case WEP_RAP:
+    case WEP_PERSUADRTRN:
+    case WEP_SONICBLAST:
+    case WEP_STASISFLD:
+    case WEP_SOULGUN:
+    case WEP_TIMEGUN:
+        if (p_person->SubType == SubTT_PERS_AGENT)
+            p_person->U.UPerson.FrameId.Version[3] = 0;
+        if (shoot_flag == 2)
+            return ANIM_PERS_Unkn06;
+        if (shoot_flag == 1)
+            return ANIM_PERS_Unkn14;
+        return ANIM_PERS_WEPLIGHT_IDLE;
+    }
 }
 
 ushort player_weapon_time(struct Thing *p_person)
@@ -1990,20 +2559,20 @@ void set_person_weapon_turn(struct Thing *p_person, short n_turn)
     }
     else if ((p_person->Flag2 & TgF2_Unkn0800) == 0)
     {
-        PlayerInfo *p_player;
-        ushort plyr, plagent;
-        ushort weptype;
+        PlayerIdx plyr;
+        ushort plagent;
+        WeaponType wtype;
 
         plyr = (p_person->U.UPerson.ComCur & 0x1C) >> 2;
         plagent = p_person->U.UPerson.ComCur & 3;
-        p_player = &players[plyr];
-        weptype = p_person->U.UPerson.CurrentWeapon;
-        p_player->WepDelays[plagent][weptype] = n_turn;
+        wtype = p_person->U.UPerson.CurrentWeapon;
+
         p_person->U.UPerson.WeaponTurn = n_turn;
+        player_agent_set_weapon_delay(plyr, plagent, wtype, n_turn);
     }
 }
 
-void weapon_consume_energy(struct Thing *p_person, ushort wtype)
+void weapon_consume_energy(struct Thing *p_person, WeaponType wtype)
 {
     struct WeaponDef *wdef;
     short en_used;
@@ -2037,13 +2606,11 @@ void process_clone_disguise(struct Thing *p_person)
 
     if (p_person->U.UPerson.CurrentWeapon != WEP_CLONESHLD)
     {
-        p_person->Flag2 &= ~TgF2_Unkn00400000;
-        p_person->SubType = p_person->U.UPerson.OldSubType;
-        reset_person_frame(p_person);
+        reset_clone_disguise(p_person);
     }
 }
 
-TbBool person_weapons_remove_one(struct Thing *p_person, ushort weptype)
+TbBool person_weapons_remove_one(struct Thing *p_person, WeaponType wtype)
 {
     PlayerInfo *p_player;
     ushort plagent;
@@ -2061,15 +2628,15 @@ TbBool person_weapons_remove_one(struct Thing *p_person, ushort weptype)
 
     if (p_player != NULL)
         //TODO replace  with weapons_remove_one() call, when FourPacks have unified format
-        done = weapons_remove_one_for_player(&p_person->U.UPerson.WeaponsCarried, p_player->FourPacks, plagent, weptype);
+        done = weapons_remove_one_for_player(&p_person->U.UPerson.WeaponsCarried, p_player->FourPacks, plagent, wtype);
     else
-        done = weapons_remove_one_from_npc(&p_person->U.UPerson.WeaponsCarried, weptype);
+        done = weapons_remove_one_from_npc(&p_person->U.UPerson.WeaponsCarried, wtype);
 
     // If the weapon got depleted, remove it from all properties
-    if (!person_carries_weapon(p_person, weptype)) {
-        if (p_person->U.UPerson.CurrentWeapon == weptype)
+    if (!person_carries_weapon(p_person, wtype)) {
+        if (p_person->U.UPerson.CurrentWeapon == wtype)
             p_person->U.UPerson.CurrentWeapon = WEP_NULL;
-        if ((p_player != NULL) && (p_player->PrevWeapon[plagent] == weptype))
+        if ((p_player != NULL) && (p_player->PrevWeapon[plagent] == wtype))
             person_weapons_reset_previous(p_person);
     }
 
@@ -2106,7 +2673,7 @@ void process_automedkit(struct Thing *p_person)
 
     p_person->Health = p_person->U.UPerson.MaxHealth;
     person_weapons_remove_one(p_person, WEP_MEDI2);
-    play_dist_sample(p_person, 2, 127, 64, 100, 0, 1);
+    play_dist_sample(p_person, 2, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
 }
 
 void low_energy_alarm_stop(void)
@@ -2118,7 +2685,7 @@ void low_energy_alarm_stop(void)
 void low_energy_alarm_play(void)
 {
     if (!IsSamplePlaying(0, 93, 0))
-        play_sample_using_heap(0, 93, 127, 64, 100, -1, 3);
+        play_sample_using_heap(0, 93, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 3);
 }
 
 void process_energy_alarm(struct Thing *p_person)
@@ -2218,7 +2785,7 @@ void process_weapon_wind_down(struct Thing *p_person)
             plagent = 0;
         ReleaseLoopedSample(p_person->ThingOffset, 84 + plagent);
         plagent = p_person->U.UPerson.ComCur & 3;
-        play_dist_sample(p_person, 88 + plagent, 0x7F, 0x40, 100, 0, 1);
+        play_dist_sample(p_person, 88 + plagent, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
         p_person->Flag2 &= ~TgF2_Unkn0200;
         break;
     }
@@ -2242,7 +2809,8 @@ void process_weapon_continuous_fire(struct Thing *p_person)
             int animMode;
 
             animMode = p_person->U.UPerson.AnimMode;
-            if ((animMode == 14 || animMode == 15) && p_person->Type != TT_MINE)
+            if ((animMode == ANIM_PERS_Unkn14 || animMode == ANIM_PERS_WEPHEAVY_Unkn15)
+              && p_person->Type != TT_MINE)
             {
                 p_person->U.UPerson.AnimMode = gun_out_anim(p_person, 0);
                 reset_person_frame(p_person);
@@ -2275,7 +2843,7 @@ void process_weapon_continuous_fire(struct Thing *p_person)
                         plagent = 0;
                     ReleaseLoopedSample(p_person->ThingOffset, 84 + plagent);
                     plagent = p_person->U.UPerson.ComCur & 3;
-                    play_dist_sample(p_person, 88 + plagent, 0x7F, 0x40, 100, 0, 1);
+                    play_dist_sample(p_person, 88 + plagent, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
                     p_person->Flag2 &= ~TgF2_Unkn0200;
                 }
                 break;
@@ -2284,7 +2852,7 @@ void process_weapon_continuous_fire(struct Thing *p_person)
                   ((p_person->Flag & TngF_Unkn0800) == 0))
                 {
                     stop_sample_using_heap(p_person->ThingOffset, 14);
-                    play_dist_sample(p_person, 15, 0x7F, 0x40, 100, 0, 2);
+                    play_dist_sample(p_person, 15, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2);
                     p_person->Flag2 &= ~TgF2_Unkn0200;
                 }
                 break;
@@ -2293,7 +2861,7 @@ void process_weapon_continuous_fire(struct Thing *p_person)
     }
 }
 
-void process_weapon_wield_affecting_area(struct Thing *p_person, ushort wtype)
+void process_weapon_wield_affecting_area(struct Thing *p_person, WeaponType wtype)
 {
     ThingIdx targtng;
     ushort energy_rq;
@@ -2334,7 +2902,7 @@ void process_weapon_wield_affecting_area(struct Thing *p_person, ushort wtype)
     }
 }
 
-void weapon_init_shot(struct Thing *p_person, ushort wtype)
+void weapon_init_shot(struct Thing *p_person, WeaponType wtype)
 {
     switch (wtype)
     {
@@ -2345,14 +2913,14 @@ void weapon_init_shot(struct Thing *p_person, ushort wtype)
             init_laser(p_person, p_person->U.UPerson.WeaponTimer);
         stop_sample_using_heap(p_person->ThingOffset, 7);
         stop_sample_using_heap(p_person->ThingOffset, 52);
-        play_dist_sample(p_person, 18, 0x7F, 0x40, 100, 0, 3);
+        play_dist_sample(p_person, 18, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
         break;
     case WEP_ELLASER:
         init_laser_elec(p_person, p_person->U.UPerson.WeaponTimer);
         stop_sample_using_heap(p_person->ThingOffset, 7);
         stop_sample_using_heap(p_person->ThingOffset, 52);
         if ((p_person->Flag2 & TgF2_ExistsOffMap) == 0)
-            play_dist_sample(p_person, 6, 0x7F, 0x40, 100, 0, 3);
+            play_dist_sample(p_person, 6, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
         break;
     case WEP_RAP:
         init_rocket(p_person);
@@ -2363,20 +2931,20 @@ void weapon_init_shot(struct Thing *p_person, ushort wtype)
          init_laser_beam(p_person, p_person->U.UPerson.WeaponTimer, 17);
          stop_sample_using_heap(p_person->ThingOffset, 7);
          stop_sample_using_heap(p_person->ThingOffset, 52);
-         play_dist_sample(p_person, 5, 0x7F, 0x40, 100, 0, 3);
+         play_dist_sample(p_person, 5, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
         break;
     case WEP_QDEVASTATOR:
         init_laser_q_sep(p_person, p_person->U.UPerson.WeaponTimer);
         stop_sample_using_heap(p_person->ThingOffset, 7);
         stop_sample_using_heap(p_person->ThingOffset, 52);
-        play_dist_sample(p_person, 28, 0x7F, 0x40, 100, 0, 3);
+        play_dist_sample(p_person, 28, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
         break;
     default:
         break;
     }
 }
 
-void process_wielded_weapon_fire(struct Thing *p_person, ushort wtype)
+void process_wielded_weapon_fire(struct Thing *p_person, WeaponType wtype)
 {
     struct WeaponDef *wdef;
     short wepTurn;
@@ -2433,8 +3001,8 @@ void process_wielded_weapon_fire(struct Thing *p_person, ushort wtype)
                 if ((p_person->U.UPerson.WeaponTurn == 0)
                     && ((p_person->Flag2 & TgF2_Unkn0400) == 0))
                 {
-                    play_dist_sample(p_person, 14, 0x7F, 0x40, 100, -1, 2);
-                    play_dist_sample(p_person, 13, 0x7F, 0x40, 100, 0, 2);
+                    play_dist_sample(p_person, 14, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 2);
+                    play_dist_sample(p_person, 13, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2);
                     p_person->Flag2 |= TgF2_Unkn0200;
                 }
                 init_fire_weapon(p_person);
@@ -2462,14 +3030,14 @@ void process_wielded_weapon_fire(struct Thing *p_person, ushort wtype)
     }
 }
 
-void weapon_inc_timer(struct Thing *p_person, ushort wtype)
+void weapon_inc_timer(struct Thing *p_person, WeaponType wtype)
 {
     p_person->U.UPerson.WeaponTimer++;
     if (wtype == WEP_RAP)
         p_person->U.UPerson.WeaponTimer++;
 }
 
-void weapon_set_timer_for_refire(struct Thing *p_person, ushort wtype)
+void weapon_set_timer_for_refire(struct Thing *p_person, WeaponType wtype)
 {
     struct WeaponDef *wdef;
     int i;
@@ -2514,7 +3082,7 @@ void weapon_set_timer_for_refire(struct Thing *p_person, ushort wtype)
 
 void process_wielded_weapon(struct Thing *p_person)
 {
-    ushort wtype;
+    WeaponType wtype;
 
     wtype = p_person->U.UPerson.CurrentWeapon;
 
@@ -2552,7 +3120,7 @@ void process_wielded_weapon(struct Thing *p_person)
             if (p_person->U.UPerson.WeaponTimer == 14)
             {
                 stop_sample_using_heap(p_person->ThingOffset, 7);
-                play_dist_sample(p_person, 52, 0x7F, 0x40, 100, -1, 3);
+                play_dist_sample(p_person, 52, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 3);
             }
             else
             {

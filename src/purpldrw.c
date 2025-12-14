@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file purpldrw.c
  *     Adding items to drawlist for purple projector screens.
@@ -19,8 +19,8 @@
 #include "purpldrw.h"
 
 #include "bfconfig.h"
-#include "bfkeybd.h"
 #include "bfutility.h"
+#include "bfmemut.h"
 #include "bfscreen.h"
 #include "bfsprite.h"
 #include "bftext.h"
@@ -33,6 +33,7 @@
 #include "game_sprts.h"
 #include "guiboxes.h"
 #include "guitext.h"
+#include "keyboard.h"
 #include "purpldrwlst.h"
 #include "sound.h"
 #include "swlog.h"
@@ -51,6 +52,7 @@ extern struct ScreenTextBox brief_netscan_box;
 extern struct ScreenTextBox world_city_info_box;
 extern struct ScreenTextBox equip_display_box;
 extern struct ScreenTextBox cryo_cybmod_list_box;
+extern struct ScreenTextBox controls_list_box;
 extern struct ScreenButton alert_OK_button;
 
 extern long dword_1DC5FC;
@@ -115,12 +117,32 @@ void draw_box_purple_list(int x, int y, ulong width, ulong height, int colour)
 
 void draw_text_purple_list2(int x, int y, const char *text, ushort line)
 {
+#if 0
     asm volatile (
       "call ASM_draw_text_purple_list2\n"
         : : "a" (x), "d" (y), "b" (text), "c" (line));
+    return;
+#endif
+    struct PurpleDrawItem *pditem;
+
+    pditem = &purple_draw_list[purple_draw_index];
+    purple_draw_index++;
+
+    pditem->U.Text.X = x;
+    pditem->U.Text.Y = y;
+    pditem->U.Text.WindowX = text_window_x1;
+    pditem->U.Text.WindowY = text_window_y1;
+    pditem->U.Text.Width = text_window_x2 - text_window_x1 + 1;
+    pditem->U.Text.Height = text_window_y2 - text_window_y1 + 1;
+    pditem->U.Text.Text = text;
+    pditem->U.Text.Line = line;
+    pditem->U.Text.Colour = lbDisplay.DrawColour;
+    pditem->U.Text.Font = lbFontPtr;
+    pditem->Flags = lbDisplay.DrawFlags;
+    pditem->Type = PuDT_TEXT;
 }
 
-void draw_sprite_purple_list(int x, int y, struct TbSprite *p_sprite)
+void draw_sprite_purple_list(int x, int y, const struct TbSprite *p_sprite)
 {
 #if 0
     asm volatile (
@@ -312,7 +334,7 @@ ubyte flashy_draw_purple_box(struct ScreenBox *p_box)
         if (p_box->Timer > 24)
         {
             if (!IsSamplePlaying(0, 4, 0))
-                play_sample_using_heap(0, 110, 127, 64, 100, 0, 1u);
+                play_sample_using_heap(0, 110, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1u);
         }
     }
 
@@ -374,11 +396,122 @@ ubyte flashy_draw_purple_box(struct ScreenBox *p_box)
     return 3;
 }
 
+void my_set_text_window_for_text_box(struct ScreenTextBox *p_box)
+{
+    short scr_scroll_w, scr_scroll_h;
+
+    if ((p_box->Flags & GBxFlg_RadioBtn) != 0)
+        scr_scroll_w = 12;
+    else
+        scr_scroll_w = 0;
+
+    if ((p_box->Buttons[0] != NULL) || (p_box->Infos[0] != NULL) || (p_box == &brief_netscan_box))
+        scr_scroll_h = p_box->ScrollWindowHeight + 2;
+    else
+        scr_scroll_h = p_box->ScrollWindowHeight + 23;
+
+    my_set_text_window(p_box->X + 4, p_box->ScrollWindowOffset + p_box->Y + 4, p_box->Width - 8 - scr_scroll_w, scr_scroll_h);
+}
+
+/** Get amount of lines within currently set text window.
+ */
+short get_text_box_window_lines_visible(struct ScreenTextBox *p_box)
+{
+    short text_window_h;
+    text_window_h = text_window_y2 - text_window_y1 - 1;
+    return (text_window_h + 2) / p_box->LineHeight;
+}
+
+/** Get amount of lines within given text box.
+ * This function alters my_text_window and the current font.
+ */
 short get_text_box_lines_visible(struct ScreenTextBox *p_box)
 {
-    short text_window_w;
-    text_window_w = text_window_y2 - text_window_y1 - 1;
-    return (text_window_w + 2) / p_box->LineHeight;
+    my_set_text_window_for_text_box(p_box);
+
+    lbFontPtr = p_box->Font;
+    if (p_box->LineHeight == 0)
+        p_box->LineHeight = p_box->LineSpacing + font_height('A');
+
+    return get_text_box_window_lines_visible(p_box);
+}
+
+TbBool flashy_draw_text(int x, int y, const char *text, ubyte speed, int top_line, short *textpos, int cyan_flag)
+{
+#if 0
+    TbBool ret;
+    asm volatile (
+      "push %7\n"
+      "push %6\n"
+      "push %5\n"
+      "call ASM_flashy_draw_text\n"
+        : "=r" (ret) : "a" (x), "d" (y), "b" (text), "c" (speed), "g" (top_line), "g" (textpos), "g" (cyan_flag));
+    return ret;
+#endif
+    char *gtext;
+    int text_tot_len, chunk_end;
+    int i, pos;
+    sbyte chunk_no;
+
+    if (text == NULL) {
+        return 1;
+    }
+    text_tot_len = strlen(text);
+    pos = *textpos;
+    if (pos >= text_tot_len) {
+        draw_text_purple_list2(x, y, text, top_line);
+        return 1;
+    }
+    gtext = (char *)back_buffer + text_buf_pos;
+    if (pos > 0)
+        LbMemoryCopy(gtext, text, pos);
+    if (pos <= 0)
+        pos = 0;
+    if (cyan_flag)
+    {
+        chunk_no = 12;
+        gtext[pos] = 27;
+        pos += 1;
+        for (i = 0; i < 4; i++)
+        {
+            chunk_end = i + *textpos;
+            if ((chunk_end >= 0) && (chunk_end < text_tot_len))
+            {
+              gtext[pos + 0] = 14;
+              gtext[pos + 1] = chunk_no;
+              gtext[pos + 2] = text[i + *textpos];
+              pos += 3;
+            }
+            ++chunk_no;
+        }
+    }
+    else
+    {
+        chunk_no = 6;
+        gtext[pos] = 27;
+        pos += 1;
+        for (i = 0; i < 6; i++)
+        {
+            chunk_end = i + *textpos;
+            if ((chunk_end >= 0) && (chunk_end < text_tot_len))
+            {
+              gtext[pos + 0] = 14;
+              gtext[pos + 1] = chunk_no;
+              gtext[pos + 2] = text[i + *textpos];
+              pos += 3;
+            }
+            ++chunk_no;
+        }
+    }
+    gtext[pos + 0] = 28;
+    gtext[pos + 1] = 0;
+    pos += 2;
+    text_buf_pos += pos;
+
+    *textpos += speed;
+    draw_text_purple_list2(x, y, gtext, top_line);
+    play_sample_using_heap(0, 114, 127, 64, 100, 0, 3);
+    return 0;
 }
 
 ubyte flashy_draw_purple_text_box_text(struct ScreenTextBox *p_box)
@@ -411,7 +544,7 @@ ubyte flashy_draw_purple_text_box_text(struct ScreenTextBox *p_box)
     else if (p_box->Text != NULL)
     {
         ubyte drawn;
-        drawn = flashy_draw_text(0,  0, p_box->Text, p_box->TextSpeed, p_box->field_38,
+        drawn = flashy_draw_text(0,  0, p_box->Text, p_box->TextSpeed, p_box->TextTopLine,
               &p_box->TextFadePos, p_box->DrawTextFn != NULL);
         text_drawn = text_drawn && drawn;
     }
@@ -464,7 +597,7 @@ void purple_text_box_set_scroll_vertical_pos(struct ScreenTextBox *p_box, short 
         scroll_pos = p_box->ScrollWindowHeight - p_box->ScrollBarSize;
 
     p_box->ScrollBarPos = scroll_pos;
-    p_box->field_38 = p_box->Lines * p_box->ScrollBarPos / p_box->ScrollWindowHeight;
+    p_box->TextTopLine = p_box->Lines * p_box->ScrollBarPos / p_box->ScrollWindowHeight;
 }
 
 void init_scroll_bar_for_text_box(struct ScreenBox *ar_scroll_bar, struct ScreenTextBox *p_box)
@@ -493,8 +626,11 @@ void init_scroll_bar_for_text_box(struct ScreenBox *ar_scroll_bar, struct Screen
 void input_purple_text_box_wth_scroll(struct ScreenTextBox *p_box, struct ScreenBox *ar_scroll_bar)
 {
     short lines_visible;
+    TbBool no_keyboard_inputs;
 
-    lines_visible = get_text_box_lines_visible(p_box);
+    lines_visible = get_text_box_window_lines_visible(p_box);
+    //TODO make this into a flag within the box
+    no_keyboard_inputs = (p_box == &controls_list_box);
 
     if (lbDisplay.MLeftButton && ((p_box->Flags & GBxFlg_IsPushed) != 0))
     {
@@ -539,30 +675,35 @@ void input_purple_text_box_wth_scroll(struct ScreenTextBox *p_box, struct Screen
                 p_box->Flags |= GBxFlg_IsPushed;
                 ms_y = lbDisplay.ScreenMode == 1 ? 2 * lbDisplay.MouseY : lbDisplay.MouseY;
                 p_box->GrabPos = ms_y - p_box->ScrollBarPos;
-                play_sample_using_heap(0, 125, 127, 64, 100, 0, 1);
+                play_sample_using_heap(0, 125, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
             }
         }
 
         if (mouse_move_over_box(p_box) && ((p_box->Flags & GBxFlg_IsPushed) == 0))
         {
             // Using keyboard to scroll
-            if (lbKeyOn[KC_UP] || lbKeyOn[KC_DOWN] || lbKeyOn[KC_PGUP] || lbKeyOn[KC_PGDOWN])
+            if (no_keyboard_inputs)
+            {
+                // User requested disable - the same keys are probably used for something else
+            }
+            else if (is_key_pressed(KC_UP, KMod_DONTCARE) || is_key_pressed(KC_DOWN, KMod_DONTCARE) ||
+              is_key_pressed(KC_PGUP, KMod_DONTCARE) || is_key_pressed(KC_PGDOWN, KMod_DONTCARE))
             {
                 short scroll_pos, delta;
 
                 scroll_pos = p_box->ScrollBarPos;
 
                 delta = 0;
-                if (lbKeyOn[KC_DOWN])
+                if (is_key_pressed(KC_DOWN, KMod_DONTCARE))
                     delta = p_box->ScrollWindowHeight / p_box->Lines;
-                else if (lbKeyOn[KC_UP])
+                else if (is_key_pressed(KC_UP, KMod_DONTCARE))
                     delta = - p_box->ScrollWindowHeight / p_box->Lines;
                 scroll_pos += delta;
 
                 delta = 0;
-                if (lbKeyOn[KC_PGDOWN])
+                if (is_key_pressed(KC_PGDOWN, KMod_DONTCARE))
                     delta = p_box->ScrollWindowHeight * (lines_visible - 1) / p_box->Lines;
-                else if (lbKeyOn[KC_PGUP])
+                else if (is_key_pressed(KC_PGUP, KMod_DONTCARE))
                     delta = - (lines_visible - 1) * p_box->ScrollWindowHeight / p_box->Lines;
                 scroll_pos += delta;
 
@@ -600,7 +741,7 @@ void input_purple_text_box_wth_scroll(struct ScreenTextBox *p_box, struct Screen
                 short scroll_pos;
 
                 if (lbDisplay.LeftButton)
-                    play_sample_using_heap(0, 125, 127, 64, 100, 0, 1);
+                    play_sample_using_heap(0, 125, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
                 lbDisplay.LeftButton = 0;
                 p_box->Flags |= GBxFlg_IsRPushed;
                 ar_scroll_bar[ScrlBB_ArrowUp].Flags |= GBxFlg_IsRPushed;
@@ -618,7 +759,7 @@ void input_purple_text_box_wth_scroll(struct ScreenTextBox *p_box, struct Screen
                 short scroll_pos;
 
                 if (lbDisplay.LeftButton)
-                    play_sample_using_heap(0, 125, 127, 64, 100, 0, 1);
+                    play_sample_using_heap(0, 125, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
                 lbDisplay.LeftButton = 0;
                 p_box->Flags |= GBxFlg_IsRPushed;
                 ar_scroll_bar[ScrlBB_ArrowDn].Flags |= GBxFlg_IsRPushed;
@@ -646,28 +787,14 @@ ubyte flashy_draw_purple_text_box(struct ScreenTextBox *p_box)
     TbBool text_remains_dynamic; /**< text drawing callback never sets GBxFlg_TextCopied (maybe make this into a box flag?) */
 
     text_remains_dynamic = (p_box == &world_city_info_box) || (p_box == &equip_display_box) || (p_box == &cryo_cybmod_list_box);
+    my_set_text_window_for_text_box(p_box);
 
-    {
-        short scr_scroll_w, scr_scroll_h;
-
-        if ((p_box->Flags & GBxFlg_RadioBtn) != 0)
-            scr_scroll_w = 12;
-        else
-            scr_scroll_w = 0;
-
-        if ((p_box->Buttons[0] != NULL) || (p_box->Infos[0] != NULL) || (p_box == &brief_netscan_box))
-            scr_scroll_h = p_box->ScrollWindowHeight + 2;
-        else
-            scr_scroll_h = p_box->ScrollWindowHeight + 23;
-
-        my_set_text_window(p_box->X + 4, p_box->ScrollWindowOffset + p_box->Y + 4, p_box->Width - 8 - scr_scroll_w, scr_scroll_h);
-    }
     lbFontPtr = p_box->Font;
     byte_197160 = p_box->LineSpacing;
     if (p_box->LineHeight == 0)
         p_box->LineHeight = byte_197160 + font_height('A');
 
-    lines_visible = get_text_box_lines_visible(p_box);
+    lines_visible = get_text_box_window_lines_visible(p_box);
 
     box_w = p_box->Width - 1;
     box_h = p_box->Height - 1;
@@ -730,7 +857,7 @@ ubyte flashy_draw_purple_text_box(struct ScreenTextBox *p_box)
         if (p_box->Timer > 24)
         {
             if (!IsSamplePlaying(0, 4, 0))
-                play_sample_using_heap(0, 110, 127, 64, 100, 0, 1u);
+                play_sample_using_heap(0, 110, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1u);
         }
     }
 
@@ -791,7 +918,7 @@ ubyte flashy_draw_purple_text_box(struct ScreenTextBox *p_box)
         {
             p_box->Flags &= ~GBxFlg_RadioBtn;
         }
-        p_box->field_38 = 0;
+        p_box->TextTopLine = 0;
         p_box->Flags &= ~(GBxFlg_IsPushed|GBxFlg_Unkn0080);
         if (p_box->Timer != 255) {
             p_box->TextFadePos = -5;
@@ -943,8 +1070,9 @@ ubyte flashy_draw_purple_info_box(struct ScreenInfoBox *p_box)
     {
         if (p_box->Timer > 24)
         {
+            // Projector drawing sound
             if (!IsSamplePlaying(0, 4, 0))
-                play_sample_using_heap(0, 110, 127, 64, 100, 0, 1u);
+                play_sample_using_heap(0, 110, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1u);
         }
     }
 
@@ -1014,11 +1142,11 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
 #if 0
     ubyte ret;
     asm volatile ("call ASM_flashy_draw_purple_button\n"
-        : "=r" (ret) : "a" (button));
+        : "=r" (ret) : "a" (p_btn));
     return ret;
-#endif
+#else
     short box_w, box_h;
-    short akey;
+    TbKeyCode akey;
     TbBool mouse_over, event_from_key;
 
     my_set_text_window(p_btn->X + 2, p_btn->Y + 2, p_btn->Width - 18, p_btn->Height - 4);
@@ -1047,8 +1175,9 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
     {
         if (p_btn->Timer > 24)
         {
+            // Projector drawing sound
             if (!IsSamplePlaying(0, 4, 0))
-                play_sample_using_heap(0, 110, 127, 64, 100, 0, 1u);
+                play_sample_using_heap(0, 110, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1u);
         }
     }
 
@@ -1114,26 +1243,23 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
     }
     event_from_key = false;
     akey = p_btn->AccelKey  & 0xFF;
-    if (lbKeyOn[akey])
+    if ((akey == KC_RETURN || akey == KC_ESCAPE) && is_key_pressed(akey, KMod_DONTCARE))
     {
-        if (akey == KC_RETURN || akey == KC_ESCAPE)
-        {
-            lbKeyOn[akey] = 0;
-            p_btn->Flags |= GBxFlg_IsPushed;
-            event_from_key = true;
-        } else
-        if ((lbShift & 4) != 0)
-        {
-            lbKeyOn[akey] = 0;
-            event_from_key = true;
-            p_btn->Flags |= GBxFlg_IsPushed;
-        } else
-        if ((lbShift & 2) != 0)
-        {
-            lbKeyOn[akey] = 0;
-            p_btn->Flags |= GBxFlg_IsRPushed;
-            event_from_key = true;
-        }
+        clear_key_pressed(akey);
+        p_btn->Flags |= GBxFlg_IsPushed;
+        event_from_key = true;
+    } else
+    if (is_key_pressed(akey, KMod_ALT))
+    {
+        clear_key_pressed(akey);
+        event_from_key = true;
+        p_btn->Flags |= GBxFlg_IsPushed;
+    } else
+    if (is_key_pressed(akey, KMod_CONTROL))
+    {
+        clear_key_pressed(akey);
+        p_btn->Flags |= GBxFlg_IsRPushed;
+        event_from_key = true;
     }
 
     mouse_over = mouse_move_over_box(p_btn);
@@ -1141,7 +1267,8 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
     {
         if ((p_btn->Flags & GBxFlg_IsMouseOver) == 0)
         {
-            play_sample_using_heap(0, 123, 127, 64, 100, 0, 1u);
+            // Mouse over sound
+            play_sample_using_heap(0, 123, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1u);
             p_btn->Flags |= GBxFlg_IsMouseOver;
         }
     }
@@ -1224,21 +1351,30 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
         {
             if (!show_alert || p_btn == &alert_OK_button)
             {
+                ushort smpl_id;
+
                 if (p_btn->CallBackFn != NULL)
                 {
-                    ubyte drawn;
+                    ubyte clicked;
                     //p_btn->CallBackFn(0); -- incompatible calling convention
                     asm volatile ("call *%2\n"
-                      : "=r" (drawn) : "a" (0), "g" (p_btn->CallBackFn));
-                    if ( drawn )
-                    {
-                      play_sample_using_heap(0, 111, 127, 64, 100, 0, 2u);
-                    }
+                      : "=r" (clicked) : "a" (0), "g" (p_btn->CallBackFn));
+                    if (clicked)
+                        smpl_id = 111;
+                    else
+                        smpl_id = 129;
                 }
-                else if ((p_btn->Flags & GBxFlg_RadioBtn) != 0)
-                    play_sample_using_heap(0, 111, 127, 64, 100, 0, 2u);
                 else
-                    play_sample_using_heap(0, 129, 127, 64, 100, 0, 2u);
+                {
+                    if ((p_btn->Flags & GBxFlg_RadioBtn) != 0)
+                        // Click sound for do action button
+                        smpl_id = 111;
+                    else
+                        // Click sound for cancel / abort button
+                        smpl_id = 129;
+                }
+                play_sample_using_heap(0, smpl_id, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2u);
+
                 if ((p_btn->Flags & GBxFlg_RadioBtn) != 0)
                     *p_btn->Radio = p_btn->RadioValue;
             }
@@ -1256,10 +1392,26 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
         {
             if (!show_alert || p_btn == &alert_OK_button)
             {
-                if ( p_btn->CallBackFn && p_btn->CallBackFn(1u) )
-                  play_sample_using_heap(0, 111, 127, 64, 100, 0, 2u);
+                ushort smpl_id;
+
+                if (p_btn->CallBackFn != NULL)
+                {
+                    ubyte clicked;
+                    //clicked = p_btn->CallBackFn(1); -- incompatible calling convention
+                    asm volatile ("call *%2\n"
+                      : "=r" (clicked) : "a" (1), "g" (p_btn->CallBackFn));
+                    if (clicked)
+                        smpl_id = 111;
+                    else
+                        smpl_id = 129;
+                }
                 else
-                  play_sample_using_heap(0, 129, 127, 64, 100, 0, 2u);
+                {
+                    // Click sound for cancel / abort button
+                    smpl_id = 129;
+                }
+                play_sample_using_heap(0, smpl_id, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2u);
+
                 if ((p_btn->Flags & GBxFlg_RadioBtn) != 0)
                   *p_btn->Radio = p_btn->RadioValue;
             }
@@ -1328,6 +1480,7 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
     }
     lbDisplay.DrawFlags = 0;
     return ret;
+#endif
 }
 
 ubyte button_text(struct ScreenButton *p_btn)
@@ -1393,8 +1546,11 @@ void draw_flic_purple_list(void (*fn)())
 
 void draw_noise_box_purple_list(int x, int y, ulong width, ulong height)
 {
+    struct PurpleDrawItem *pditem;
+
     draw_box_purple_list(x, y, width, height, 0);
-    purple_draw_list[purple_draw_index - 1].Type = PuDT_NOISEBOX;
+    pditem = &purple_draw_list[purple_draw_index - 1];
+    pditem->Type = PuDT_NOISEBOX;
 }
 
 /******************************************************************************/

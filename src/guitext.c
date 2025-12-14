@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file guitext.c
  *     GUI text for menu and in-game display.
@@ -110,19 +110,15 @@ TbBool create_strings_list(char **strings, char *strings_data, char *strings_dat
       } while ((chr_prev != '\0') && (text_ptr < strings_data_end));
       text_idx--;
   }
-  return (text_idx < STRINGS_MAX);
+  if (text_idx < 0) {
+      LOGERR("Overflow on listing text strings; something got corrupted (%d bad writes)", -text_idx);
+      return false;
+  }
+  if (text_idx >= STRINGS_MAX) {
+      LOGERR("Listing strings found no text entries");
+      return false;
+  }
+  LOGSYNC("Listed text strings (%d entries)", STRINGS_MAX - text_idx);
+  return true;
 }
-
-TbBool flashy_draw_text(int x, int y, const char *text, ubyte speed, int top_line, short *textpos, int cyan_flag)
-{
-    TbBool ret;
-    asm volatile (
-      "push %7\n"
-      "push %6\n"
-      "push %5\n"
-      "call ASM_flashy_draw_text\n"
-        : "=r" (ret) : "a" (x), "d" (y), "b" (text), "c" (speed), "g" (top_line), "g" (textpos), "g" (cyan_flag));
-    return ret;
-}
-
 /******************************************************************************/

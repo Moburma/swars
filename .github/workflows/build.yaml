@@ -92,13 +92,35 @@ jobs:
           # Get version marking from C header
           PKG_VERSION=$(sed -n 's/^#define[ ]\+PACKAGE_VERSION "\([^"]\+\)"$/\1/p' src/config.h | head -n 1 | tr '.' '_')
           make V=1 DESTDIR=$PWD/pkg install
-          echo "PKG_NAME=swars-$PKG_VERSION-ubuntu-patch" >> $GITHUB_ENV
+          echo "PKG_NAME=syndwarsfx-$PKG_VERSION-ubuntu-patch" >> $GITHUB_ENV
+          echo "TST_NAME=syndwarsfx-$PKG_VERSION-ubuntu-tests" >> $GITHUB_ENV
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PKG_NAME }}
           path: release/pkg/**
+
+      - name: Execute unit tests
+        id: unittests
+        run: |
+          cd release
+          make V=1 clean
+          make V=1 check
+
+      - name: Gather unit tests logs
+        if: ${{ steps.unittests.conclusion != 'skipped' }}
+        run: |
+          cd release
+          tail -n +1 ./bflibrary/test-suite.log $(find ./bflibrary/ -name 'tst_*.log')
+
+      - name: Upload unit tests debug files
+        if: ${{ failure() && steps.unittests.conclusion == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TST_NAME }}
+          path: |
+            release/bflibrary/**
 
   windows-msys2:
     name: "Windows MSYS2"
@@ -172,14 +194,36 @@ jobs:
           # Get version marking from C header
           PKG_VERSION=$(sed -n 's/^#define[ ]\+PACKAGE_VERSION "\([^"]\+\)"$/\1/p' src/config.h | head -n 1 | tr '.' '_')
           make V=1 DESTDIR=$PWD/pkg install
-          echo "PKG_NAME=swars-$PKG_VERSION-win32-patch" >> $GITHUB_ENV
-          echo "INSTLR_NAME=swars-$PKG_VERSION-win32-setup" >> $GITHUB_ENV
+          echo "PKG_NAME=syndwarsfx-$PKG_VERSION-win32-patch" >> $GITHUB_ENV
+          echo "TST_NAME=syndwarsfx-$PKG_VERSION-win32-tests" >> $GITHUB_ENV
+          echo "INSTLR_NAME=syndwarsfx-$PKG_VERSION-win32-setup" >> $GITHUB_ENV
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PKG_NAME }}
           path: release/pkg/**
+
+      - name: Execute unit tests
+        id: unittests
+        run: |
+          cd release
+          make V=1 clean
+          make V=1 check
+
+      - name: Gather unit tests logs
+        if: ${{ steps.unittests.conclusion != 'skipped' }}
+        run: |
+          cd release
+          tail -n +1 ./bflibrary/test-suite.log $(find ./bflibrary/ -name 'tst_*.log')
+
+      - name: Upload unit tests debug files
+        if: ${{ failure() && steps.unittests.conclusion == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TST_NAME }}
+          path: |
+            release/bflibrary/**
 
       - name: Prepare for downloading from MEGA - wget
         env:
@@ -207,18 +251,22 @@ jobs:
         working-directory: ${{ runner.workspace }}
         run: |
           mkdir -p "${DL_WORKSPACE}"
-          wget -O "${DL_WORKSPACE}\\Inetc.zip" --retry-connrefused --waitretry=20 --auth-no-challenge --referer="https://nsis.sourceforge.io/Inetc_plug-in" "https://nsis.sourceforge.io/mediawiki/images/c/c9/Inetc.zip"
-          wget -O "${DL_WORKSPACE}\\NSISunzU.zip" --retry-connrefused --waitretry=20 --auth-no-challenge --referer="https://nsis.sourceforge.io/Nsisunz_plug-in" "https://nsis.sourceforge.io/mediawiki/images/5/5a/NSISunzU.zip"
-          wget -O "${DL_WORKSPACE}\\Md5dll.zip" --retry-connrefused --waitretry=20 --auth-no-challenge --referer="https://nsis.sourceforge.io/MD5_plugin" "https://nsis.sourceforge.io/mediawiki/images/d/d7/Md5dll.zip"
+          wget -O "${DL_WORKSPACE}\\Inetc.zip" --retry-connrefused --retry-on-http-error=403 --waitretry=20 --auth-no-challenge --referer="https://nsis.sourceforge.io/Inetc_plug-in" "https://nsis.sourceforge.io/mediawiki/images/c/c9/Inetc.zip"
+          wget -O "${DL_WORKSPACE}\\NSISunzU.zip" --retry-connrefused --retry-on-http-error=403 --waitretry=20 --auth-no-challenge --referer="https://nsis.sourceforge.io/Nsisunz_plug-in" "https://nsis.sourceforge.io/mediawiki/images/5/5a/NSISunzU.zip"
+          wget -O "${DL_WORKSPACE}\\Md5dll.zip" --retry-connrefused --retry-on-http-error=403 --waitretry=20 --auth-no-challenge --referer="https://nsis.sourceforge.io/MD5_plugin" "https://nsis.sourceforge.io/mediawiki/images/d/d7/Md5dll.zip"
 
       - name: Download installer utils
         # Instead of the usual actions/download-artifact, we are downloading from Mega
         env:
           DL_WORKSPACE: ${{ github.workspace }}
-        # We are calling batch script here, so cmd is needed as shell
-        shell: cmd
-        run: |
-          mega-get "https://mega.nz/file/YYVGzByB#MmtXTAsuvFQ6TW6T62NxU2YCEHUVp_I_Z30miqjXtv4" "${{ env.DL_WORKSPACE }}"
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 3
+          max_attempts: 3
+          # We are calling batch script here, so cmd is needed as shell
+          shell: cmd
+          command: |
+            mega-get "https://mega.nz/file/YYVGzByB#MmtXTAsuvFQ6TW6T62NxU2YCEHUVp_I_Z30miqjXtv4" "${{ env.DL_WORKSPACE }}"
 
       - name: NSIS plugins unpack
         env:
@@ -244,11 +292,11 @@ jobs:
         uses: joncloud/makensis-action@v4.1
         with:
           additional-plugin-paths: "release/nsis-plugins"
-          script-file: "release/res/swars-setup.nsi"
+          script-file: "release/util/syndwarsfx-setup.nsi"
           arguments: "-V3"
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.INSTLR_NAME }}
-          path: release/res/swars-setup.exe
+          path: release/util/syndwarsfx-setup.exe

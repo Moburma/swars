@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file engintrns.c
  *     Math transformations required by the 3D engine.
@@ -23,6 +23,7 @@
 #include "engindrwlstm.h"
 #include "enginzoom.h"
 #include "game.h"
+#include "game_options.h"
 #include "swlog.h"
 /******************************************************************************/
 #define SCREEN_POINT_COORD_MIN (-MAX_SUPPORTED_SCREEN_WIDTH)
@@ -31,6 +32,21 @@
 short angle_between_points(int x1, int z1, int x2, int z2)
 {
   return LbArcTanAngle(x2 - x1, z1 - z2);
+}
+
+void local_to_worldr(int *dx, int *dy, int *dz)
+{
+#if 0
+    asm volatile (
+      "call ASM_local_to_worldr\n"
+        : : "a" (dx), "d" (dy), "b" (dz));
+#endif
+    int x, z;
+
+    z = *dz;
+    x = *dx;
+    *dx = (z * dword_176D10 + x * dword_176D14) >> 16;
+    *dz = (z * dword_176D14 - x * dword_176D10) >> 16;
 }
 
 void transform_point(struct EnginePoint *p_ep)

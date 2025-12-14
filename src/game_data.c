@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file game_data.c
  *     Memory managing routines.
@@ -36,6 +36,7 @@
 #include "enginsngobjs.h"
 #include "enginsngtxtr.h"
 #include "bigmap.h"
+#include "game_options.h"
 #include "game.h"
 #include "lvfiles.h"
 #include "lvobjctv.h"
@@ -123,7 +124,7 @@ GetDirectoryUser(void)
         {
             snprintf(data_path_user, sizeof(data_path_user), ".");
         }
-        LOGDBG("Dir for user files '%s'", data_path_user);
+        LbSyncLog("Dir for user files '%s'", data_path_user);
 
         pinfo = &game_dirs[DirPlace_Savegame];
         LbDirectoryMake(pinfo->directory, true);
@@ -143,7 +144,7 @@ GetDirectoryHdd(void)
         {
             snprintf(data_path_hdd, sizeof(data_path_hdd), "%s", ".");
         }
-        LOGDBG("Dir with HDD data '%s'",data_path_hdd);
+        LbSyncLog("Dir with HDD data '%s'",data_path_hdd);
     }
     return data_path_hdd;
 }
@@ -277,7 +278,7 @@ void get_user_settings_fname(char *fname, const char *name)
     PathInfo *pinfo;
 
     pinfo = &game_dirs[DirPlace_Savegame];
-    if (strlen(name) == 0)
+    if (name[0] == '\0')
         name = "default";
     sprintf(fname, "%s/%.8s.ini", pinfo->directory, name);
     LbStringToLower(fname+strlen(pinfo->directory));

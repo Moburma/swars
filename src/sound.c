@@ -1,3 +1,22 @@
+/******************************************************************************/
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
+/******************************************************************************/
+/** @file sound.c
+ *     Sound related routines.
+ * @par Purpose:
+ *     Implements routines which help adjust functions from bfsoundlib to
+ *     the games needs.
+ * @par Comment:
+ *     Just a header file - #defines, typedefs, function prototypes etc.
+ * @author   Tomasz Lis
+ * @date     22 Apr 2023 - 02 Nov 2025
+ * @par  Copying and copyrights:
+ *     This program is free software; you can redistribute it and/or modify
+ *     it under the terms of the GNU General Public License as published by
+ *     the Free Software Foundation; either version 2 of the License, or
+ *     (at your option) any later version.
+ */
+/******************************************************************************/
 
 #include "sound.h"
 
@@ -25,6 +44,7 @@
 
 #include "display.h"
 #include "game_data.h"
+#include "game_options.h"
 #include "game_speed.h"
 #include "game.h"
 #include "thing.h"
@@ -38,41 +58,44 @@ extern struct HeapMgrHeader *hmhead;
 extern long samples_in_bank;
 extern struct SampleTable *sample_table;
 
+/******************************************************************************/
+
 void set_default_sfx_settings(void)
 {
-    startscr_samplevol = 322;
-    startscr_midivol = 322;
-    startscr_cdvolume = 228;
+    startscr_samplevol = STARTSCR_VOLUME_MAX;
+    startscr_midivol = STARTSCR_VOLUME_MAX;
+    startscr_cdvolume = STARTSCR_VOLUME_MAX * 71 / 100;
 }
 
 void sfx_apply_samplevol(void)
 {
     if (startscr_samplevol < 0)
         startscr_samplevol = 0;
-    if (startscr_samplevol > 322)
-        startscr_samplevol = 322;
-    SetSoundMasterVolume(127 * startscr_samplevol / 322);
+    if (startscr_samplevol > STARTSCR_VOLUME_MAX)
+        startscr_samplevol = STARTSCR_VOLUME_MAX;
+    SetSoundMasterVolume(127 * startscr_samplevol / STARTSCR_VOLUME_MAX);
 }
 
 void sfx_apply_midivol(void)
 {
     if (startscr_midivol < 0)
         startscr_midivol = 0;
-    if (startscr_midivol > 322)
-        startscr_midivol = 322;
-    SetMusicMasterVolume(127 * startscr_midivol / 322);
+    if (startscr_midivol > STARTSCR_VOLUME_MAX)
+        startscr_midivol = STARTSCR_VOLUME_MAX;
+    SetMusicMasterVolume(127 * startscr_midivol / STARTSCR_VOLUME_MAX);
 }
 
 void sfx_apply_cdvolume(void)
 {
     if (startscr_cdvolume < 0)
         startscr_cdvolume = 0;
-    if (startscr_cdvolume > 322)
-        startscr_cdvolume = 322;
-    SetCDVolume(70 * (127 * startscr_cdvolume / 322) / 100);
+    if (startscr_cdvolume > STARTSCR_VOLUME_MAX)
+        startscr_cdvolume = STARTSCR_VOLUME_MAX;
+    SetCDVolume(70 * (127 * startscr_cdvolume / STARTSCR_VOLUME_MAX) / 100);
 }
 
-struct SampleInfo *play_sample_using_heap(ulong a1, short smptbl_id, ulong a3, ulong a4, ulong a5, char a6, ubyte type)
+struct SampleInfo *play_sample_using_heap(ulong bank_id, short smptbl_id,
+  ulong volume, ulong pan, ulong pitch, sbyte loop_count, ubyte type)
 {
     struct SampleInfo *ret;
     asm volatile (
@@ -80,7 +103,7 @@ struct SampleInfo *play_sample_using_heap(ulong a1, short smptbl_id, ulong a3, u
       "push %6\n"
       "push %5\n"
       "call ASM_play_sample_using_heap\n"
-        : "=r" (ret) : "a" (a1), "d" (smptbl_id), "b" (a3), "c" (a4), "g" (a5), "g" (a6), "g" (type));
+        : "=r" (ret) : "a" (bank_id), "d" (smptbl_id), "b" (volume), "c" (pan), "g" (pitch), "g" (loop_count), "g" (type));
     return ret;
 }
 
@@ -91,13 +114,13 @@ void stop_sample_using_heap(long source_id, ulong sample_number)
         : : "a" (source_id), "d" (sample_number));
 }
 
-int play_dist_speech(struct Thing *p_thing, ushort samp, ushort vol, ushort pan, int pitch, int loop, ubyte type)
+int play_dist_speech(struct Thing *p_thing, ushort speech_no, ushort vol, ushort pan, int pitch, int loop, ubyte type)
 {
     if ((p_thing <= &things[0]) || (p_thing >= &things[THINGS_LIMIT])) {
-        LOGERR("Speech %hu playback requested on invalid thing", samp);
+        LOGERR("Speech %hu playback requested on invalid thing", speech_no);
         return -1;
     }
-    play_dist_sample(p_thing, 129 + samp,  vol, pan, pitch, loop, type);
+    play_dist_sample(p_thing, 129 + speech_no,  vol, pan, pitch, loop, type);
     return 0;
 }
 
@@ -333,3 +356,4 @@ void setup_heaps(short setup_cmd, const char *lang)
     }
 }
 
+/******************************************************************************/

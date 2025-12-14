@@ -1,12 +1,12 @@
-# swars
+# syndwarsfx
 
-**Syndicate Wars Port**, alternative binary for the classic Bullfrog game.
+**Syndicate Wars Fan Expansion**, Open Source remake of the classic Bullfrog game.
 
-This is continuation of the project created by Unavowed and Gynvael Coldwind.
+This is continuation of a port project created by Unavowed and Gynvael Coldwind.
 
 ## About
 
-**Syndicate Wars Port** is a port of the 1996 DOS game
+**Syndicate Wars Fan Expansion** is a port of the 1996 DOS game
 [Syndicate Wars](https://en.wikipedia.org/wiki/Syndicate_Wars)
 to modern operating systems. In particular, it runs on GNU, Mac OS and Windows,
 but it should also work on any system supported by the SDL library on the i386
@@ -19,19 +19,19 @@ for input and video display, [Vorbis](https://xiph.org/vorbis/) for music and
 
 An executable and some, but not all, neccessary data files are provided with this
 port. This means that some of game data are not included. To install the
-**Syndicate Wars Port**, you will need to have the original data from either
+**SyndWarsFX**, you will need to have the original data from either
 *Syndicate Wars CD*, or digital distribution.
 
 ## Community
 
-If you wish to discuss the **Syndicate Wars Port** or if you have any problems,
-you may post to either [doscussion page of the project repo](https://github.com/swfans/swars/discussions)
-or to the Google group [syndicate-wars-port](http://groups.google.com/group/syndicate-wars-port)
- (you don't need to be a member to post).
+If you wish to discuss the **SyndWarsFX** or if you have any problems,
+you may post to [discussion page of the project repo](https://github.com/swfans/syndwarsfx/discussions)
+or join [Syndicate discord channel](https://discord.gg/cnHmWqe49t).
+There is also a Google group [syndicate-wars-port](http://groups.google.com/group/syndicate-wars-port).
 
 ## Installation
 
-To install **Syndicate Wars Port**, you will need either the original *Syndicate
+To install **SyndWarsFX**, you will need either the original *Syndicate
 Wars CD*, or a *SW CD image* from digital distribution of the game. There were
 several physical versions released. The multi-lingual european release, as well
 as american release, were tested and will definitely work; other version were
@@ -54,24 +54,41 @@ and then add the neccessary data files. The steps are:
 
 1. Insert the *Syndicate Wars CD* and make sure it is mounted, or mount a *SW CD image*
    (e.g. in `/media/cdrom`).
-2. Choose an installation folder, like `/usr/local/share/swars` (this is the default).
+2. Choose an installation folder, like `/usr/local/share/syndwarsfx` (this is the default).
 3. Do `util/install -f <SOURCE> -t <TARGET> -l <LANG>`, where
-   * *\<SOURCE\>* is the game CD path, like `/media/cdrom`,
+   * *\<SOURCE\>* is the game CD mount path, like `/media/cdrom`,
    * *\<TARGET\>* is the destination path, meaning the installation folder you've chosen,
    * *\<LANG\>* is the installation language, and can be one of: `eng` `fre` `ger` `ita` `spa` `swe`.
 
    The install script will copy files from the CD or mounted CD image, but also
    will download additional data files from their repositories:
-   [gfx](https://github.com/swfans/swars-gfx/releases),
-   [sfx](https://github.com/swfans/swars-sfx/releases) and
-   [levels](https://github.com/swfans/swars-levels/releases).
+   [gfx](https://github.com/swfans/syndwarsfx-gfx/releases),
+   [sfx](https://github.com/swfans/syndwarsfx-sfx/releases) and
+   [levels](https://github.com/swfans/syndwarsfx-levels/releases).
 4. Now we finally get to this code repository. Download and unpack the source
-   tarball or clone git repo.
-5. Follow [building instructions](#general-building-instructions) below to get
-   a compiled executable.
-6. After the build succeeded, do `make DESTDIR=<TARGET> install` in the
-   directory where build commands were executed, to copy built files into the
-   *\<TARGET\>* installation folder you've chosen.
+   tarball or clone git repo. You can also try downloading the prebuilt *patch*
+   release; but that will only  work if your Linux environment happens to be
+   compatible to the one where the release patch package was built.
+   Depending on what you've chosen, follow further steps:
+
+Route "a" - compiling the game by yourself.
+
+7. a. Follow [building instructions](#general-building-instructions) below to get
+     a compiled executable and configuration files.
+8. a. After the build succeeded, do `make prefix=<TARGET> install` in the
+     directory where build commands were executed, to copy built files into the
+     *\<TARGET\>/syndwarsfx* installation folder you've chosen. If you've built the
+     binary yourself, you already have all the tools neccessary for that install
+     command to work. After installation, verify the folder to make sure you
+     didn't installed these files to `syndwarsfx/syndwarsfx/` directory; you can just
+     move them one dir higher if that's the case.
+
+Route "b" - using the prebuilt *patch* release.
+
+7. b. Extract the downloaded patch file.
+8. b. Move all extracted files and folders to the selected installation folder.
+     Place them all in one folder, so that sub-olders `conf`, `data`, `levels`
+     and the executable file `syndwarsfx` are all next to each other.
 
 If all went well, you can now [start the game](#starting-the-game).
 
@@ -88,7 +105,7 @@ into your *Applications* directory.
 You can create the bundle by following these instructions:
 
 1. Download and unpack the source tarball or clone git repo.
-2. Follow [building instructions](#building-on-mac-os-x) below to get
+2. Follow [building instructions](#build-examples-on-mac-os) below to get
    a compiled executable and configuration files.
 3. After the code is compiled, install the data, as explained in the
    [GNU or UNIX](#installing-on-gnu-or-unix) section, to any directory,
@@ -96,15 +113,15 @@ You can create the bundle by following these instructions:
    `/Volumes/SYN WARS QA 9.0`).
 4. Finally, run `util/mkbundle ./data` (replacing `./data` with the directory
    you installed the data to); this will produce an application bundle named
-   `Syndicate Wars.app` in the current directory.
-5. If you want there to be a pretty icon for the bundle, copy `res/swars.icns`
-   to `Syndicate Wars.app/Contents/Resources`.
+   `SyndWarsFX.app` in the current directory.
+5. If you want there to be a pretty icon for the bundle, copy `res/syndwarsfx.icns`
+   to `SyndWarsFX.app/Contents/Resources`.
 
 When all is done, you can [start the game](#starting-the-game).
 
 ### Installing on Windows
 
-There are two ways to install **Syndicate Wars Port** on Windows - either download
+There are two ways to install **SyndWarsFX** on Windows - either download
 the installer, or download the source code and compile it by hand.
 It is recommended to use the installer!
 
@@ -122,7 +139,8 @@ If you've decided on the hand-compilation option, proceed with the following ste
 
 1. Insert the *Syndicate Wars CD* and make sure it is mounted, or mount a
    *SW CD image* (so that you get drive letter or path, ie. `e:`).
-2. Choose an installation folder, like `c:\Program Files\swars`.
+2. Choose an installation folder which ends with project name, like
+   `c:\Program Files\syndwarsfx`.
 3. Use `util/install` script to both copy required files from CD and download
    additional data, and place them all into your chosen installation folder.
    If you have UNIX or GNU support on your Windows (ie. Linux Windows Subsystem,
@@ -136,31 +154,44 @@ If you've decided on the hand-compilation option, proceed with the following ste
 5. *[optional]* Create a `music` directory inside your chosen installation
    folder, and place the previously encoded `.ogg` files there.
 6. Now we finally get to this code repository. Download and unpack the source
-   tarball or clone git repo.
-5. Follow [building instructions](#building-on-windows) below to get
-   a compiled executable and configuration files.
-6. After the build succeeded, do `make DESTDIR=<TARGET> install` in the
-   directory where build commands were executed, to copy built files into the
-   *\<TARGET\>* installation folder you've chosen. If you've built the binary
-   yourself, you already have all the tools neccessary for that install command
-   to work.
+   tarball or clone git repo. Or you can instead download the prebuilt *patch*
+   release. Depending on what you've chosen, follow further steps:
+
+Route "a" - compiling the game by yourself.
+
+7. a. Follow [building instructions](#build-examples-on-windows) below to get
+     a compiled executable and configuration files.
+8. a. After the build succeeded, do `make prefix=<TARGET> install` in the
+     directory where build commands were executed, to copy built files into the
+     *\<TARGET\>/syndwarsfx* installation folder you've chosen. If you've built the
+     binary yourself, you already have all the tools neccessary for that install
+     command to work. After installation, verify the folder to make sure you
+     didn't installed these files to `syndwarsfx/syndwarsfx/` directory; you can just
+     move them one dir higher if that's the case.
+
+Route "b" - using the prebuilt *patch* release.
+
+7. b. Extract the downloaded patch file.
+8. b. Move all extracted files and folders to the selected installation folder.
+     Place them all in one folder, so that sub-olders `conf`, `data`, `levels`
+     and the executable file `syndwarsfx.exe` are all next to each other.
 
 You can now [start the game](#starting-the-game).
 
 ## Starting the game
 
 The original game needed to be started with parameters to play normally. While
-with SW Port this is no longer mandatory, the parameters can still be used,
+with SyndWarsFX this is no longer mandatory, the parameters can still be used,
 and many new ones are actually available. The executable can be run with
-`--help` parameter to show a short description of all aprameters.
+`--help` parameter to show a short description of all parameters.
 
 Parameter `-w` (used in the original game) is not recommended when running on
 new hardware.
 
-The typical command line for running SW Port on bash-like shell is:
+The typical command line for running SyndWarsFX on bash-like shell is:
 
 ```
-./swars -g
+./syndwarsfx -g
 ```
 
 If running on Windows, the command line above should work as well. Though more
@@ -168,7 +199,7 @@ Windows-centric way of doing that is:
 
 
 ```
-swars.exe /g
+syndwarsfx.exe /g
 ```
 
 The game will start with intro animation, and then present you with a menu where
@@ -176,16 +207,16 @@ you can start playing.
 
 In case something doesn't work, check `error.log` file generated while the game
 was starting. There is also a troubleshooting page on the
-[wiki page of the project repo](https://github.com/swfans/swars/wiki).
+[wiki page of the project repo](https://github.com/swfans/syndwarsfx/wiki).
 
 ## Building
 
-Note that you can oly build the port for x86 architecture, and you either need
+Note that you can only build the port for x86 architecture, and you either need
 32-bit OS, or 64-bit OS with 32-bit user space libraries available.
 
 ### General building instructions
 
-To build **Syndicate Wars Port**, you will need the following:
+To build **SyndWarsFX**, you will need the following:
 
 * GNU Autotools
 * GNU C compiler
@@ -203,18 +234,29 @@ To build **Syndicate Wars Port**, you will need the following:
 
 Once you've made sure you have the above, proceed with the following steps:
 
-1. go into the directory with `swars` source release (containing `conf`, `doc`, `src` etc.)
+1. go into the directory with `syndwarsfx` source release (containing `conf`, `doc`, `src` etc.)
 2. do `autoreconf -if` to create build scripts from templates
 3. do `./configure` to make the build scripts find required toolchain and libraries
 4. do `make` to compile the executable file
 
-You should now have a working `src/swars` executable file.
+You should now have a working `src/syndwarsfx` executable file.
 
-#### Build example - Ubuntu 20.04 64-bit
+### Build examples on Linux
+
+#### Build on Ubuntu 20.04 64-bit
 
 Here are specific commands required to compile the executable on Ubuntu linux.
 
-Install the dependencies - remember that some must be 32-bit (i386):
+First, dependencies have to be installed. But this project can be built only
+for 32-bit address space - some installed packages have to be compatible with
+it. To even allow installing packages for a different architecture, it needs
+to be added:
+
+```
+dpkg --add-architecture i386
+```
+
+Now install the dependencies - remember that some must be 32-bit (i386):
 
 ```
 sudo apt install gcc-multilib g++-multilib lib32z1
@@ -228,7 +270,12 @@ sudo apt install libogg-dev:i386
 sudo apt install libwildmidi-dev:i386
 ```
 
-Now as our host is ready, we can start working on the actual `swars` sources.
+Be warned - your package manager may assume you want to replace the architecture
+if you did not explicitly added it. If the information on screen suggests
+that the installation would remove a group of currently installed packages,
+do not proceed with the changes and find another way.
+
+Now as our host is ready, we can start working on the actual `syndwarsfx` sources.
 Go to that folder, and generate build scripts from templates using autotools:
 
 ```
@@ -239,7 +286,7 @@ Next, proceed with the build steps; we will do that in a separate folder.
 
 ```
 mkdir -p release; cd release
-PKG_CONFIG_PATH="/usr/lib/i386-linux-gnu/pkgconfig" CFLAGS="-m32" CXXFLAGS="-m32" LDFLAGS="-m32" ../configure
+PKG_CONFIG_PATH="/usr/lib/i386-linux-gnu/pkgconfig" CFLAGS="-m32" CXXFLAGS="-m32" LDFLAGS="-m32" ../configure --enable-lb-mouse-wheel
 make V=1
 ```
 
@@ -252,7 +299,7 @@ In case you also want a debug build:
 
 ```
 mkdir -p debug; cd debug
-PKG_CONFIG_PATH="/usr/lib/i386-linux-gnu/pkgconfig" CPPFLAGS="-DDEBUG -D__DEBUG" CFLAGS="-m32 -g -O0 -Wall" CXXFLAGS="-m32 -g -O0 -Wall" LDFLAGS="-m32 -g -O0 -Wall" ../configure
+PKG_CONFIG_PATH="/usr/lib/i386-linux-gnu/pkgconfig" CPPFLAGS="-DDEBUG -D__DEBUG" CFLAGS="-m32 -g -O0 -Wall" CXXFLAGS="-m32 -g -O0 -Wall" LDFLAGS="-m32 -g -O0 -Wall" ../configure --enable-lb-mouse-wheel
 make V=1
 ```
 
@@ -274,7 +321,9 @@ Some tests to verify the build are included in the project. To execute them:
 make V=1 check
 ```
 
-#### Build example - MSYS2 updated 2023-01 on Windows
+### Build examples on Windows
+
+#### Build on Windows with MSYS2 updated 2023-01
 
 Using Minimal System and the MinGW toolchain available within, it is possible
 to build the executable using the same way as for UNIX systems, with bash and autotools.
@@ -319,10 +368,10 @@ If you do not have any Python, then install the one which fits other `i686` tool
 pacman -S mingw-w64-i686-python3 mingw-w64-i686-python-pip
 ```
 
-Now as our host is ready, we can start working on the actual `swars` sources.
+Now as our host is ready, we can start working on the actual `syndwarsfx` sources.
 We will still have to provide paths to 32-bit configuration - MSYS will prefer
 folders with data for 64-bit building.
-Go to the `swars` folder, and generate build scripts from templates using autotools:
+Go to the `syndwarsfx` folder, and generate build scripts from templates using autotools:
 
 ```
 autoreconf -ivf --include=/mingw32/share/aclocal/
@@ -335,7 +384,7 @@ the default mingw64 ones:
 
 ```
 mkdir -p release; cd release
-PATH="/mingw32/bin:$PATH" PKG_CONFIG_PATH="/mingw32/lib/pkgconfig" CFLAGS="-m32" CXXFLAGS="-m32" LDFLAGS="-m32" ../configure --prefix=/mingw32
+PATH="/mingw32/bin:$PATH" PKG_CONFIG_PATH="/mingw32/lib/pkgconfig" CFLAGS="-m32" CXXFLAGS="-m32" LDFLAGS="-m32" ../configure --prefix=/mingw32 --enable-lb-mouse-wheel
 PATH="/mingw32/bin:$PATH" make V=1
 ```
 
@@ -344,9 +393,11 @@ Also, the build system may expect to find `python` binary within `mingw32` folde
 failing to find it if you have it somewhere else. In both cases, just creating a symbolic
 link with name expected by build system will fix the issue.
 
-### Building on Mac OS X
+### Build examples on Mac OS
 
-Mac OS X is at its core a UNIX system. To build the **Syndicate Wars Port** it is
+#### Build on Mac OS X
+
+Mac OS X is at its core a UNIX system. To build the **SyndWarsFX** it is
 enough to follow the [general building instructions](#general-building-instructions).
 
 The GCC compiler for Mac OS X comes as part of XCode, which you can get from
@@ -363,7 +414,7 @@ When you configure your compilation toolchain and location of libraries,
 you will need to pass `CFLAGS="-arch i386"`, like so:
 
 ```
-./configure CFLAGS="-arch i386"
+./configure --enable-lb-mouse-wheel CFLAGS="-arch i386"
 ```
 
 If you are planning to create [Mac OS app bundle](#making-a-mac-os-app-bundle),
@@ -371,7 +422,7 @@ you will also need to pass `data-path`, so your final command will be:
 
 
 ```
-./configure --with-data-path="Syndicate Wars.app/Contents/Resources" CFLAGS="-arch i386"
+./configure --with-data-path="SyndWarsFX.app/Contents/Resources" --enable-lb-mouse-wheel CFLAGS="-arch i386"
 ```
 
 Then, do `make` as the [general building instructions](#general-building-instructions) tell.

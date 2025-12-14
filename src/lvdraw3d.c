@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file lvdraw3d.c
  *     Routines for level and map drawing using 3D rendering.
@@ -35,6 +35,7 @@
 #include "engintrns.h"
 #include "enginzoom.h"
 #include "game.h"
+#include "game_options.h"
 #include "game_speed.h"
 #include "player.h"
 #include "scanner.h"
@@ -745,13 +746,14 @@ void func_2e440(void)
 
     lvdraw_do_floor_flyby(cor_z_beg, ranges_x_len, smrang_x, ranges_x);
 
+    assert(vec_tmap[1] != NULL);
     vec_map = vec_tmap[1];
 
     draw_screen();
 }
 
 #define SUPER_QUICK_RADIUS 5
-void apply_super_quick_light(short lx, short lz, ushort b, ubyte *mapwho_lights)
+void apply_super_quick_light(short lx, short lz, ushort b)
 {
     short tile_x_beg, tile_x_end;
     short tile_z_beg, tile_z_end;

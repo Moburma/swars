@@ -28,51 +28,39 @@ extern "C" {
 
 #pragma pack(1)
 
+struct gpoly_point {
+    int Y;
+    int X;
+    int X_prc;
+    int S;
+    /** Texture UV mapping coordinate */
+    int Ua;
+    /** Texture UV mapping coordinate */
+    int Vb;
+};
+
+struct gpoly_factors {
+    int S[4];
+};
+
+struct gpoly_blends {
+    int B[3];
+};
+
 struct gpoly_state {
     int ratioCA_X2Y;
     int ratioBA_X2Y;
     int ratioCB_X2Y;
-    int incA_S;
-    int incB_S;
-    int ptA_Y;
-    int ptA_X;
-    int ptA_X_prc;
-    int ptA_S;
-    int ptA_U;
-    int ptA_V;
-    int ptB_Y;
-    int ptB_X;
-    int ptB_X_prc;
-    int ptB_S;
-    int ptB_U;
-    int ptB_V;
-    int ptC_Y;
-    int ptC_X;
-    int ptC_X_prc;
-    int ptC_S;
-    int ptC_U;
-    int ptC_V;
     int var_134;
-    int var_0CC;
-    int var_0C8;
-    int var_0C4;
-    int var_0BC;
-    int var_0B8;
-    int var_0B4;
-    int var_0A8;
-    int var_0A4;
-    int var_0A0;
-    int var_09C;
-    int var_098;
-    int var_094;
-    int var_090;
-    int var_08C;
-    int var_088;
-    int var_084;
-    int var_080;
-    int var_07C;
-    int var_078;
-    int inc_S;
+    struct gpoly_point ptA;
+    struct gpoly_point ptB;
+    struct gpoly_point ptC;
+    struct gpoly_factors incC;
+    struct gpoly_factors incD;
+    struct gpoly_factors incA;
+    struct gpoly_factors incB;
+    struct gpoly_blends bldA;
+    struct gpoly_blends bldB;
 };
 
 #pragma pack()

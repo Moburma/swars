@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file fecryo.h
  *     Header file for fecryo.c.
@@ -61,8 +61,17 @@ extern sbyte selected_mod;
 ubyte show_cryo_chamber_screen(void);
 void update_flic_mods(ubyte *mods);
 void cryo_update_for_selected_cybmod(void);
+ubyte cryo_offer_can_buy_or_sell(ushort mtype);
 
 void init_cryo_screen_boxes(void);
+
+/** Reset players part of cryo screen state.
+ *
+ * Resets all parts of cryo screen which are set by the player
+ * or related to players game progress.
+ */
+void reset_cryo_screen_player_state(void);
+
 void reset_cryo_screen_boxes_flags(void);
 void set_flag01_cryo_screen_boxes(void);
 

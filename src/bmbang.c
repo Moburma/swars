@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file bmbang.c
  *     On-map explosion effect implementation.
@@ -18,7 +18,12 @@
 /******************************************************************************/
 #include "bmbang.h"
 
+#include "thing.h"
+#include "swlog.h"
 /******************************************************************************/
+
+extern ubyte byte_1C4769;
+extern struct MapCreater map_craters[128];
 
 void new_bang(int x, int y, int z, int type, int owner, int c)
 {
@@ -39,4 +44,83 @@ void bang_new4(int x, int y, int z, int type)
     new_bang(x, y, z, type, 0, 0);
 }
 
+void create_crater(short x, short y, short depth)
+{
+    int cratr_no;
+
+    LOGSYNC("crater at (%d,%d) depth %d\n", x, y, depth);
+    if (x > 0x80 || y > 0x80)
+        return;
+    cratr_no = byte_1C4769;
+    byte_1C4769++;
+    if (byte_1C4769 > 127)
+        byte_1C4769 = 0;
+    map_craters[cratr_no].MapX = x;
+    map_craters[cratr_no].MapY = y;
+    map_craters[cratr_no].Depth = depth;
+    map_craters[cratr_no].Iterations = 0;
+}
+
+ubyte unused_func_026(ubyte a1)
+{
+    ubyte ret;
+    asm volatile (
+      "call ASM_unused_func_026\n"
+        : "=r" (ret) : "a" (a1));
+    return ret;
+}
+
+void unused_func_025(short a1, short a2, short a3)
+{
+    asm volatile (
+      "call ASM_unused_func_025\n"
+        : : "a" (a1), "d" (a2), "b" (a3));
+}
+
+void do_shockwave(int x, int y, int z, int radius, int intensity, struct Thing *p_owner)
+{
+    asm volatile (
+      "push %5\n"
+      "push %4\n"
+      "call ASM_do_shockwave\n"
+        : : "a" (x), "d" (y), "b" (z), "c" (radius), "g" (intensity), "g" (p_owner));
+}
+
+
+void do_shockwave_building(int dist, int intensity, struct Thing *p_thing, struct Thing *p_owner)
+{
+    asm volatile (
+      "call ASM_do_shockwave_building\n"
+        : : "a" (dist), "d" (intensity), "b" (p_thing), "c" (p_owner));
+}
+
+void do_shockwave_vehicle(int dx, int dz, int dist, int intensity,
+  struct Thing *p_vevicle, struct Thing *p_owner)
+{
+    asm volatile (
+      "push %5\n"
+      "push %4\n"
+      "call ASM_do_shockwave_vehicle\n"
+        : : "a" (dx), "d" (dz), "b" (dist), "c" (intensity), "g" (p_vevicle), "g" (p_owner));
+}
+
+void do_shockwave_person(int dx, int dz, int dist, int intensity,
+  struct Thing *p_person, struct Thing *p_owner)
+{
+    asm volatile (
+      "push %5\n"
+      "push %4\n"
+      "call ASM_do_shockwave_person\n"
+        : : "a" (dx), "d" (dz), "b" (dist), "c" (intensity), "g" (p_person), "g" (p_owner));
+}
+
+void do_shockwave_scale_effect(int dx, int dz, int dist, int intensity,
+  struct SimpleThing *p_sthing, struct Thing *p_owner)
+{
+    asm volatile (
+      "push %5\n"
+      "push %4\n"
+      "call ASM_do_shockwave_scale_effect\n"
+        : : "a" (dx), "d" (dz), "b" (dist), "c" (intensity), "g" (p_sthing), "g" (p_owner));
+}
 /******************************************************************************/

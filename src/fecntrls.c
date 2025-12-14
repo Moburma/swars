@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file fecntrls.c
  *     Front-end desktop and menu system, research screen.
@@ -20,7 +20,9 @@
 
 #include "bfkeybd.h"
 #include "bftext.h"
+#include "bfutility.h"
 #include "bflib_joyst.h"
+#include "ssampply.h"
 
 #include "femain.h"
 #include "feshared.h"
@@ -36,19 +38,32 @@
 #include "network.h"
 #include "player.h"
 #include "purpldrw.h"
+#include "sound.h"
 #include "swlog.h"
 /******************************************************************************/
 extern struct ScreenBox controls_joystick_box;
+struct ScreenTextBox controls_list_box;
 extern struct ScreenButton controls_defaults_button;
 extern struct ScreenButton controls_save_button;
 extern struct ScreenButton controls_calibrate_button;
 
 extern ubyte byte_1C4970;
+extern ubyte controls_hlight_gkey;
+
+short sheet_columns_x[] = {4, 200, 300};
 
 ubyte ac_do_controls_defaults(ubyte click);
 ubyte ac_do_controls_save(ubyte click);
 ubyte ac_do_controls_calibrate(ubyte click);
-ubyte ac_show_settings_controls_list(struct ScreenBox *box);
+ubyte ac_show_menu_controls_list_box(struct ScreenTextBox *p_box);
+
+/** Game key currently being edited in the controls screen.
+ * Max value is 2x max GameKey index - because it also stored distinction
+ * between entering keyboard key and joystick key.
+ */
+extern ubyte controls_edited_gkey;
+
+/******************************************************************************/
 
 ubyte do_controls_defaults(ubyte click)
 {
@@ -90,6 +105,11 @@ ubyte do_controls_calibrate(ubyte click)
     net_unkn_pos_02 = 1;
     alert_box_text_fmt("%s", gui_strings[574]);
     return 1;
+}
+
+TbBool is_defining_control_key(void)
+{
+    return (controls_hlight_gkey != 0);
 }
 
 ubyte show_controls_joystick_box(struct ScreenBox *p_box)
@@ -139,15 +159,15 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
 
         copy_box_purple_list(p_box->X + 4, p_box->Y + 4,
           p_box->Width - 8, p_box->Height - 8);
+        p_box->Flags |= GBxFlg_BkgndDrawn;
 
         lbFontPtr = small_med_font;
-        p_box->Flags |= GBxFlg_BkgndDrawn;
         ln_height = font_height('A');
     }
     wpos_y = 126;
 
     lbDisplay.DrawFlags |= 0x8000;
-    if (byte_1C4A9F == 17)
+    if (ctl_joystick_type == JTyp_EXT_DRIVER)
     {
       if (joy_func_063(locstr) != -1)
       {
@@ -159,7 +179,7 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
     }
     else
     {
-        text = gui_strings[539 + byte_1C4A9F];
+        text = gui_strings[539 + ctl_joystick_type];
         tx_width = my_string_width(text);
         wpos_x = (p_box->Width - tx_width) / 2;
         draw_text_purple_list2(wpos_x, wpos_y, text, 0);
@@ -177,23 +197,23 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
             sbyte v23;
             ubyte v24;
 
-            if (byte_1C4A9F)
+            if (ctl_joystick_type != JTyp_NONE)
                 joy_func_066(&joy);
             lbDisplay.LeftButton = 0;
 
             v23 = -1;
-            v24 = byte_1C4A9F;
+            v24 = ctl_joystick_type;
             while (v23 != 1)
             {
-                if (++byte_1C4A9F > 24)
-                    byte_1C4A9F = 1;
-                if (v24 == byte_1C4A9F)
+                if (++ctl_joystick_type >= JTyp_TYPES_COUNT)
+                    ctl_joystick_type = JTyp_ANALG_2BTN; // first one
+                if (v24 == ctl_joystick_type)
                 {
                     v23 = 1;
-                    byte_1C4A9F = 0;
+                    ctl_joystick_type = JTyp_NONE;
                 }
-                if (unkn01_maskarr[byte_1C4A9F])
-                    v23 = joy_func_067(&joy, byte_1C4A9F);
+                if (unkn01_maskarr[ctl_joystick_type])
+                    v23 = joy_func_067(&joy, ctl_joystick_type);
                 if (!v24)
                     v24 = 1;
             }
@@ -220,7 +240,7 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
         if (lbDisplay.LeftButton)
         {
             lbDisplay.LeftButton = 0;
-            if (login_control__State != 5 || nsvc.I.Type == 1)
+            if (login_control__State != LognCt_Unkn5 || nsvc.I.Type == NetSvc_IPX)
             {
                 p_locplayer->DoubleMode++;
                 if (p_locplayer->DoubleMode > 3)
@@ -233,7 +253,7 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
 
             for (dmuser = p_locplayer->DoubleMode + 1; dmuser < 4; dmuser++)
             {
-                p_locplayer->UserInput[dmuser].ControlMode = 1;
+                p_locplayer->UserInput[dmuser].ControlMode = UInpCtr_Mouse;
             }
         }
     }
@@ -249,7 +269,7 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
         ushort ctlmode;
 
         ctlmode = p_locplayer->UserInput[dmuser].ControlMode;
-        if (ctlmode >= 2)
+        if (ctlmode >= UInpCtr_Joystick0)
         {
             int n_found;
 
@@ -282,11 +302,11 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
                 lbDisplay.LeftButton = 0;
 
                 ctlmode = p_locplayer->UserInput[dmuser].ControlMode + 1;
+                if (ctl_joystick_type == JTyp_NONE && ctlmode == UInpCtr_Joystick0)
+                    ctlmode = UInpCtr_Keyboard;
+                if (ctlmode >= UInpCtr_Joystick0 + joy.NumberOfDevices)
+                    ctlmode = UInpCtr_Keyboard;
                 p_locplayer->UserInput[dmuser].ControlMode = ctlmode;
-                if (!byte_1C4A9F && ctlmode == 2)
-                    p_locplayer->UserInput[dmuser].ControlMode = 0;
-                if (p_locplayer->UserInput[dmuser].ControlMode > joy.NumberOfDevices + 1)
-                    p_locplayer->UserInput[dmuser].ControlMode = 0;
             }
         }
         wpos_y += ln_height + 4;
@@ -302,371 +322,453 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
     return 0;
 }
 
-ubyte switch_keycode_to_name_code_on_national_keyboard(ubyte keyno)
+void set_controls_key(ushort hlight_gkey, ushort key)
 {
-    ubyte rkey;
-    rkey = keyno;
-    switch (language_3str[0])
-    {
-    case 'g':
-        // Y and Z keys reversed
-        if (keyno == KC_Y)
-        {
-          rkey = KC_Z;
-        }
-        else if (keyno == KC_Z)
-        {
-          rkey = KC_Y;
-        }
-        break;
-    case 'f':
-        if (keyno == KC_SEMICOLON)
-        {
-          rkey = KC_M;
-        }
-        else if (keyno == KC_Z)
-        {
-          rkey = KC_W;
-        }
-        else if (keyno == KC_M)
-        {
-          rkey = KC_COMMA;
-        }
-        else if (keyno == KC_COMMA)
-        {
-          rkey = KC_SEMICOLON;
-        }
-        else if (keyno == KC_A)
-        {
-          rkey = KC_Q;
-        }
-        else if (keyno == KC_W)
-        {
-          rkey = KC_Z;
-        }
-        else if (keyno == KC_Q)
-        {
-          rkey = KC_A;
-        }
-        break;
-    default:
-        break;
+    GameKey gkey;
+    TbBool is_joystick;
+
+    if (hlight_gkey > (GKey_KEYS_COUNT - 1)) {
+        gkey = hlight_gkey - (GKey_KEYS_COUNT - 1);
+        is_joystick = true;
+    } else {
+        gkey = hlight_gkey;
+        is_joystick = false;
     }
-    return rkey;
+
+    if (is_joystick)
+        set_gamekey_joy(gkey, key);
+    else
+        set_gamekey_kbd(gkey, key);
 }
 
-ubyte show_settings_controls_list(struct ScreenBox *p_box)
+void unset_controls_key(ushort hlight_gkey)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_show_settings_controls_list\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
-    char locstr[52];
+    GameKey gkey;
+    TbBool is_joystick;
+
+    if (hlight_gkey > (GKey_KEYS_COUNT - 1)) {
+        gkey = hlight_gkey - (GKey_KEYS_COUNT - 1);
+        is_joystick = true;
+    } else {
+        gkey = hlight_gkey;
+        is_joystick = false;
+    }
+
+    if (is_joystick)
+        set_gamekey_joy(gkey, 0);
+    else
+        set_gamekey_kbd(gkey, KC_UNASSIGNED);
+}
+
+TbBool is_hardcoded_hlight_gkey(ushort hlight_gkey)
+{
+    if (hlight_gkey >= (GKey_KEYS_COUNT - 1) + GKey_UP &&
+      hlight_gkey <= (GKey_KEYS_COUNT - 1) + GKey_RIGHT)
+        return true;
+
+    return false;
+}
+
+#define GAMEKEY_ACTIVE_WIDTH_MIN 50
+#define SHEET_MOVE_COLUMNS 2
+
+/** Check inputs for controls box in system menu screen.
+ *
+ * @return Gives 0 on no action, 1 on non-control-changing action, 2 on control key update/
+ */
+ubyte menu_controls_inputs(struct ScreenTextBox *p_box, short *p_tx_kbd_width, short *p_tx_joy_width, int i_limit)
+{
     short ln_height;
     short wpos_x, wpos_y;
     int i;
-    ubyte gkey;
+    ubyte ret;
 
-    lbFontPtr = small_med_font;
-    my_set_text_window(p_box->X + 4, p_box->Y + 4, p_box->Width - 8, p_box->Height - 8);
+    ret = 0;
+
+    lbFontPtr = p_box->Font;
     ln_height = font_height('A');
-    if ((p_box->Flags & GBxFlg_BkgndDrawn) == 0)
+
+    if (lbDisplay.LeftButton || joy.Buttons[0])
+    {
+        wpos_x = sheet_columns_x[1];
+        wpos_y = p_box->ScrollWindowOffset + 1;
+        for (i = p_box->TextTopLine; i < i_limit; i++)
+        {
+            short col_width;
+            GameKey gkey;
+
+            gkey = i + 1;
+            col_width = max(p_tx_kbd_width[gkey], GAMEKEY_ACTIVE_WIDTH_MIN);
+            if (mouse_down_over_box_coords(text_window_x1 + wpos_x, text_window_y1 + wpos_y,
+              text_window_x1 + col_width + wpos_x, text_window_y1 + wpos_y + ln_height))
+            {
+                lbDisplay.LeftButton = 0;
+                controls_hlight_gkey = gkey;
+                if (is_hardcoded_hlight_gkey(controls_hlight_gkey)) {
+                    controls_edited_gkey = 0;
+                } else {
+                    controls_edited_gkey = controls_hlight_gkey;
+                }
+                clear_key_pressed(lbInkey);
+                break;
+            }
+            wpos_y += p_box->LineHeight;
+        }
+    }
+
+    if (lbDisplay.LeftButton || joy.Buttons[0])
+    {
+        wpos_x = sheet_columns_x[2];
+        wpos_y = p_box->ScrollWindowOffset + 1;
+        for (i = p_box->TextTopLine; i < i_limit; i++)
+        {
+            short col_width;
+            GameKey gkey;
+
+            gkey = i + 1;
+            col_width = max(p_tx_joy_width[gkey], GAMEKEY_ACTIVE_WIDTH_MIN);
+            if (mouse_down_over_box_coords(text_window_x1 + wpos_x, text_window_y1 + wpos_y,
+              text_window_x1 + wpos_x + col_width, text_window_y1 + wpos_y + ln_height))
+            {
+                lbDisplay.LeftButton = 0;
+                controls_hlight_gkey = gkey + (GKey_KEYS_COUNT - 1);
+                if (is_hardcoded_hlight_gkey(controls_hlight_gkey)) {
+                    controls_edited_gkey = 0;
+                } else {
+                    controls_edited_gkey = controls_hlight_gkey;
+                }
+                clear_key_pressed(lbInkey);
+                break;
+            }
+            wpos_y += p_box->LineHeight;
+        }
+    }
+
+    if (lbDisplay.LeftButton || joy.Buttons[0])
+    {
+        if (mouse_down_over_box(p_box))
+        {
+            // Clicked outside of the keys area - exit editing a binding
+            // Do not clear the click
+            controls_edited_gkey = 0;
+        }
+    }
+
+    if (controls_edited_gkey == 0 && !net_unkn_pos_02)
+    {
+        if (is_key_pressed(KC_DOWN, KMod_DONTCARE))
+        {
+            clear_key_pressed(KC_DOWN);
+            controls_hlight_gkey++;
+            if (controls_hlight_gkey > SHEET_MOVE_COLUMNS * (GKey_KEYS_COUNT - 1))
+                controls_hlight_gkey = 1;
+            ret = 1;
+        }
+        if (is_key_pressed(KC_UP, KMod_DONTCARE))
+        {
+            clear_key_pressed(KC_UP);
+            if (controls_hlight_gkey < 1 + 1)
+                controls_hlight_gkey = SHEET_MOVE_COLUMNS * (GKey_KEYS_COUNT - 1);
+            else
+                controls_hlight_gkey--;
+            ret = 1;
+        }
+        if (is_key_pressed(KC_RIGHT, KMod_DONTCARE))
+        {
+            // Next column
+            clear_key_pressed(KC_RIGHT);
+            controls_hlight_gkey += (GKey_KEYS_COUNT - 1);
+            if (controls_hlight_gkey > SHEET_MOVE_COLUMNS * (GKey_KEYS_COUNT - 1))
+                controls_hlight_gkey -= SHEET_MOVE_COLUMNS * (GKey_KEYS_COUNT - 1);
+            ret = 1;
+        }
+        if (is_key_pressed(KC_LEFT, KMod_DONTCARE))
+        {
+            // Prev column
+            clear_key_pressed(KC_LEFT);
+            if (controls_hlight_gkey < (GKey_KEYS_COUNT - 1) + 1)
+                controls_hlight_gkey += (SHEET_MOVE_COLUMNS - 1) * (GKey_KEYS_COUNT - 1);
+            else
+                controls_hlight_gkey -= (GKey_KEYS_COUNT - 1);
+            ret = 1;
+        }
+
+        if (byte_1C4970)
+        {
+            if (byte_1C4970 == 1 && !is_key_pressed(KC_RETURN, KMod_DONTCARE))
+            {
+                if (!is_hardcoded_hlight_gkey(controls_hlight_gkey)) {
+                    clear_key_pressed(lbInkey);
+                    byte_1C4970 = 0;
+                    controls_edited_gkey = controls_hlight_gkey;
+                    ret = 2;
+                }
+            }
+        }
+        else
+        {
+            if (is_key_pressed(KC_RETURN, KMod_DONTCARE))
+            {
+                if (is_hardcoded_hlight_gkey(controls_hlight_gkey)) {
+                    play_sample_using_heap(0, 129, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2u);
+                } else {
+                    byte_1C4970++;
+                    ret = 2;
+                }
+            }
+            if (is_key_pressed(KC_BACK, KMod_DONTCARE))
+            {
+                if (is_hardcoded_hlight_gkey(controls_hlight_gkey)) {
+                    play_sample_using_heap(0, 129, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2u);
+                } else {
+                    clear_key_pressed(KC_BACK);
+                    unset_controls_key(controls_hlight_gkey);
+                    ret = 2;
+                }
+            }
+        }
+    }
+
+    if (controls_edited_gkey != 0)
+    {
+        GameKey edited_gkey;
+
+        edited_gkey = controls_edited_gkey;
+        if (is_key_pressed(KC_ESCAPE, KMod_DONTCARE))
+        {
+            clear_key_pressed(KC_ESCAPE);
+            controls_edited_gkey = 0;
+        }
+        else if (edited_gkey > (GKey_KEYS_COUNT - 1))
+        {
+            if (is_joy_pressed_any(0))
+            {
+                ushort jskey;
+
+                jskey = get_joy_pressed_key(0);
+                set_controls_key(edited_gkey, jskey);
+                ret = 2;
+            }
+        }
+        else
+        {
+            if (lbInkey != KC_UNASSIGNED)
+            {
+#if defined(DOS)||defined(GO32)
+                if (lbExtendedKeyPress)
+                {
+                  set_controls_key(edited_gkey, lbInkey | 0x80);
+                }
+                else
+                {
+                  if ((lbInkey & 0x7F) != KC_BACKSLASH)
+                      set_controls_key(edited_gkey, lbInkey & 0x7F);
+                }
+#else
+                set_controls_key(edited_gkey, lbInkey);
+#endif
+                clear_key_pressed(lbInkey);
+                ret = 2;
+            }
+        }
+    }
+    return ret;
+}
+
+const char *gamekey_text_action_name_for_draw(GameKey gkey)
+{
+    char locstr[52];
+    const char *text;
+
+    if ((gkey >= GKey_SEL_AGENT_1) && (gkey <= GKey_SEL_AGENT_4))
+    {
+        //TODO should we place Agent/Zealot/Outcast text ID in campaign config file, or keep at const position within campaign area?
+        text = gui_strings[GSTR_CPG_CYBORG_NOUN_FULL + 100 * background_type];
+        sprintf(locstr, "%s %d", text, (gkey - GKey_SEL_AGENT_1 + 1));
+        text = loctext_to_gtext(locstr);
+    }
+    else
+    {
+        text = gui_strings[GSTR_SYS_GAME_KEYS + gkey - 1];
+    }
+    return text;
+}
+
+const char *gamekey_text_kbkey_name_for_draw(GameKey gkey)
+{
+    char locstr[52];
+    const char *text;
+
+    sprint_gamekey_combination_kbd(locstr, gkey);
+    if (strlen(locstr) == 0) {
+      strcpy(locstr, "...");
+    }
+    text = loctext_to_gtext(locstr);
+
+    return text;
+}
+
+const char *gamekey_text_jskey_name_for_draw(GameKey gkey)
+{
+    char locstr[52];
+    const char *text;
+
+    sprint_gamekey_combination_joy(locstr, gkey);
+    if (strlen(locstr) == 0) {
+      strcpy(locstr, "...");
+    }
+    text = loctext_to_gtext(locstr);
+
+    return text;
+}
+
+ubyte show_menu_controls_list_box(struct ScreenTextBox *p_box)
+{
+    short wpos_x, wpos_y;
+    short tx_kbd_width[GKey_KEYS_COUNT];
+    short tx_joy_width[GKey_KEYS_COUNT];
+    int i, i_limit;
+    ubyte kchange;
+
+    // This needs to be done before setting my_text_window
+    i_limit = p_box->TextTopLine + get_text_box_lines_visible(p_box);
+    if (i_limit > GKey_KEYS_COUNT - 1)
+        i_limit = GKey_KEYS_COUNT - 1;
+
+    my_set_text_window(p_box->X + 4, p_box->Y + 4, p_box->Width - 8, p_box->Height - 8);
+    if ((p_box->Flags & GBxFlg_BkgndDrawn) == 0) // never set anyway
     {
         const char *text;
 
         lbFontPtr = med_font;
         text = gui_strings[486];
-        draw_text_purple_list2(4, 4, text, 0);
+        draw_text_purple_list2(sheet_columns_x[0], 4, text, 0);
         text = gui_strings[487];
-        draw_text_purple_list2(200, 4, text, 0);
+        draw_text_purple_list2(sheet_columns_x[1], 4, text, 0);
         text = gui_strings[488];
-        draw_text_purple_list2(300, 4, text, 0);
-        lbFontPtr = small_med_font;
-        wpos_y = 28;
-        for (i = 0; i < GKey_KEYS_COUNT - 1; i++)
-        {
-            if ((i >= 19) && (i <= 22))
-            {
-                //TODO place Agent/Zealot/Outcast text ID in campaign config file
-                sprintf(locstr, "%s %d", gui_strings[GSTR_CPG_CYBORG_NOUN_FULL + background_type], (i - 18));
-                text = loctext_to_gtext(locstr);
-            }
-            else
-            {
-                text = gui_strings[589 + i];
-            }
-            draw_text_purple_list2(4, wpos_y, text, 0);
-            wpos_y += ln_height + 4;
-        }
-        copy_box_purple_list(p_box->X + 4, p_box->Y + 4, p_box->Width - 8, p_box->Height - 8);
-        p_box->Flags |= GBxFlg_BkgndDrawn;
+        draw_text_purple_list2(sheet_columns_x[2], 4, text, 0);
+
+        lbDisplay.DrawFlags = 0;
     }
 
-    if (!net_unkn_pos_01b && !net_unkn_pos_02)
-    {
-        if (lbKeyOn[KC_DOWN])
-        {
-            lbKeyOn[KC_DOWN] = 0;
-            net_unkn_pos_01a++;
-            if (net_unkn_pos_01a > 2 * (GKey_KEYS_COUNT - 1))
-                net_unkn_pos_01a = 1;
-        }
-        if (lbKeyOn[KC_UP])
-        {
-            lbKeyOn[KC_UP] = 0;
-            net_unkn_pos_01a--;
-            if (net_unkn_pos_01a < 1)
-                net_unkn_pos_01a = 2 * (GKey_KEYS_COUNT - 1);
-        }
-        if (lbKeyOn[KC_RIGHT])
-        {
-            // Next column
-            lbKeyOn[KC_RIGHT] = 0;
-            net_unkn_pos_01a += (GKey_KEYS_COUNT - 1);
-            if (net_unkn_pos_01a > 2 * (GKey_KEYS_COUNT - 1))
-                net_unkn_pos_01a -= 2 * (GKey_KEYS_COUNT - 1);
-        }
-        if (lbKeyOn[KC_LEFT])
-        {
-            // Prev column
-            lbKeyOn[KC_LEFT] = 0;
-            net_unkn_pos_01a -= (GKey_KEYS_COUNT - 1);
-            if (net_unkn_pos_01a < 1)
-                net_unkn_pos_01a += 2 * (GKey_KEYS_COUNT - 1);
-        }
-        if (net_unkn_pos_01a < 31 || net_unkn_pos_01a > 34)
-        {
-            gkey = net_unkn_pos_01a;
-            if (byte_1C4970)
-            {
-                if (byte_1C4970 == 1 && !lbKeyOn[KC_RETURN])
-                {
-                    lbExtendedKeyPress = 0;
-                    lbInkey = 0;
-                    byte_1C4970 = 0;
-                    net_unkn_pos_01b = gkey;
-                }
-            }
-            else
-            {
-                if (lbKeyOn[KC_RETURN])
-                    byte_1C4970++;
-                if (lbKeyOn[KC_BACK])
-                {
-                    lbKeyOn[KC_BACK] = 0;
-                    if (gkey > (GKey_KEYS_COUNT - 1))
-                      jskeys[gkey - (GKey_KEYS_COUNT - 1)] = 0;
-                    else
-                      kbkeys[gkey] = KC_UNASSIGNED;
-                }
-            }
-        }
-    }
+    lbFontPtr = p_box->Font;
 
-    if (net_unkn_pos_01b != 0)
-    {
-        gkey = net_unkn_pos_01b;
-        if (gkey > (GKey_KEYS_COUNT - 1))
-        {
-            if (joy.Buttons[0])
-            {
-                int v12, v13, jbtn;
-
-                jskeys[gkey - (GKey_KEYS_COUNT - 1)] = 0;
-                jbtn = 0;
-                if (joy.NumberOfButtons[0] > 0)
-                {
-                  v12 = joy.Buttons[0];
-                  v13 = joy.NumberOfButtons[0];
-                  for (i = 0; i < 4; i++)
-                  {
-                    if ((v12 & (1 << jbtn)) != 0) {
-                        jskeys[gkey - (GKey_KEYS_COUNT - 1)] |= (1 << jbtn);
-                    }
-                    jbtn++;
-                    if (jbtn >= v13)
-                        break;
-                  }
-                }
-            }
-            else
-            {
-              gkey = 0;
-            }
-        }
-        else
-        {
-            if (lbInkey != 0)
-            {
-                if (lbExtendedKeyPress)
-                {
-                  kbkeys[gkey] = lbInkey | 0x80;
-                  gkey = 0;
-                  lbExtendedKeyPress = 0;
-                  lbInkey = 0;
-                }
-                else
-                {
-                  if ((lbInkey & 0x7F) != 43)
-                    kbkeys[gkey] = lbInkey & 0x7F;
-                  gkey = 0;
-                  lbInkey = 0;
-                }
-            }
-        }
-    }
-
-    wpos_x = 200;
-    wpos_y = 28;
-    for (i = 1; i < GKey_KEYS_COUNT; i++)
+    // Names column
+    wpos_x = sheet_columns_x[0];
+    wpos_y = p_box->ScrollWindowOffset + 1;
+    for (i = p_box->TextTopLine; i < i_limit; i++)
     {
         const char *text;
-        short tx_width;
-        ushort keyno;
+        GameKey gkey;
 
-        gkey = i;
-        if (net_unkn_pos_01a == gkey)
+        gkey = i + 1;
+        text = gamekey_text_action_name_for_draw(gkey);
+        draw_text_purple_list2(wpos_x, wpos_y, text, 0);
+        wpos_y += p_box->LineHeight;
+    }
+
+    // Keyboard keys column
+    wpos_x = sheet_columns_x[1];
+    wpos_y = p_box->ScrollWindowOffset + 1;
+    for (i = p_box->TextTopLine; i < i_limit; i++)
+    {
+        const char *text;
+        GameKey gkey;
+
+        gkey = i + 1;
+        if (controls_edited_gkey == gkey)
         {
             lbDisplay.DrawFlags = Lb_TEXT_ONE_COLOR;
-            lbDisplay.DrawColour = 0x57;
+            lbDisplay.DrawColour = 0x32; // white
+        }
+        else if (controls_hlight_gkey == gkey)
+        {
+            lbDisplay.DrawFlags = Lb_TEXT_ONE_COLOR;
+            lbDisplay.DrawColour = 0x57; // med purple
+        }
+        else if (is_hardcoded_hlight_gkey(gkey))
+        {
+            lbDisplay.DrawFlags = Lb_TEXT_ONE_COLOR;
+            lbDisplay.DrawColour = 0x69; // darker purple
         }
         else
         {
             lbDisplay.DrawFlags = 0;
+            // Original colour - blue
         }
-        keyno = kbkeys[gkey];
-        if (keyno != 0)
-        {
-            if (lbKeyNames[keyno] == NULL)
-            {
-              sprintf(locstr, "FOO %d", (int)keyno);
-            }
-            else if (gkey == 14)
-            {
-              keyno = switch_keycode_to_name_code_on_national_keyboard(keyno);
-              sprintf(locstr, "ALT+%s", lbKeyNames[keyno]);
-            }
-            else
-            {
-              keyno = switch_keycode_to_name_code_on_national_keyboard(keyno);
-              sprintf(locstr, "%s", lbKeyNames[keyno]);
-            }
-        }
-        else
-        {
-            strcpy(locstr, "...");
-        }
-        text = loctext_to_gtext(locstr);
+        text = gamekey_text_kbkey_name_for_draw(gkey);
+        tx_kbd_width[gkey] = my_string_width(text);
+
         lbDisplay.DrawFlags |= 0x8000;
         draw_text_purple_list2(wpos_x, wpos_y, text, 0);
         lbDisplay.DrawFlags &= ~0x8000;
 
-        tx_width = my_string_width(locstr);
-        if (lbDisplay.LeftButton || joy.Buttons[0])
-        {
-            if (mouse_down_over_box_coords(text_window_x1 + wpos_x, text_window_y1 + wpos_y,
-              text_window_x1 + tx_width + wpos_x, text_window_y1 + wpos_y + ln_height))
-            {
-                lbDisplay.LeftButton = 0;
-                net_unkn_pos_01a = gkey;
-                net_unkn_pos_01b = gkey;
-                lbExtendedKeyPress = 0;
-                lbInkey = 0;
-            }
-        }
-
-        wpos_y += ln_height + 4;
+        wpos_y += p_box->LineHeight;
     }
 
-    wpos_x = 300;
-    wpos_y = 28;
-    for (i = 1; i < GKey_KEYS_COUNT; i++)
+    // Joystick keys column
+    wpos_x = sheet_columns_x[2];
+    wpos_y = p_box->ScrollWindowOffset + 1;
+    for (i = p_box->TextTopLine; i < i_limit; i++)
     {
         const char *text;
-        short tx_width;
+        GameKey gkey;
 
-        gkey = i + (GKey_KEYS_COUNT - 1);
-        if (net_unkn_pos_01a == gkey)
+        gkey = i + 1;
+        if (controls_edited_gkey == gkey + (GKey_KEYS_COUNT - 1))
         {
-          lbDisplay.DrawFlags = Lb_TEXT_ONE_COLOR;
-          lbDisplay.DrawColour = 87;
+            lbDisplay.DrawFlags = Lb_TEXT_ONE_COLOR;
+            lbDisplay.DrawColour = 0xF8; // light purple
+        }
+        else if (controls_hlight_gkey == gkey + (GKey_KEYS_COUNT - 1))
+        {
+            lbDisplay.DrawFlags = Lb_TEXT_ONE_COLOR;
+            lbDisplay.DrawColour = 0x57; // med purple
+        }
+        else if (is_hardcoded_hlight_gkey(gkey + (GKey_KEYS_COUNT - 1)))
+        {
+            lbDisplay.DrawFlags = Lb_TEXT_ONE_COLOR;
+            lbDisplay.DrawColour = 0x69; // darker purple
         }
         else
         {
-          lbDisplay.DrawFlags = 0;
+            lbDisplay.DrawFlags = 0;
+            // Original colour - blue
         }
-        if ( i >= 8 && i <= 11 )
-        {
-            text = gui_strings[588 + i];
-            draw_text_purple_list2(wpos_x, wpos_y, text, 0);
-        }
-        else
-        {
-            int tx_len;
-            int jbtn, v38;
+        text = gamekey_text_jskey_name_for_draw(gkey);
+        tx_joy_width[gkey] = my_string_width(text);
 
-            tx_len = 0;
-            v38 = 0;
-            for (jbtn = 0; jbtn < joy.NumberOfButtons[0]; jbtn++)
-            {
-              if (v38 >= 4)
-                break;
-              if (((1 << jbtn) & jskeys[i]) != 0)
-              {
-                if (tx_len > 0)
-                  locstr[tx_len++] = '+';
-                if (jbtn >= 9)
-                {
-                    uint n;
-                    n = jbtn + 1;
-                    locstr[tx_len++] = '0' + (n / 10);
-                    locstr[tx_len++] = '0' + (n % 10);
-                }
-                else
-                {
-                    char c;
-                    c = '1' + jbtn;
-                    locstr[tx_len++] = c;
-                }
-                ++v38;
-              }
-            }
-            locstr[tx_len] = '\0';
-            if (tx_len == 0)
-            {
-              strcpy(locstr, "...");
-            }
-            text = loctext_to_gtext(locstr);
-            lbDisplay.DrawFlags |= 0x8000;
-            draw_text_purple_list2(wpos_x, wpos_y, text, 0);
-            lbDisplay.DrawFlags &= ~0x8000;
-        }
-        tx_width = my_string_width(locstr);
-        if ( lbDisplay.LeftButton || joy.Buttons[0] )
-        {
-            if (mouse_down_over_box_coords(text_window_x1 + wpos_x, text_window_y1 + wpos_y,
-              text_window_x1 + wpos_x + tx_width, text_window_y1 + wpos_y + ln_height))
-            {
-                lbDisplay.LeftButton = 0;
-                net_unkn_pos_01a = gkey;
-                net_unkn_pos_01b = gkey;
-                lbExtendedKeyPress = 0;
-                lbInkey = 0;
-            }
-        }
-        wpos_y += ln_height + 4;
+        lbDisplay.DrawFlags |= 0x8000;
+        draw_text_purple_list2(wpos_x, wpos_y, text, 0);
+        lbDisplay.DrawFlags &= ~0x8000;
+
+        wpos_y += p_box->LineHeight;
     }
     lbDisplay.DrawFlags = 0;
 
-    //controls_defaults_button.DrawFn(&controls_defaults_button); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-        : : "a" (&controls_defaults_button), "g" (controls_defaults_button.DrawFn));
-    //controls_save_button.DrawFn(&controls_save_button); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-        : : "a" (&controls_save_button), "g" (controls_save_button.DrawFn));
+    kchange = menu_controls_inputs(p_box, tx_kbd_width, tx_joy_width, i_limit);
 
+    // If moved key, make sure the new highlight is visible
+    if ((kchange != 0) && (controls_hlight_gkey != 0))
+    {
+        int i;
+
+        if (controls_hlight_gkey < GKey_KEYS_COUNT)
+            i = controls_hlight_gkey - 1;
+        else
+            i = controls_hlight_gkey - 1 - (GKey_KEYS_COUNT - 1);
+        if (p_box->TextTopLine > i)
+            p_box->TextTopLine = i;
+        else if (p_box->TextTopLine + i_limit < i + 1)
+            p_box->TextTopLine = i + 1 - i_limit;
+
+    }
+
+    return 0;
+}
+
+ubyte update_settings_controls_alert(struct ScreenTextBox *p_box)
+{
     if (!net_unkn_pos_02 || (net_unkn_pos_02 - 1) > 5)
         return 0;
 
@@ -729,11 +831,11 @@ ubyte show_options_controls_screen(void)
 {
     ubyte drawn;
 
-    //drawn = system_screen_shared_content_box.DrawFn(&system_screen_shared_content_box); -- incompatible calling convention
+    //drawn = controls_list_box.DrawFn(&controls_list_box); -- incompatible calling convention
     asm volatile ("call *%2\n"
-        : "=r" (drawn) : "a" (&system_screen_shared_content_box), "g" (system_screen_shared_content_box.DrawFn));
+        : "=r" (drawn) : "a" (&controls_list_box), "g" (controls_list_box.DrawFn));
     if (drawn == 3) {
-        show_settings_controls_list(&system_screen_shared_content_box);
+        update_settings_controls_alert(&controls_list_box);
         //drawn = controls_joystick_box.DrawFn(&controls_joystick_box); -- incompatible calling convention
         asm volatile ("call *%2\n"
             : "=r" (drawn) : "a" (&controls_joystick_box), "g" (controls_joystick_box.DrawFn));
@@ -741,13 +843,31 @@ ubyte show_options_controls_screen(void)
     return drawn;
 }
 
+#define SCROLL_BAR_WIDTH 12
+
 void init_controls_screen_boxes(void)
 {
-    short scr_w, start_x;
+    ScrCoord scr_w, scr_h, start_x, start_y;
+    short space_w, space_h, border;
+    short part_w;
 
+    // Border value represents how much the box background goes
+    // out of the box area.
+    border = 3;
     scr_w = lbDisplay.GraphicsWindowWidth;
+#ifdef EXPERIMENTAL_MENU_CENTER_H
+    scr_h = global_apps_bar_box.Y;
+#else
+    scr_h = 432;
+#endif
 
-    init_screen_box(&system_screen_shared_content_box, 213u, 72u, 420u, 354, 6);
+    init_screen_text_box(&controls_list_box, 213u, 72u, 420u, 354, 6, small_med_font, 1);
+    controls_list_box.DrawTextFn = ac_show_menu_controls_list_box;
+    controls_list_box.ScrollWindowHeight = 296;
+    controls_list_box.Lines = GKey_KEYS_COUNT;
+    controls_list_box.Flags |= (GBxFlg_RadioBtn | GBxFlg_IsMouseOver);
+
+    controls_list_box.ScrollWindowOffset += 27;
     init_screen_button(&controls_defaults_button, 219u, 405u,
       gui_strings[484], 6, med2_font, 1, 0);
     controls_defaults_button.CallBackFn = ac_do_controls_defaults;
@@ -755,42 +875,75 @@ void init_controls_screen_boxes(void)
       gui_strings[439], 6, med2_font, 1, 0x80);
     controls_save_button.CallBackFn = ac_do_controls_save;
 
+    controls_list_box.Buttons[0] = &controls_defaults_button;
+    controls_list_box.Buttons[1] = &controls_save_button;
+
     init_screen_box(&controls_joystick_box, 7u, 252u, 197u, 174, 6);
     controls_joystick_box.SpecialDrawFn = show_controls_joystick_box;
     init_screen_button(&controls_calibrate_button, 57u, 405u,
       gui_strings[485], 6, med2_font, 1, 0);
     controls_calibrate_button.CallBackFn = ac_do_controls_calibrate;
 
-    start_x = (scr_w - controls_joystick_box.Width - system_screen_shared_content_box.Width - 23) / 2;
+    // Reposition the components to current resolution
 
-    controls_joystick_box.X = start_x + 7;
+    start_x = unkn13_SYSTEM_button.X + unkn13_SYSTEM_button.Width;
+    // On the X axis, we're going for centering on the screen. So subtract the previous
+    // button position two times - once for the left, and once to make the same space on
+    // the right.
+    space_w = scr_w - start_x - unkn13_SYSTEM_button.X - controls_list_box.Width;
+
+    start_y = system_screen_shared_header_box.Y + system_screen_shared_header_box.Height;
+    // On the top, we're aligning to spilled border of previous box; same goes inside.
+    // But on the bottom, we're aligning to hard border, without spilling. To compensate
+    // for that, add pixels for such border to the space.
+    space_h = scr_h - start_y - controls_list_box.Height + border;
+
+    // There is one box only to position, and no space is needed after it - the whole
+    // available empty space goes into one place.
+    controls_list_box.X = start_x + space_w;
+    // There is one box only to position, so space goes into two parts - before and after.
+    controls_list_box.Y = start_y + space_h / 2;
+
+    start_x = unkn13_SYSTEM_button.X;
+
+    controls_joystick_box.X = start_x;
     controls_calibrate_button.X = controls_joystick_box.X + 50;
 
-    system_screen_shared_content_box.X = controls_joystick_box.X + controls_joystick_box.Width + 9;
-    controls_defaults_button.X = system_screen_shared_content_box.X + 6;
-    controls_save_button.X = system_screen_shared_content_box.X + system_screen_shared_content_box.Width - controls_save_button.Width - 6;
+    part_w = controls_list_box.Width - 6 - SCROLL_BAR_WIDTH;
+    sheet_columns_x[0] = 3 + 1;
+    sheet_columns_x[1] = 3 + part_w - 2 * (part_w / 4);
+    sheet_columns_x[2] = 3 + part_w - (part_w / 4);
+    controls_defaults_button.X = controls_list_box.X + 6;
+    controls_defaults_button.Y = controls_list_box.Y + controls_list_box.Height - controls_defaults_button.Height - 5;
+    controls_save_button.X = controls_list_box.X + controls_list_box.Width - controls_save_button.Width - 6 - SCROLL_BAR_WIDTH;
+    controls_save_button.Y = controls_list_box.Y + controls_list_box.Height - controls_save_button.Height - 5;
+
+    controls_joystick_box.Y = controls_list_box.Y + controls_list_box.Height - controls_joystick_box.Height;
+    controls_calibrate_button.Y = controls_joystick_box.Y + controls_joystick_box.Height - 21;
 }
 
 void reset_controls_screen_boxes_flags(void)
 {
-    system_screen_shared_content_box.Flags = GBxFlg_Unkn0001;
+    controls_list_box.Flags = GBxFlg_Unkn0001;
+    controls_list_box.Flags |= (GBxFlg_RadioBtn | GBxFlg_IsMouseOver);
     controls_joystick_box.Flags = GBxFlg_Unkn0001;
 }
 
 void set_flag01_controls_screen_boxes(void)
 {
+    controls_list_box.Flags |= GBxFlg_Unkn0001;
     controls_save_button.Flags |= GBxFlg_Unkn0001;
     controls_defaults_button.Flags |= GBxFlg_Unkn0001;
     controls_calibrate_button.Flags |= GBxFlg_Unkn0001;
 }
 
-void set_flag02_controls_screen_boxes(void)
+void skip_flashy_draw_controls_screen_boxes(void)
 {
     controls_defaults_button.Flags |= GBxFlg_Unkn0002;
     controls_calibrate_button.Flags |= GBxFlg_Unkn0002;
     controls_save_button.Flags |= GBxFlg_Unkn0002;
     controls_joystick_box.Flags |= GBxFlg_Unkn0002;
-    system_screen_shared_content_box.Flags |= GBxFlg_Unkn0002;
+    controls_list_box.Flags |= GBxFlg_Unkn0002;
 }
 
 /******************************************************************************/

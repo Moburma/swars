@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file weapon.h
  *     Header file for weapon.c.
@@ -31,11 +31,28 @@ extern "C" {
 #pragma pack(1)
 
 #define WEAPONS_CARRIED_MAX_COUNT 6
+#define WEAPONS_FOURPACK_MAX_COUNT 4
 #define WEP_CATEGORIES_COUNT 11
 
 /** Range of the weapon can never exceed this limit.
  */
 #define WEAPON_RANGE_BLOCKS_LIMIT 27
+
+/** Amount of bombs in a single use.
+ */
+#define WEP_AIRSTRIKE_BOMBS_NUM 10
+
+/** Game turns separating bombs.
+ */
+#define WEP_AIRSTRIKE_BOMB_GTURNS 20
+
+/** Initial age of explosion; higher value makes the explosion shorter.
+ */
+#define WEP_AIRSTRIKE_IMPACT_GTURNS 14
+
+/** Game turns between the weapon triggered and the bombs start.
+ */
+#define WEP_AIRSTRIKE_DELAY_GTURNS 20
 
 enum WeaponType
 {
@@ -82,6 +99,22 @@ enum WeaponFourPackIndex
     WFRPK_CRAZYGAS,
     WFRPK_KOGAS,
     WFRPK_COUNT,
+};
+
+enum DamageType
+{
+  DMG_NULL = 0,
+  DMG_UZI = 1,
+  DMG_ELLASER = 2,
+  DMG_BEAM = 3,
+  DMG_LASER = 4,
+  DMG_UNKN5 = 5,
+  DMG_RAP = 6,
+  DMG_MINIGUN = 7,
+  DMG_LONGRANGE = 8,
+  DMG_UNKN9 = 9,
+  DMG_ELSTRAND = 10,
+  DMG_TYPES_COUNT,
 };
 
 enum ProcessProximityWieldWeaponTargetSelect {
@@ -143,53 +176,77 @@ void init_weapon_text(void);
 
 /** Gives a string which names the weapon.
  */
-const char *weapon_codename(ushort wtype);
+const char *weapon_codename(WeaponType wtype);
+
+/** Returns if the weapon should be used by throwing.
+ */
+TbBool weapon_is_for_throwing(WeaponType wtype);
+
+/** Returns if the weapon should be used by placing activated on the ground.
+ */
+TbBool weapon_is_for_planting(WeaponType wtype);
+
+/** Returns if the weapon should be used where the wielder stands, which
+ * consumes the thing and converts it into something else.
+ */
+TbBool weapon_is_for_deploying(WeaponType wtype);
+
+/** Returns if the weapon should be used by spreading on the ground while walking.
+ */
+TbBool weapon_is_for_spreading_on_ground(WeaponType wtype);
 
 /** Returns if the weapon activates at the location of the wielding person.
  */
-TbBool weapon_is_deployed_at_wielder_pos(ushort wtype);
+TbBool weapon_is_deployed_at_wielder_pos(WeaponType wtype);
 
 /** Returns if the weapon is targeted at / affects the wielding person.
  */
-TbBool weapon_is_self_affecting(ushort weptype);
+TbBool weapon_is_self_affecting(WeaponType wtype);
 
 /** Returns if a weapon has limited amount of uses before disappearing.
  */
-TbBool weapon_is_consumable(ushort wtype);
+TbBool weapon_is_consumable(WeaponType wtype);
 
 /** Returns if a weapon has ability to charge before firing, to deal more damage.
  */
-TbBool weapon_can_be_charged(ushort wtype);
+TbBool weapon_can_be_charged(WeaponType wtype);
 
 /** Returns if a weapon fire can be delayed to achieve target lock.
  *
  * Weapons with targetting cannot be charged, as these functions
  * use the same resources and same player controls.
  */
-TbBool weapon_has_targetting(ushort wtype);
+TbBool weapon_has_targetting(WeaponType wtype);
 
 /** Returns panel sprite index to be used to represent the weapon.
  */
-ushort weapon_sprite_index(ushort wtype, TbBool enabled);
+ushort weapon_sprite_index(WeaponType wtype, TbBool enabled);
 
-TbBool weapons_has_weapon(ulong weapons, ushort wtype);
-ushort weapons_prev_weapon(ulong weapons, ushort last_wtype);
+TbBool weapons_has_weapon(ulong weapons, WeaponType wtype);
 
-ushort weapon_fourpack_index(ushort weapon);
+/** Returns weapon set in given flags with index below last.
+ */
+ushort weapons_prev_weapon(ulong weapons, WeaponType last_wtype);
+
+/** Returns how many weapon slots are occupied in given weapons flags.
+ */
+ushort weapons_count_used_slots(ulong weapons);
+
+ushort weapon_fourpack_index(WeaponType wtype);
 void weapons_remove_weapon(ulong *p_weapons,
-  struct WeaponsFourPack *p_fourpacks, ushort wtype);
+  struct WeaponsFourPack *p_fourpacks, WeaponType wtype);
 
 /** Remove one weapon from an npc person in-game.
  * NPCs have no FourPacks, meaning removing one consumable weapon does nothing.
  * For non-consumable weapons, this removes the related weapon normally.
  */
-TbBool weapons_remove_one_from_npc(ulong *p_weapons, ushort wtype);
+TbBool weapons_remove_one_from_npc(ulong *p_weapons, WeaponType wtype);
 
 /** Remove one weapon from a player character, in Cryo Chamber.
  * Currently this is only for cryo chamber, as in-game fourpacks have different format.
  */
 TbBool weapons_remove_one(ulong *p_weapons,
-  struct WeaponsFourPack *p_fourpacks, ushort wtype);
+  struct WeaponsFourPack *p_fourpacks, WeaponType wtype);
 
 /** Reset previously selected weapon visible in the players panel.
  */
@@ -201,13 +258,13 @@ void person_weapons_reset_previous(struct Thing *p_person);
  * DEPRECATED: To be removed when possible.
  */
 TbBool weapons_remove_one_for_player(ulong *p_weapons,
-  ubyte p_plfourpacks[][4], ushort plagent, ushort wtype);
+  ubyte p_plfourpacks[][4], ushort plagent, WeaponType wtype);
 
 TbBool weapons_add_one(ulong *p_weapons,
-  struct WeaponsFourPack *p_fourpacks, ushort wtype);
+  struct WeaponsFourPack *p_fourpacks, WeaponType wtype);
 
 TbBool weapons_add_one_for_player(ulong *p_weapons,
-  ubyte p_plfourpacks[][4], ushort plagent, ushort wtype);
+  ubyte p_plfourpacks[][4], ushort plagent, WeaponType wtype);
 
 void sanitize_weapon_quantities(ulong *p_weapons,
   struct WeaponsFourPack *p_fourpacks);
@@ -219,7 +276,7 @@ ubyte find_nth_weapon_held(ushort index, ubyte n);
  * Does not check if the person is in a situation where it uses different
  * weapon than the one in hand, ie. ignores if the person is inside a tank.
  */
-short get_hand_weapon_range(struct Thing *p_person, ushort wtype);
+short get_hand_weapon_range(struct Thing *p_person, WeaponType wtype);
 
 /** Gives range (in normal map coord points) of the person current weapon.
  *
@@ -245,19 +302,23 @@ TbBool current_weapon_has_targetting(struct Thing *p_person);
 
 ulong person_carried_weapons_pesuaded_sell_value(struct Thing *p_person);
 
-TbBool person_weapons_remove_one(struct Thing *p_person, ushort wtype);
+TbBool person_weapons_remove_one(struct Thing *p_person, WeaponType wtype);
 
 void do_weapon_quantities_net_to_player(struct Thing *p_person);
-void do_weapon_quantities1(struct Thing *p_person);
-void do_weapon_quantities_proper1(struct Thing *p_person);
+void player_agent_set_weapon_quantities_max(struct Thing *p_person);
+void player_agent_set_weapon_quantities_proper(struct Thing *p_person);
 
 void process_weapon(struct Thing *p_person);
 short process_persuadertron(struct Thing *p_person, ubyte target_select, ushort *energy_reqd);
+void process_weapon_wind_down(struct Thing *p_person);
 int gun_out_anim(struct Thing *p_person, ubyte shoot_flag);
 
 s32 laser_hit_at(s32 x1, s32 y1, s32 z1, s32 *x2, s32 *y2, s32 *z2, struct Thing *p_shot);
 void finalise_razor_wire(struct Thing *p_person);
 void init_lay_razor(struct Thing *p_thing, short x, short y, short z, int flag);
+void init_mgun_laser(struct Thing *p_owner, ushort start_age);
+
+void process_clone_disguise(struct Thing *p_person);
 
 /******************************************************************************/
 #ifdef __cplusplus

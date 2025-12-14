@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file thing.h
  *     Header file for thing.c.
@@ -104,7 +104,8 @@ enum ThingFlags {
     TngF_Unkn0020     = 0x0020,
     TngF_Unkn0040     = 0x0040,
     TngF_Unkn0080     = 0x0080,
-    TngF_Unkn0100     = 0x0100,
+    TngF_PersSupShld  = 0x0100,
+    TngF_VehUnkn0100  = 0x0100,
     TngF_StationrSht  = 0x0200,
     TngF_WepCharging  = 0x0400,
     TngF_Unkn0800     = 0x0800,
@@ -466,8 +467,15 @@ struct Thing { // sizeof=168
     ushort StartFrame;
     short Timer1;
     short StartTimer1;
+    /** Move velocity vector or shoot target position; X coord.
+     * The vector set is expected to be normalized, length od 256 means full speed.
+     */
     s32 VX;
+    /** Move velocity vector, Y coord.
+     */
     s32 VY;
+    /** Move velocity vector, Z coord.
+     */
     s32 VZ;
     short Speed;
     short Health;
@@ -563,7 +571,7 @@ struct SimpleThing
         struct STngUBang UBang;
         struct STngUFire UFire;
     } U;
-    short field_38;
+    short Owner2;
     ushort UniqueID;
 };
 
@@ -945,7 +953,7 @@ extern ubyte debug_log_things;
 struct Thing *get_thing_safe(ThingIdx thing, ubyte ttype);
 
 void init_things(void);
-void refresh_old_thing_format(struct Thing *p_thing, struct ThingOldV9 *p_oldthing, ulong fmtver);
+void refresh_old_thing_format(struct Thing *p_thing, struct ThingOldV9 *p_oldthing, u32 fmtver);
 void process_things(void);
 
 /** Get a string up to 14 chars containing thing/sthing type name.
@@ -981,6 +989,24 @@ void things_debug_hud(void);
 void navi_onscreen_debug(TbBool a1);
 
 TbBool thing_is_destroyed(ThingIdx thing);
+
+struct Thing *effective_owner_of_thing(struct Thing *p_thing);
+
+/** Set a thing frame with single-angle sprite.
+ * Can be used for all sprite things except people.
+ */
+void set_thing_frame(struct Thing *p_thing, ushort anim_start);
+
+/** Reset a thing frame with single-angle sprite.
+ * Can be used for all sprite things except people.
+ */
+void reset_thing_frame(struct Thing *p_thing);
+
+/** Reset a simple thing frame with single-angle sprite.
+ */
+void reset_sthing_frame(struct SimpleThing *p_sthing);
+
+ubyte on_mapwho(struct Thing *p_thing);
 
 /** Delete the thing from `mapwho` chain.
  */
@@ -1033,7 +1059,15 @@ TbBool thing_intersects_circle(ThingIdx thing, short X, short Z, ushort R);
  */
 TbBool thing_intersects_cylinder(ThingIdx thing, short X, short Y, short Z, ushort R, ushort H);
 
+struct SimpleThing *create_scale_effect(int x, int y, int z, ushort frame, int timer);
+
 struct SimpleThing *create_sound_effect(int x, int y, int z, ushort sample, int vol, int loop);
+
+int mine_hit_by_bullet(struct Thing *p_thing, short hp,
+  int vx, int vy, int vz, struct Thing *p_attacker, ushort type);
+
+int static_hit_by_bullet(struct SimpleThing *p_sthing, short hp,
+  int vx, int vy, int vz, struct Thing *p_attacker, ushort type);
 
 /******************************************************************************/
 #ifdef __cplusplus

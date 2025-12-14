@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file plyr_usrinp.c
  *     Players User Input handling.
@@ -25,7 +25,9 @@
 #include "ssampply.h"
 
 #include "display.h"
+#include "engintrns.h"
 #include "game.h"
+#include "game_options.h"
 #include "game_speed.h"
 #include "keyboard.h"
 #include "packet.h"
@@ -35,129 +37,167 @@
 #include "thing.h"
 /******************************************************************************/
 
+short get_agent_move_direction_delta_x(const struct SpecialUserInput *p_usrinp)
+{
+    return (sbyte)(p_usrinp->Bits >> 0);
+}
+
+void set_agent_move_direction_delta_x(struct SpecialUserInput *p_usrinp, short dt)
+{
+    if (dt > 127)
+        dt = 127;
+    if (dt < -127)
+        dt = -127;
+    //p_usrinp->Bits &= ~(0xFF << 0); -- no need, should be always clear before set
+    p_usrinp->Bits |= (((ubyte)dt) << 0);
+}
+
+short get_agent_move_direction_delta_z(const struct SpecialUserInput *p_usrinp)
+{
+    return (sbyte)(p_usrinp->Bits >> 8);
+}
+
+void set_agent_move_direction_delta_z(struct SpecialUserInput *p_usrinp, short dt)
+{
+    if (dt > 127)
+        dt = 127;
+    if (dt < -127)
+        dt = -127;
+    //p_usrinp->Bits &= ~(0xFF << 8); -- no need, should be always clear before set
+    p_usrinp->Bits |= (((ubyte)dt) << 8);
+}
+
 void do_user_input_bits_direction_clear(struct SpecialUserInput *p_usrinp)
 {
     p_usrinp->Bits &= ~(0xFF << 0);
     p_usrinp->Bits &= ~(0xFF << 8);
 }
 
+void do_user_input_bits_control_clear_all(struct SpecialUserInput *p_usrinp)
+{
+    p_usrinp->Bits &= ~SpUIn_AllControlBits;
+}
+
+void do_user_input_bits_control_clear_nonmove(struct SpecialUserInput *p_usrinp)
+{
+    p_usrinp->Bits &= ~SpUIn_AllNonMoveBits;
+}
+
 void do_user_input_bits_direction_from_kbd(struct SpecialUserInput *p_usrinp)
 {
-    sbyte k;
+    short dt;
 
-    k = (lbKeyOn[kbkeys[GKey_RIGHT]] & 1) - (lbKeyOn[kbkeys[GKey_LEFT]] & 1);
-    p_usrinp->Bits |= ((ubyte)k & 0xFF) << 0;
-    k = (lbKeyOn[kbkeys[GKey_UP]] & 1) - (lbKeyOn[kbkeys[GKey_DOWN]] & 1);
-    p_usrinp->Bits |= ((ubyte)k & 0xFF) << 8;
+    if (get_agent_move_direction_delta_x(p_usrinp) == 0) {
+        dt = (is_gamekey_kbd_pressed(GKey_RIGHT) & 1) - (is_gamekey_kbd_pressed(GKey_LEFT) & 1);
+        set_agent_move_direction_delta_x(p_usrinp, dt);
+    }
+    if (get_agent_move_direction_delta_z(p_usrinp) == 0) {
+        dt = (is_gamekey_kbd_pressed(GKey_UP) & 1) - (is_gamekey_kbd_pressed(GKey_DOWN) & 1);
+        set_agent_move_direction_delta_z(p_usrinp, dt);
+    }
 }
 
 void do_user_input_bits_direction_from_joy(struct SpecialUserInput *p_usrinp, ubyte channel)
 {
-    if (((p_usrinp->Bits >> 0) & 0xFF) == 0)
-        p_usrinp->Bits |= ((ubyte)joy.DigitalX[channel] & 0xFF) << 0;
-    if (((p_usrinp->Bits >> 8) & 0xFF) == 0)
-        p_usrinp->Bits |= ((ubyte)(-joy.DigitalY[channel]) & 0xFF) << 8;
+    short dt;
+
+    if (get_agent_move_direction_delta_x(p_usrinp) == 0) {
+        dt = joy.DigitalX[channel];
+        set_agent_move_direction_delta_x(p_usrinp, dt);
+    }
+    if (get_agent_move_direction_delta_z(p_usrinp) == 0) {
+        dt = joy.DigitalY[channel];
+        set_agent_move_direction_delta_z(p_usrinp, dt);
+    }
 }
 
+/** Input function for a user controlling the cyborgs via keyboard only.
+ */
 void do_user_input_bits_actions_from_kbd(struct SpecialUserInput *p_usrinp)
 {
-    if (lbKeyOn[kbkeys[GKey_FIRE]])
+    if (is_gamekey_kbd_pressed(GKey_FIRE)) {
         p_usrinp->Bits |= SpUIn_DoTrigger;
-    if (lbKeyOn[kbkeys[GKey_CHANGE_MD_WP]])
+    }
+    if (is_gamekey_kbd_pressed(GKey_CHANGE_MD_WP)) {
         p_usrinp->Bits |= SpUIn_ChangeMoodOrWep;
-    if (lbKeyOn[kbkeys[GKey_CHANGE_AGENT]])
+    }
+    if (is_gamekey_kbd_pressed(GKey_CHANGE_AGENT)) {
         p_usrinp->Bits |= SpUIn_ChangeAgent;
-    if (lbKeyOn[kbkeys[GKey_DROP_WEAPON]]) {
-        lbKeyOn[kbkeys[GKey_DROP_WEAPON]] = 0;
+    }
+    if (is_gamekey_kbd_pressed(GKey_DROP_WEAPON)) {
+        clear_gamekey_kbd_pressed(GKey_DROP_WEAPON);
         p_usrinp->Bits |= SpUIn_DoDropOrGoOut;
     }
-    if (lbKeyOn[kbkeys[GKey_SELF_DESTRUCT]] && lbShift == KMod_CONTROL) {
-        lbKeyOn[kbkeys[GKey_SELF_DESTRUCT]] = 0;
+    if (is_gamekey_kbd_pressed(GKey_SELF_DESTRUCT)) {
+        clear_gamekey_kbd_pressed(GKey_SELF_DESTRUCT);
         p_usrinp->Bits |= SpUIn_SelfDestruct;
     }
 }
 
+/** Input function for an extra user controlling the cyborgs via joystick only.
+ */
 void do_user_input_bits_actions_from_joy(struct SpecialUserInput *p_usrinp, ubyte channel)
 {
-    if (jskeys[GKey_FIRE]
-      && (jskeys[GKey_FIRE] & joy.Buttons[channel]) == jskeys[GKey_FIRE])
+    if (is_gamekey_joy_pressed(GKey_FIRE, channel)) {
         p_usrinp->Bits |= SpUIn_DoTrigger;
-    if (jskeys[GKey_CHANGE_MD_WP]
-      && (jskeys[GKey_CHANGE_MD_WP] & joy.Buttons[channel]) == jskeys[GKey_CHANGE_MD_WP])
+    }
+    if (is_gamekey_joy_pressed(GKey_CHANGE_MD_WP, channel)) {
         p_usrinp->Bits |= SpUIn_ChangeMoodOrWep;
-    if (jskeys[GKey_DROP_WEAPON]
-      && (jskeys[GKey_DROP_WEAPON] & joy.Buttons[channel]) == jskeys[GKey_DROP_WEAPON])
+    }
+    if (is_gamekey_joy_pressed(GKey_DROP_WEAPON, channel)) {
+        clear_gamekey_joy_pressed(GKey_DROP_WEAPON, channel);
         p_usrinp->Bits |= SpUIn_DoDropOrGoOut;
-    if (jskeys[GKey_SELF_DESTRUCT]
-      && (jskeys[GKey_SELF_DESTRUCT] & joy.Buttons[channel]) == jskeys[GKey_SELF_DESTRUCT])
+    }
+    if (is_gamekey_joy_pressed(GKey_SELF_DESTRUCT, channel)) {
+        clear_gamekey_joy_pressed(GKey_SELF_DESTRUCT, channel);
         p_usrinp->Bits |= SpUIn_SelfDestruct;
+    }
 }
 
-void do_user_input_bits_actions_from_joy_and_kbd(struct SpecialUserInput *p_usrinp)
+ubyte do_user_input_bits_actions_from_joy_and_kbd(struct SpecialUserInput *p_usrinp)
 {
-    //TODO can we get rid of this funtion, using the two separate functs instead?
-    //do_user_input_bits_actions_from_kbd(p_usrinp);
-    //do_user_input_bits_actions_from_joy(p_usrinp);
+    ubyte did_inp;
 
-    if (lbKeyOn[kbkeys[GKey_FIRE]])
+    did_inp = GINPUT_NONE;
+    if (is_gamekey_pressed(GKey_FIRE)) {
         p_usrinp->Bits |= SpUIn_DoTrigger;
-    if (lbKeyOn[kbkeys[GKey_CHANGE_MD_WP]])
+        did_inp |= GINPUT_DIRECT;
+    }
+    if (is_gamekey_pressed(GKey_CHANGE_MD_WP)) {
         p_usrinp->Bits |= SpUIn_ChangeMoodOrWep;
-    if (lbKeyOn[kbkeys[GKey_CHANGE_AGENT]])
+        did_inp |= GINPUT_DIRECT;
+    }
+    if (is_gamekey_pressed(GKey_CHANGE_AGENT)) {
         p_usrinp->Bits |= SpUIn_ChangeAgent;
-    if (lbKeyOn[kbkeys[GKey_GOTO_POINT]]) {
-        lbKeyOn[kbkeys[GKey_GOTO_POINT]] = 0;
+        did_inp |= GINPUT_DIRECT;
+    }
+    if (is_gamekey_pressed(GKey_GOTO_POINT)) {
+        clear_gamekey_pressed(GKey_GOTO_POINT);
         p_usrinp->Bits |= SpUIn_GotoPoint;
+        did_inp |= GINPUT_DIRECT;
     }
     // TODO remove hard-coded BACKSLASH and make sure GKey_GROUP works for all keyboard layouts
-    if (lbKeyOn[KC_BACKSLASH] || lbKeyOn[kbkeys[GKey_GROUP]]) {
-        if (lbKeyOn[KC_BACKSLASH])
-            lbKeyOn[KC_BACKSLASH] = 0;
-        if (lbKeyOn[kbkeys[GKey_GROUP]])
-            lbKeyOn[kbkeys[GKey_GROUP]] = 0;
+    if (is_key_pressed(KC_BACKSLASH, KMod_DONTCARE)) {
+        clear_key_pressed(KC_BACKSLASH);
         p_usrinp->Bits |= SpUIn_GroupingInc;
+        did_inp |= GINPUT_DIRECT;
     }
-    if (lbKeyOn[kbkeys[GKey_DROP_WEAPON]]) {
-        lbKeyOn[kbkeys[GKey_DROP_WEAPON]] = 0;
+    if (is_gamekey_pressed(GKey_GROUP)) {
+        clear_gamekey_pressed(GKey_GROUP);
+        p_usrinp->Bits |= SpUIn_GroupingInc;
+        did_inp |= GINPUT_DIRECT;
+    }
+    if (is_gamekey_pressed(GKey_DROP_WEAPON)) {
+        clear_gamekey_pressed(GKey_DROP_WEAPON);
         p_usrinp->Bits |= SpUIn_DoDropOrGoOut;
+        did_inp |= GINPUT_DIRECT;
     }
-    //TODO why different self destruct?
     if (is_gamekey_pressed(GKey_SELF_DESTRUCT)) {
-        clear_key_pressed(GKey_SELF_DESTRUCT);
+        clear_gamekey_pressed(GKey_SELF_DESTRUCT);
         p_usrinp->Bits |= SpUIn_SelfDestruct;
+        did_inp |= GINPUT_DIRECT;
     }
-
-    if (jskeys[GKey_FIRE]
-      && (jskeys[GKey_FIRE] & joy.Buttons[0]) == jskeys[GKey_FIRE])
-        p_usrinp->Bits |= SpUIn_DoTrigger;
-    if (jskeys[GKey_CHANGE_MD_WP]
-      && (jskeys[GKey_CHANGE_MD_WP] & joy.Buttons[0]) == jskeys[GKey_CHANGE_MD_WP])
-        p_usrinp->Bits |= SpUIn_ChangeMoodOrWep;
-    if (jskeys[GKey_CHANGE_AGENT]
-      && (jskeys[GKey_CHANGE_AGENT] & joy.Buttons[0]) == jskeys[GKey_CHANGE_AGENT])
-        p_usrinp->Bits |= SpUIn_ChangeAgent;
-    if (jskeys[GKey_GOTO_POINT]
-      && (jskeys[GKey_GOTO_POINT] & joy.Buttons[0]) == jskeys[GKey_GOTO_POINT])
-        p_usrinp->Bits |= SpUIn_GotoPoint;
-    if (jskeys[GKey_GROUP]
-      && (jskeys[GKey_GROUP] & joy.Buttons[0]) == jskeys[GKey_GROUP])
-        p_usrinp->Bits |= SpUIn_GroupingInc;
-    if (jskeys[GKey_DROP_WEAPON]
-      && (jskeys[GKey_DROP_WEAPON] & joy.Buttons[0]) == jskeys[GKey_DROP_WEAPON])
-        p_usrinp->Bits |= SpUIn_DoDropOrGoOut;
-    if (jskeys[GKey_SELF_DESTRUCT]
-      && (jskeys[GKey_SELF_DESTRUCT] & joy.Buttons[0]) == jskeys[GKey_SELF_DESTRUCT])
-        p_usrinp->Bits |= SpUIn_SelfDestruct;
-}
-
-short get_agent_move_direction_delta_x(const struct SpecialUserInput *p_usrinp)
-{
-    return (sbyte)(p_usrinp->Bits >> 0);
-}
-
-short get_agent_move_direction_delta_z(const struct SpecialUserInput *p_usrinp)
-{
-    return (sbyte)(p_usrinp->Bits >> 8);
+    return did_inp;
 }
 
 void update_agent_move_direction_deltas(struct SpecialUserInput *p_usrinp)
@@ -192,7 +232,7 @@ short get_next_player_agent(ushort player)
     return ret;
 }
 
-void input_user_control_agent(ushort plyr, short dmuser)
+ubyte input_user_control_agent(ushort plyr, short dmuser)
 {
     PlayerInfo *p_player;
     struct Packet *p_pckt;
@@ -225,14 +265,14 @@ void input_user_control_agent(ushort plyr, short dmuser)
     if ((dcthing == 0) || (lbShift == KMod_SHIFT))
     {
         loc_build_packet(p_pckt, 0, dcthing, 0, 0, 0);
-        return;
+        return GINPUT_PACKET;
     }
 
     if ((p_player->UserInput[dmuser].Bits & SpUIn_SelfDestruct) != 0)
     {
         p_player->UserInput[dmuser].Bits &= ~SpUIn_SelfDestruct;
         loc_build_packet(p_pckt, 255, dcthing, 0, 0, 0);
-        return;
+        return GINPUT_PACKET;
     }
 
     if ((p_player->UserInput[dmuser].Bits & SpUIn_DoDropOrGoOut) != 0)
@@ -243,14 +283,14 @@ void input_user_control_agent(ushort plyr, short dmuser)
             p_player->UserInput[dmuser].Bits &= ~SpUIn_DoDropOrGoOut;
             loc_build_packet(p_pckt, PAct_LEAVE_VEHICLE, dcthing,
               p_dcthing->U.UPerson.Vehicle, 0, 0);
-            return;
+            return GINPUT_PACKET;
         }
     }
 
     if ((p_player->UserInput[dmuser].Bits & SpUIn_DoDropOrGoOut) != 0)
     {
         loc_build_packet(p_pckt, PAct_DROP_SELC_WEAPON_SECR, dcthing, 0, 0, 0);
-        return;
+        return GINPUT_PACKET;
     }
 
     if ((p_player->UserInput[dmuser].Bits & SpUIn_GroupingInc) != 0)
@@ -269,7 +309,7 @@ void input_user_control_agent(ushort plyr, short dmuser)
         } else {
             loc_build_packet(p_pckt, PAct_PROTECT_INC, dcthing, 0, 0, 0);
         }
-        return;
+        return GINPUT_PACKET;
     }
 
     if ((p_player->UserInput[dmuser].Bits & SpUIn_DoTrigger) != 0)
@@ -280,7 +320,7 @@ void input_user_control_agent(ushort plyr, short dmuser)
             p_player->UserInput[dmuser].Bits &= ~SpUIn_DoTrigger;
             loc_build_packet(p_pckt, PAct_PICKUP, dcthing,
               p_dcthing->U.UPerson.StandOnThing, 0, 0);
-            return;
+            return GINPUT_PACKET;
         }
     }
 
@@ -292,7 +332,7 @@ void input_user_control_agent(ushort plyr, short dmuser)
             p_player->UserInput[dmuser].Bits &= ~SpUIn_DoTrigger;
             loc_build_packet(p_pckt, PAct_ENTER_VEHICLE, dcthing,
               p_dcthing->U.UPerson.Vehicle, 0, 0);
-            return;
+            return GINPUT_PACKET;
         }
     }
 
@@ -301,8 +341,9 @@ void input_user_control_agent(ushort plyr, short dmuser)
         if (process_send_person(plyr, dmuser))
         {
             loc_build_packet(p_pckt, PAct_AGENT_GOTO_GND_PT_ABS, dcthing, engn_xc, 0, engn_zc);
+            return GINPUT_PACKET;
         }
-        return;
+        return GINPUT_NONE;
     }
 
     if ((p_player->UserInput[dmuser].Bits & SpUIn_ChangeAgent) != 0)
@@ -312,8 +353,9 @@ void input_user_control_agent(ushort plyr, short dmuser)
             short next_player;
             next_player = get_next_player_agent(plyr);
             loc_build_packet(p_pckt, PAct_SELECT_AGENT, dcthing, next_player, 0, 0);
+            return GINPUT_PACKET;
         }
-        return;
+        return GINPUT_NONE;
     }
 
     dy = 0;
@@ -331,9 +373,9 @@ void input_user_control_agent(ushort plyr, short dmuser)
                 val = 100;
             loc_build_packet(p_pckt, PAct_AGENT_SET_MOOD, dcthing, val, 0, 0);
             if (!IsSamplePlaying(0, 21, 0))
-                play_sample_using_heap(0, 21, 127, 64, 100, -1, 1);
+                play_sample_using_heap(0, 21, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 1);
             ingame.Flags |= GamF_Unkn00100000;
-            return;
+            return GINPUT_PACKET;
         }
 
         if (dx < 0)
@@ -344,9 +386,9 @@ void input_user_control_agent(ushort plyr, short dmuser)
                 val = -100;
             loc_build_packet(p_pckt, PAct_AGENT_SET_MOOD, dcthing, val, 0, 0);
             if (!IsSamplePlaying(0, 21, 0))
-                play_sample_using_heap(0, 21, 127, 64, 100, -1, 1);
+                play_sample_using_heap(0, 21, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 1);
             ingame.Flags |= GamF_Unkn00100000;
-            return;
+            return GINPUT_PACKET;
         }
 
         if (dz < 0)
@@ -354,8 +396,9 @@ void input_user_control_agent(ushort plyr, short dmuser)
             if (p_player->PrevState[dmuser] != PAct_SELECT_NEXT_WEAPON)
             {
                 loc_build_packet(p_pckt, PAct_SELECT_NEXT_WEAPON, dcthing, 0, 0, 0);
+                return GINPUT_PACKET;
             }
-            return;
+            return GINPUT_NONE;
         }
 
         if (dz > 0)
@@ -363,12 +406,13 @@ void input_user_control_agent(ushort plyr, short dmuser)
             if (p_player->PrevState[dmuser] != PAct_SELECT_PREV_WEAPON)
             {
                 loc_build_packet(p_pckt, PAct_SELECT_PREV_WEAPON, dcthing, 0, 0, 0);
+                return GINPUT_PACKET;
             }
-            return;
+            return GINPUT_NONE;
         }
 
         p_player->PrevState[dmuser] = PAct_NONE;
-        return;
+        return GINPUT_DIRECT;
     }
 
     if (dx == 0 && dz == 0)
@@ -379,7 +423,7 @@ void input_user_control_agent(ushort plyr, short dmuser)
         else
             flg = 0x0;
         loc_build_packet(p_pckt, PAct_NONE | flg, dcthing, dx, dy, dz);
-        return;
+        return GINPUT_PACKET;
     }
 
     local_to_worldr(&dx, &dy, &dz);
@@ -392,6 +436,7 @@ void input_user_control_agent(ushort plyr, short dmuser)
         else
             flg = 0x0;
         loc_build_packet(p_pckt, PAct_AGENT_GOTO_GND_PT_REL_FF | flg, dcthing, dx, dy, dz);
+        return GINPUT_PACKET;
     }
     else
     {
@@ -401,7 +446,9 @@ void input_user_control_agent(ushort plyr, short dmuser)
         else
             flg = 0x0;
         loc_build_packet(p_pckt, PAct_AGENT_GOTO_GND_PT_REL | flg, dcthing, dx, dy, dz);
+        return GINPUT_PACKET;
     }
+    return GINPUT_NONE;
 }
 
 /******************************************************************************/

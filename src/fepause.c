@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file fepause.c
  *     Front-end desktop and menu system, in-game pause screen.
@@ -34,6 +34,7 @@
 #include "campaign.h"
 #include "display.h"
 #include "game_data.h"
+#include "game_options.h"
 #include "game_sprts.h"
 #include "game.h"
 #include "guiboxes.h"
@@ -141,8 +142,8 @@ TbBool input_slant_right_arrow(struct ScreenBox *box, short *target)
         {
             lbDisplay.LeftButton = 0;
             (*target)++;
-            if ((*target) > 322)
-                (*target) = 322;
+            if ((*target) > STARTSCR_VOLUME_MAX)
+                (*target) = STARTSCR_VOLUME_MAX;
             return true;
         }
     }
@@ -167,7 +168,7 @@ TbBool input_slant_box(struct ScreenBox *box, short *target)
             dy = ms_y - box->Y - border;
             if (dx + dy >= 0 && dx + dy <= box->Width - 2 * border - border)
             {
-                (*target) = 322 * (dx + dy) / (box->Width - 2 * border - border);
+                (*target) = STARTSCR_VOLUME_MAX * (dx + dy) / (box->Width - 2 * border - border);
                 return true;
             }
         }
@@ -402,7 +403,7 @@ void wait_for_keypress_end(ushort game_key, TbBool impatient)
     TbBool ended;
 
     if (impatient) {
-        lbKeyOn[kbkeys[game_key]] = 0;
+        clear_gamekey_pressed(game_key);
     }
 
     ended = false;
@@ -410,8 +411,7 @@ void wait_for_keypress_end(ushort game_key, TbBool impatient)
     {
         joy_func_065(&joy);
 
-        if (!lbKeyOn[kbkeys[game_key]]
-          && (jskeys[game_key] == 0 || jskeys[game_key] != joy.Buttons[0]))
+        if (!is_gamekey_pressed(game_key))
             ended = true;
 
         PlayCDTrack(ingame.CDTrack);
@@ -499,7 +499,7 @@ void draw_pause_screen_static(struct ScreenBox *box)
     else
     {
         // If no special sprites, draw the text in the normal font available in-game
-        s = gui_strings[606]; // "uplink paused"
+        s = gui_strings[633]; // "uplink paused"
         w = my_string_width(s);
         x = pause_main_box.X + (pause_main_box.Width - w) / 2 + 3;
         y = pause_main_box.Y + pause_main_box.Height * 2 / 60;
@@ -529,7 +529,7 @@ void draw_pause_volume_bar(struct ScreenBox *p_box1, struct ScreenBox *p_box2, s
         stp = pop1_sprites_scale+1;
         box4.X = p_box1->X + 1 * stp;
         box4.Y = p_box1->Y + 1 * stp;
-        box4.Width = (p_box1->Width - 3 * stp) * (*p_target) / 322;
+        box4.Width = (p_box1->Width - 3 * stp) * (*p_target) / STARTSCR_VOLUME_MAX;
         box4.Height = p_box1->Height - 2 * stp;
         draw_slant_box(&box4, colour_lookup[ColLU_WHITE]);
     }
@@ -638,17 +638,17 @@ TbBool pause_screen_handle(void)
 
         if (affected == &startscr_samplevol)
         {
-            SetSoundMasterVolume(127 * startscr_samplevol / 322);
+            sfx_apply_samplevol();
             if (!IsSamplePlaying(0, 80, 0))
-                play_sample_using_heap(0, 80, 127, 64, 100, 0, 1u);
+                play_sample_using_heap(0, 80, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
         }
         else if (affected == &startscr_midivol)
         {
-            SetMusicMasterVolume(127 * startscr_midivol / 322);
+            sfx_apply_midivol();
         }
         else if (affected == &startscr_cdvolume)
         {
-            SetCDVolume(70 * (127 * startscr_cdvolume / 322) / 100);
+            sfx_apply_cdvolume();
         }
         else if (affected == &ingame.DetailLevel)
         {
@@ -669,8 +669,7 @@ TbBool pause_screen_handle(void)
             return 1;
         }
 
-        if (lbKeyOn[kbkeys[GKey_PAUSE]]
-          || (jskeys[GKey_PAUSE] && jskeys[GKey_PAUSE] == joy.Buttons[0]))
+        if (is_gamekey_pressed(GKey_PAUSE))
             resume_game = true;
 
         lbDisplay.DrawFlags = 0;

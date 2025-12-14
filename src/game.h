@@ -7,7 +7,6 @@
 #include "bffile.h"
 #include "bfflic.h"
 #include "globals.h"
-#include "scanner.h"
 #include "people.h"
 #include "guiboxes.h"
 
@@ -17,45 +16,11 @@ extern "C" {
 
 #pragma pack(1)
 
-#define WEP_ROCKETS_FIRED_LIMIT 15
-
 enum GameModes {
     GamM_None        = 0,
     GamM_Unkn1       = 1,
     GamM_Unkn2       = 2,
     GamM_Unkn3       = 3,
-};
-
-enum GameFlags {
-    GamF_BillboardMovies = 0x0001,
-    GamF_AdvLights    = 0x0002,
-    GamF_Unkn0004     = 0x0004,
-    GamF_Unkn0008     = 0x0008,
-    GamF_MortalGame   = 0x0010,
-    GamF_Unkn0020     = 0x0020,
-    GamF_RenderScene  = 0x0040,
-    GamF_StopThings   = 0x0080, /**< Do not process things, stopping ingame action. */
-    GamF_Unkn0100     = 0x0100,
-    GamF_Unkn0200     = 0x0200,
-    GamF_DeepRadar    = 0x0400,
-    GamF_Unkn0800     = 0x0800,
-    GamF_Unkn1000     = 0x1000,
-    GamF_HUDPanel     = 0x2000,
-    GamF_Unkn4000     = 0x4000,
-    GamF_ThermalView  = 0x8000,
-    GamF_Unkn00010000 = 0x00010000,
-    GamF_Unkn00020000 = 0x00020000,
-    GamF_Unkn00040000 = 0x00040000,
-    GamF_SkipIntro    = 0x00080000,
-    GamF_Unkn00100000 = 0x00100000,
-    GamF_NoScannerBeep = 0x00200000,
-    GamF_Unkn00400000 = 0x00400000,
-    GamF_Unkn00800000 = 0x00800000,
-    GamF_Unkn01000000 = 0x01000000,
-    GamF_Unkn02000000 = 0x02000000,
-    GamF_Unkn04000000 = 0x04000000,
-    GamF_Unkn08000000 = 0x08000000,
-    GamF_Unkn10000000 = 0x10000000,
 };
 
 enum UserFlags {
@@ -89,20 +54,18 @@ enum ScreenType {
   SCRT_99 = 99,
 };
 
-enum DisplayModes {
-  DpM_NONE = 0x0,
-  DpM_UNKN_1 = 0x1,
-  DpM_2 = 0x2,
-  DpM_31 = 0x31,
-  DpM_ENGINEPLY = 0x32,
-  DpM_UNKN_33 = 0x33,
-  DpM_34 = 0x34,
-  DpM_36 = 0x36,
-  DpM_PURPLEMNU = 0x37,
-  DpM_38 = 0x38,
-  DpM_39 = 0x39,
-  DpM_UNKN_3A = 0x3A,
-  DpM_UNKN_3B = 0x3B,
+enum LoginControlStates {
+    LognCt_Unkn0 = 0,
+    LognCt_Unkn1,
+    LognCt_Unkn2,
+    LognCt_Unkn3,
+    LognCt_Unkn4,
+    LognCt_Unkn5,
+    LognCt_Unkn6,
+    LognCt_Unkn7,
+    LognCt_Unkn8,
+    LognCt_Unkn9,
+    LognCt_Unkn10,
 };
 
 enum AnimSlot {
@@ -119,21 +82,6 @@ enum AnimSlot {
   AniSl_SCRATCH = 10,	/**< scratch buffer for some transparent menu animations */
 };
 
-enum PacketRecordMode {
-  PktR_NONE = 0x0,
-  PktR_RECORD = 0x1,
-  PktR_PLAYBACK = 0x2,
-};
-
-enum AppBarIcons {
-  ApBar_SYSTEM = 0,
-  ApBar_PANET,
-  ApBar_WORLDMAP,
-  ApBar_CRYO,
-  ApBar_EQUIP,
-  ApBar_RESEARCH,
-};
-
 // For some reason, we have different values for change_screen
 //TODO consolidate with ScreenType, use the same values
 enum ChangeScreenType {
@@ -144,7 +92,7 @@ enum ChangeScreenType {
   ChSCRT_CRYO,
   ChSCRT_EQUIP,
   ChSCRT_RESEARCH,
-  ChSCRT_MISSION,
+  ChSCRT_MISBRIEF,
 };
 
 enum OpenMissionEndStatus {
@@ -191,67 +139,6 @@ struct LevelDef {
   ubyte field_2B;
 };
 
-struct InGame {
-    short GameMode;
-    short DisplayMode;
-    short fld_unk7D8;
-    ubyte fld_unk7DA;
-    ubyte CDTrack;
-    ubyte DangerTrack;
-    ubyte UseMultiMedia;
-    ubyte AutoResearch;
-    ubyte GameOver;
-    struct Scanner Scanner; // offset=0x0C
-    long Credits; // offset=0x473 (on original Scanner struct)
-    ulong fld_unkC4B;	// offset=0x477
-    short fld_unkC4F;
-    short MissionStatus;
-    long Flags;
-    ushort fld_unkC57;
-    short fld_unkC59;
-    short draw_unknprop_01;
-    short Rocket1[WEP_ROCKETS_FIRED_LIMIT];	// offset=0x489
-    short NextRocket;
-    short TrainMode;
-    short MyGroup;
-    short CurrentMission;
-    ubyte fld_unk4AF;
-    ubyte DetailLevel;
-    short UserZoom;
-    short cmdln_param_a;
-    short LowerMemoryUse;
-    short fld_unkC8B;
-    short fld_unkC8D[2];
-    long fld_unkC91;
-    ushort TrackX;
-    ushort TrackZ;
-    short TrackThing;
-    ubyte fld_unkC98[5];
-    short fld_unkCA0;
-    ubyte fld_unkCA2;
-    sbyte PanelPermutation;
-    ubyte TrenchcoatPreference;
-    ubyte MissionNo;
-    short fld_unkCA6;	// offset=0x4D2
-    short fld_unkCA8;
-    ubyte fld_unkCAA;
-    ubyte PalType;
-    short FlameCount;
-    ubyte LastTmap;
-    short SoundThing;
-    ubyte fld_unkCB1;
-    ubyte fld_unkCB2;
-    short VisibleBillboardThing;
-    short fld_unkCB5;
-    short fld_unkCB7;
-    /** Flags representing active human players, in both net and local games. */
-    ubyte InNetGame_UNSURE;
-    ubyte fld_unkCBA[5];
-    ushort UserFlags;
-    long CashAtStart;
-    long Expenditure;
-};
-
 #pragma pack()
 
 extern char session_name[20];
@@ -266,8 +153,6 @@ extern ubyte keyboard_mode_direct;
 extern ubyte unkn01_maskarr[28];
 extern long map_editor;
 
-extern struct InGame ingame;
-
 extern ubyte login_control__State;
 extern ulong login_control__Money;
 extern sbyte login_control__City;
@@ -276,8 +161,6 @@ extern ubyte byte_181183;
 extern ubyte byte_181189;
 
 extern ubyte cmdln_param_n;
-extern ubyte pktrec_mode;
-extern ushort packet_rec_no;
 extern ubyte exit_game;
 extern ubyte input_char;
 
@@ -321,8 +204,7 @@ extern ubyte *spare_map_buffer;
 extern long target_old_frameno;
 extern ushort word_176E38;
 
-extern ubyte byte_1C4A7C;
-extern ubyte byte_1C4A9F;
+extern ubyte net_service_started;
 extern ubyte linear_vec_pal[256];
 extern ulong nsta_size;
 
@@ -353,7 +235,6 @@ extern char *outro_text_z;
 extern long data_197150;
 extern long data_1dd91c;
 extern ubyte unkn_flags_01;
-extern ushort palette_brightness;
 extern long outro_credits_enabled;
 extern long outro_unkn02;
 extern long outro_unkn03;
@@ -394,10 +275,8 @@ extern ubyte redraw_screen_flag;
 extern sbyte byte_15516C;
 extern sbyte byte_15516D;
 extern ubyte byte_1C5C28[8];
-extern ubyte byte_1C6D48;
-extern ubyte unkn_flags_08;
 extern long dword_153194;
-extern ulong starting_cash_amounts[4];
+extern ulong starting_cash_amounts[8];
 extern sbyte unkn_city_no;
 extern ubyte group_types[8];
 extern ubyte byte_1C4AA3;
@@ -407,7 +286,6 @@ extern ubyte start_into_mission;
 extern ubyte edit_flag;
 extern ubyte change_screen;
 extern ubyte restore_savegame;
-extern ubyte game_projector_speed;
 extern ubyte current_drawing_mod;
 extern ubyte mod_draw_states[4];
 extern ubyte new_current_drawing_mod;
@@ -415,17 +293,14 @@ extern ubyte refresh_equip_list;
 extern ubyte flic_mods[5];
 extern ubyte old_flic_mods[5];
 extern ubyte reload_background_flag;
-extern ushort word_1811AE;
 
 extern struct LevelDef level_def;
 
-extern long dword_17710C;
-extern long dword_177110;
+/** Index of the local user who controls mouse. */
 extern ubyte mouser;
 extern long dword_1AA5C4;
 extern long dword_1AA5C8;
 
-extern short next_ref;
 extern ushort next_mission;
 extern ushort replay_intro_timer;
 extern ubyte show_alert;
@@ -474,6 +349,10 @@ void game_process(void);
 void game_reset(void);
 void host_reset(void);
 void free_texturemaps(void);
+void init_variables(void);
+void init_agents(void);
+void srm_reset_research(void);
+void net_new_game_prepare(void);
 
 /** Decode and draw next frame of the animation.
  */
@@ -493,7 +372,6 @@ void my_preprocess_text(char *text);
 ushort my_count_lines(const char *text);
 
 TbBool player_try_spend_money(long cost);
-TbBool is_unkn_current_player(void);
 void campaign_new_game_prepare(void);
 
 void process_sound_heap(void);
@@ -515,18 +393,13 @@ void ingame_palette_reload(void);
 void game_set_cam_track_thing_xz(ThingIdx thing);
 TbBool game_cam_tracked_thing_is_player_agent(void);
 
-void local_to_worldr(int *dx, int *dy, int *dz);
 ubyte process_send_person(ushort player, int i);
 
 ubyte *anim_type_get_output_buffer(ubyte anislot);
 
-void net_unkn_func_33(void);
-void net_players_copy_equip_and_cryo(void);
-void net_players_copy_cryo(void);
-
-void set_default_gfx_settings(void);
-void set_default_visual_prefernces(void);
-void set_default_audio_tracks(void);
+short test_missions(ubyte flag);
+void init_level_3d(ubyte flag);
+void restart_back_into_mission(ushort missi);
 
 #ifdef __cplusplus
 };

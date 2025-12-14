@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file wrcities.c
  *     Routines for handling a list of cities for world map.
@@ -510,7 +510,7 @@ void activate_cities(ubyte brief)
 
     deactivate_cities();
 
-    if (login_control__State == 5)
+    if (login_control__State == LognCt_Unkn5)
     {
         clear_cities_decor(0x01);
         return;

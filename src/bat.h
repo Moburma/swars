@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file bat.h
  *     Header file for bat.c.
@@ -27,11 +27,12 @@ extern "C" {
 /******************************************************************************/
 #pragma pack(1)
 
-
 #pragma pack()
 /******************************************************************************/
 
 void BAT_play(void);
+
+void BAT_unknsub_20(int a1, int a2, int a3, int a4, ubyte *p_screen);
 
 /******************************************************************************/
 #ifdef __cplusplus

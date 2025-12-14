@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file campaign.c
  *     Routines campaign progress and missions definitions.
@@ -26,7 +26,9 @@
 #include "cybmod.h"
 #include "weapon.h"
 #include "game_data.h"
+#include "game_options.h"
 #include "game.h"
+#include "lvfiles.h"
 #include "lvobjctv.h"
 #include "misstat.h"
 #include "wadfile.h"
@@ -156,6 +158,14 @@ const struct TbNamedEnum missions_conf_weather_types[] = {
   {"SUNNY",			MWeathr_Sunny},
   {"RAINY",			MWeathr_Rainy},
   {"SNOWY",			MWeathr_Snowy},
+  {NULL,			0},
+};
+
+const struct TbNamedEnum missions_conf_wait_to_fade_types[] = {
+  {"NEVER",			1},
+  {"ON_SUCCESS",	WTFade_ON_SUCCESS | 1},
+  {"ON_FAIL",		WTFade_ON_FAIL | 1},
+  {"ALWAYS",		WTFade_ON_SUCCESS|WTFade_ON_FAIL | 1},
   {NULL,			0},
 };
 
@@ -329,6 +339,8 @@ ushort find_mission_with_map_and_level(ushort mapno, ushort level)
         p_missi = &mission_list[missi];
         if ((p_missi->MapNo == mapno) && (p_missi->LevelNo == level))
             return missi;
+        if ((p_missi->MapNo == mapno) && (p_missi->ReLevelNo == level))
+            return missi;
     }
     return 0;
 }
@@ -468,7 +480,7 @@ void read_missions_bin_file(int num)
 {
     TbFileHandle fh;
     char locstr[52];
-    ulong fmtver;
+    u32 fmtver;
     char *p_str;
     int i;
 
@@ -478,7 +490,7 @@ void read_missions_bin_file(int num)
     fh = LbFileOpen(locstr, Lb_FILE_MODE_READ_ONLY);
     if (fh != INVALID_FILE)
     {
-        LbFileRead(fh, &fmtver, sizeof(ulong));
+        LbFileRead(fh, &fmtver, sizeof(u32));
         LbFileRead(fh, &mission_strings_len, sizeof(ushort));
         LbFileRead(fh, p_str, mission_strings_len);
         LbFileRead(fh, &next_mission, sizeof(ushort));
@@ -547,7 +559,8 @@ void read_mission_netscan_objectives_bin(void)
 void save_mission_single_conf(TbFileHandle fh, struct Mission *p_missi, char *buf)
 {
     if (p_missi->TextName == NULL) {
-        sprintf(buf, "Name = MAP%03d - LEVEL%03d\n", (int)p_missi->MapNo, (int)p_missi->LevelNo);
+        sprintf(buf, "Name = MAP%03d - LEVEL%03d.%d\n", (int)p_missi->MapNo,
+          LEVEL_NUM_STRAIN(p_missi->LevelNo), LEVEL_NUM_VARIANT(p_missi->LevelNo));
     } else {
         sprintf(buf, "Name = %s\n", p_missi->TextName);
     }
@@ -633,7 +646,8 @@ void save_mission_single_conf(TbFileHandle fh, struct Mission *p_missi, char *bu
         LbFileWrite(fh, buf, strlen(buf));
     }
     {
-        sprintf(buf, "LevelNo = %d\n", (int)p_missi->LevelNo);
+        sprintf(buf, "LevelNo = %d.%d\n", LEVEL_NUM_STRAIN(p_missi->LevelNo),
+          LEVEL_NUM_VARIANT(p_missi->LevelNo));
         LbFileWrite(fh, buf, strlen(buf));
     }
     if (p_missi->BankTestFail != 0) {
@@ -651,7 +665,8 @@ void save_mission_single_conf(TbFileHandle fh, struct Mission *p_missi, char *bu
         LbFileWrite(fh, buf, strlen(buf));
     }
     if (p_missi->ReLevelNo != 0) {
-        sprintf(buf, "ReLevelNo = %d\n", (int)p_missi->ReLevelNo);
+        sprintf(buf, "ReLevelNo = %d.%d\n", LEVEL_NUM_STRAIN(p_missi->ReLevelNo),
+          LEVEL_NUM_VARIANT(p_missi->ReLevelNo));
         LbFileWrite(fh, buf, strlen(buf));
     }
     if (p_missi->CashReward != 0) {
@@ -667,7 +682,9 @@ void save_mission_single_conf(TbFileHandle fh, struct Mission *p_missi, char *bu
         LbFileWrite(fh, buf, strlen(buf));
     }
     if (p_missi->WaitToFade != 0) {
-        sprintf(buf, "WaitToFade = %hu\n", p_missi->WaitToFade);
+        sprintf(buf, "WaitToFade = 0x%x %u\n", (p_missi->WaitToFade & 0xE000),
+                  (p_missi->WaitToFade & 0x1FFF));
+
         LbFileWrite(fh, buf, strlen(buf));
     }
     if (p_missi->PreProcess != 0) {
@@ -968,6 +985,22 @@ TbBool read_missions_conf_info(int num)
     return true;
 }
 
+int ApIniValueGetIntDotInt(struct TbIniParser *parser, long *dst1, long *dst2)
+{
+    char buf[64];
+    char *bend;
+    int i;
+    i = LbIniValueGetStrWord(parser, buf, sizeof(buf));
+    if (i < 1)
+        return i;
+    *dst1 = strtol(buf,&bend,0);
+    if (*bend != '.')
+        return 0;
+    bend++; // Skip the dot
+    *dst2 = strtol(bend,&bend,0);
+    return (int)(bend - buf);
+}
+
 /** Reads missions file, with information on all missions included.
  */
 void read_missions_conf_file(int num)
@@ -975,7 +1008,7 @@ void read_missions_conf_file(int num)
     TbFileHandle conf_fh;
     TbBool done;
     int i, n;
-    long k;
+    long k, l;
     char *conf_buf;
     struct TbIniParser parser;
     struct Campaign *p_campgn;
@@ -1383,13 +1416,14 @@ void read_missions_conf_file(int num)
                 CONFDBGLOG("%s %d", COMMAND_TEXT(cmd_num), (int)p_missi->MapNo);
                 break;
             case MissL_LevelNo:
-                i = LbIniValueGetLongInt(&parser, &k);
+                i = ApIniValueGetIntDotInt(&parser, &k, &l);
                 if (i <= 0) {
                     CONFWRNLOG("Could not read \"%s\" command parameter.", COMMAND_TEXT(cmd_num));
                     break;
                 }
-                p_missi->LevelNo = k;
-                CONFDBGLOG("%s %d", COMMAND_TEXT(cmd_num), (int)p_missi->LevelNo);
+                p_missi->LevelNo = LEVEL_NUM(k,l);
+                CONFDBGLOG("%s %d.%d", COMMAND_TEXT(cmd_num), LEVEL_NUM_STRAIN(p_missi->LevelNo),
+                  LEVEL_NUM_VARIANT(p_missi->LevelNo));
                 break;
             case MissL_BankTestFail:
                 i = LbIniValueGetLongInt(&parser, &k);
@@ -1424,13 +1458,14 @@ void read_missions_conf_file(int num)
                   (int)p_missi->MissionCond[3], (int)p_missi->MissionCond[4]);
                 break;
             case MissL_ReLevelNo:
-                i = LbIniValueGetLongInt(&parser, &k);
+                i = ApIniValueGetIntDotInt(&parser, &k, &l);
                 if (i <= 0) {
                     CONFWRNLOG("Could not read \"%s\" command parameter.", COMMAND_TEXT(cmd_num));
                     break;
                 }
-                p_missi->ReLevelNo = k;
-                CONFDBGLOG("%s %d", COMMAND_TEXT(cmd_num), (int)p_missi->ReLevelNo);
+                p_missi->ReLevelNo = LEVEL_NUM(k,l);
+                CONFDBGLOG("%s %d.%d", COMMAND_TEXT(cmd_num), LEVEL_NUM_STRAIN(p_missi->ReLevelNo),
+                  LEVEL_NUM_VARIANT(p_missi->ReLevelNo));
                 break;
             case MissL_CashReward:
                 i = LbIniValueGetLongInt(&parser, &k);
@@ -1460,13 +1495,20 @@ void read_missions_conf_file(int num)
                 CONFDBGLOG("%s %d", COMMAND_TEXT(cmd_num), (int)p_missi->PANEnd);
                 break;
             case MissL_WaitToFade:
-                i = LbIniValueGetLongInt(&parser, &k);
+                i = LbIniValueGetNamedEnum(&parser, missions_conf_wait_to_fade_types);
                 if (i <= 0) {
-                    CONFWRNLOG("Could not read \"%s\" command parameter.", COMMAND_TEXT(cmd_num));
+                    CONFWRNLOG("Could not recognize \"%s\" command 1st parameter.", COMMAND_TEXT(cmd_num));
                     break;
                 }
-                p_missi->WaitToFade = k;
-                CONFDBGLOG("%s %d", COMMAND_TEXT(cmd_num), (int)p_missi->WaitToFade);
+                p_missi->WaitToFade = (i & 0xE000);
+                i = LbIniValueGetLongInt(&parser, &k);
+                if (i <= 0) {
+                    CONFWRNLOG("Could not read \"%s\" command 2nd parameter.", COMMAND_TEXT(cmd_num));
+                    break;
+                }
+                p_missi->WaitToFade |= (k & 0x1FFF);
+                CONFDBGLOG("%s 0x%x %d", COMMAND_TEXT(cmd_num), (p_missi->WaitToFade & 0xE000),
+                  (p_missi->WaitToFade & 0x1FFF));
                 break;
 
             case MissL_ImmediateNextOnSuccess:
@@ -1542,6 +1584,10 @@ void read_missions_conf_file(int num)
         }
 #undef COMMAND_TEXT
 
+        if ((p_missi->ReLevelNo != 0) &&
+          (LEVEL_NUM_STRAIN(p_missi->LevelNo) != LEVEL_NUM_STRAIN(p_missi->ReLevelNo))) {
+            CONFWRNLOG("ReLevelNo of different strain than LevelNo in \"%s\" section.", sect_name);
+        }
         // Parse the [missuccessN] sections of loaded file
         done = false;
         sprintf(sect_name, "missuccess%d", missi);
@@ -1829,11 +1875,33 @@ TbBool mission_has_immediate_previous(ushort missi)
     return ((p_missi->Flags & MisF_ImmediatePrevious) != 0);
 }
 
+TbBool mission_has_fail_email_or_triggers(ushort missi)
+{
+    struct Mission *p_missi;
+    p_missi = &mission_list[missi];
+    if (p_missi->FailID != 0)
+        return true;
+    if ((p_missi->FailTrigger[0]|p_missi->FailTrigger[1]|p_missi->FailTrigger[2]) != 0)
+        return true;
+    return false;
+}
+
 TbBool mission_is_final_at_game_end(ushort missi)
 {
     struct Mission *p_missi;
     p_missi = &mission_list[missi];
     return ((p_missi->Flags & MisF_IsFinalMission) != 0);
+}
+
+void missions_clear_bank_tests(void)
+{
+    short missi;
+
+    for (missi = 1; missi < next_mission; missi++)
+    {
+        mission_list[missi].BankTest = 0;
+        mission_list[missi].BankTestFail = 0;
+    }
 }
 
 /******************************************************************************/

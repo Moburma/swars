@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file guitext.h
  *     Header file for guitext.c.
@@ -30,35 +30,52 @@ extern "C" {
 #pragma pack(1)
 
 enum GuiStrings {
+    // Names for network protocols
+    GSTR_NET_PROTO_NAMES = 497,
+    // Extra names for network protocols if modem is in use
+    GSTR_NET_PROTO_MODEM_NAMES = 619,
+    // Name for mission metric
     GSTR_MTR_SCIENTISTS_DEAD = 537,
-    // Per-campaign, name for players cyborgs
-    GSTR_CPG_CYBORG_NOUN_FULL = 608,
-    // Mission metrics
-    GSTR_MTR_MISSION_REF = 611,
-    GSTR_MTR_MISSION_STATUS = 612,
-    GSTR_MTR_OBJCTV_N_COMPL = 613,
-    GSTR_MTR_CITY_NAME = 614,
-    GSTR_MTR_MISS_TIME_ELP = 615,
-    GSTR_MTR_CREDS_NET_GAIN = 616,
-    GSTR_MTR_EFFICIENCY = 617,
-    GSTR_MTR_PERSD_CIVIL = 618,
-    GSTR_MTR_PERSD_MILIT = 619,
-    GSTR_MTR_PERSD_ADVERS = 620,
-    GSTR_MTR_KILLD_CIVIL = 621,
-    GSTR_MTR_KILLD_MILIT = 622,
-    GSTR_MTR_KILLD_ADVERS = 623,
-    GSTR_MTR_CYBORGS_LOST = 624,
-    GSTR_MTR_LAST_CITY_NAME = 629,
-    GSTR_MTR_CYBORGS_GAIN = 630,
-    GSTR_MTR_RESEARCH_DONE = 631,
-    GSTR_MTR_CREDS_EXPENDIT = 632,
-    GSTR_MTR_CREDS_INCOME = 633,
+    // Names for mission status values
+    GSTR_ENM_MISSION_STATUS = 634,
+    // Chunk of a sentence to put before mission status
+    GSTR_CHK_MISSION_STA_PRE = 638,
+    // Chunk of a sentence to put after mission status to tell about exit keys
+    GSTR_CHK_MISSION_STA_SUF_KEYS = 639,
     // Names for mods, per type
     GSTR_MOD_EPIDERMIS = 645,
-    // Group: Network messages - 1950..1999
+    // Group: Names of control actions assignable to keys - 800..849
+    GSTR_SYS_GAME_KEYS = 799,
+    // Group: Mission metrics - 900..949
+    // Metrics on mission debrief screen
+    GSTR_MTR_MISSION_REF = 901,
+    GSTR_MTR_MISSION_STATUS = 902,
+    GSTR_MTR_OBJCTV_N_COMPL = 903,
+    GSTR_MTR_CITY_NAME = 904,
+    GSTR_MTR_MISS_TIME_ELP = 905,
+    GSTR_MTR_CREDS_NET_GAIN = 906,
+    GSTR_MTR_EFFICIENCY = 907,
+    GSTR_MTR_PERSD_CIVIL = 908,
+    GSTR_MTR_PERSD_MILIT = 909,
+    GSTR_MTR_PERSD_ADVERS = 910,
+    GSTR_MTR_KILLD_CIVIL = 911,
+    GSTR_MTR_KILLD_MILIT = 912,
+    GSTR_MTR_KILLD_ADVERS = 913,
+    GSTR_MTR_CYBORGS_LOST = 914,
+    GSTR_MTR_LAST_CITY_NAME = 919,
+    GSTR_MTR_CYBORGS_GAIN = 920,
+    GSTR_MTR_RESEARCH_DONE = 921,
+    GSTR_MTR_CREDS_EXPENDIT = 922,
+    GSTR_MTR_CREDS_INCOME = 923,
+    // Group: Network messages - 950..999
     // Network messages during mission
-    GSTR_NET_LEFT_GAME = 1960,
-    GSTR_NET_HOSQ_QUIT = 1961,
+    GSTR_NET_LEFT_GAME = 960,
+    GSTR_NET_HOST_QUIT = 961,
+    // Group: Per-campaign names - 1000..1099
+    // Campaign name
+    GSTR_CPG_CAMPAIGN_NAME = 999,
+    // Name for players cyborgs
+    GSTR_CPG_CYBORG_NOUN_FULL = 1000,
 };
 
 #pragma pack()
@@ -79,9 +96,6 @@ const char *loctext_to_gtext(const char *ltext);
 
 void read_strings_file(void);
 TbBool create_strings_list(char **strings, char *strings_data, char *strings_data_end);
-
-TbBool flashy_draw_text(int x, int y, const char *text, ubyte speed,
-  int top_line, short *textpos, int cyan_flag);
 
 /******************************************************************************/
 #ifdef __cplusplus

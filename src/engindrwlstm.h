@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file engindrwlstm.h
  *     Header file for engindrwlstm.c.
@@ -25,7 +25,6 @@
 extern "C" {
 #endif
 /******************************************************************************/
-
 #pragma pack(1)
 
 struct FloorTile;

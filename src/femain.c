@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file femain.c
  *     Front-end desktop and menu system, login screen.
@@ -27,11 +27,13 @@
 #include "bfmouse.h"
 #include "bfutility.h"
 #include "bflib_joyst.h"
+#include "ssampply.h"
 
 #include "app_gentab.h"
 #include "app_sprite.h"
 #include "campaign.h"
 #include "display.h"
+#include "feappbar.h"
 #include "febrief.h"
 #include "fecntrls.h"
 #include "fecryo.h"
@@ -45,12 +47,14 @@
 #include "guiboxes.h"
 #include "guitext.h"
 #include "game_data.h"
+#include "game_options.h"
 #include "game_save.h"
 #include "game_speed.h"
 #include "game_sprts.h"
 #include "game.h"
 #include "keyboard.h"
 #include "network.h"
+#include "packetfe.h"
 #include "player.h"
 #include "purpldrw.h"
 #include "purpldrwlst.h"
@@ -61,9 +65,6 @@
 /******************************************************************************/
 #define SYSMNU_BUTTONS_COUNT 6
 
-#define PURPLE_APPS_EMAIL_ICONS_LIMIT 10
-
-extern struct ScreenTextBox heading_box;
 extern struct ScreenButton sysmnu_buttons[SYSMNU_BUTTONS_COUNT];
 extern char options_title_text[];
 
@@ -77,27 +78,13 @@ extern struct ScreenButton alert_OK_button;
 
 extern struct ScreenTextBox loading_INITIATING_box;
 
-extern struct TbSprite *fe_icons_sprites;
-
-extern ubyte byte_155124[];
-extern ubyte byte_15512C[];
-
 extern ubyte research_curr_wep_daily_done;
 extern ubyte research_curr_mod_daily_done;
 extern ubyte byte_1C497D;
-extern ubyte byte_1C497E;
 extern ubyte month_days[12];
 
-extern ubyte byte_1C497F;
-extern ubyte byte_1C4980;
-extern ubyte byte_1C4984[];
-extern short word_1C498A;
-extern ubyte byte_1C498C;
 extern ubyte enter_game;
 
-extern short word_1C6F3E;
-extern short word_1C6F40;
-extern ubyte mo_from_agent;
 extern char alert_text[200];
 extern short alert_textpos;
 
@@ -291,16 +278,21 @@ ubyte main_do_login_1(ubyte click)
     return 1;
 }
 
+void skip_flashy_draw_main_screen_boxes(void)
+{
+    main_quit_button.Flags |= GBxFlg_Unkn0002;
+    main_load_button.Flags |= GBxFlg_Unkn0002;
+    main_login_button.Flags |= GBxFlg_Unkn0002;
+    main_map_editor_button.Flags |= GBxFlg_Unkn0002;
+}
+
 void show_main_screen(void)
 {
     if ((game_projector_speed && (main_quit_button.Flags & GBxFlg_Unkn0001)) ||
       (is_key_pressed(KC_SPACE, KMod_DONTCARE) && !edit_flag))
     {
         clear_key_pressed(KC_SPACE);
-        main_quit_button.Flags |= GBxFlg_Unkn0002;
-        main_load_button.Flags |= GBxFlg_Unkn0002;
-        main_login_button.Flags |= GBxFlg_Unkn0002;
-        main_map_editor_button.Flags |= GBxFlg_Unkn0002;
+        skip_flashy_draw_main_screen_boxes();
     }
     //main_quit_button.DrawFn(&main_quit_button); -- incompatible calling convention
     asm volatile ("call *%1\n"
@@ -445,7 +437,7 @@ void set_flag01_alert_screen_boxes(void)
     alert_OK_button.Flags |= GBxFlg_Unkn0001;
 }
 
-void set_flag02_sysmenu_boxes(void)
+void skip_flashy_draw_sysmenu_boxes(void)
 {
     int i;
 
@@ -468,54 +460,74 @@ void alert_box_text_fmt(const char *fmt, ...)
     va_end(val);
 }
 
-ubyte show_title_box(struct ScreenTextBox *box)
+ubyte show_title_box(struct ScreenTextBox *p_box)
 {
+#if 0
     ubyte ret;
     asm volatile ("call ASM_show_title_box\n"
-        : "=r" (ret) : "a" (box));
+        : "=r" (ret) : "a" (p_box));
     return ret;
+#endif
+    short scr_x, scr_y;
+    short tx_width, tx_height;
+    ubyte cyan;
+
+    if (((p_box->Flags & 0x0080) != 0) && (p_box->Timer != 255))
+    {
+        p_box->TextFadePos = -5;
+        p_box->Flags &= ~0x0080;
+    }
+    if (p_box->Text == NULL)
+        return 1;
+
+    lbFontPtr = p_box->Font;
+    cyan = (lbFontPtr == med2_font);
+    tx_width = my_string_width(p_box->Text);
+    tx_height = font_height('A');
+    scr_x = p_box->X + ((p_box->Width - tx_width) >> 1);
+    scr_y = p_box->Y + ((p_box->Height - tx_height) >> 1);
+    my_set_text_window(scr_x, scr_y, p_box->Width, p_box->Height);
+
+    return flashy_draw_text(0, 0, p_box->Text, p_box->TextSpeed,
+           p_box->TextTopLine, &p_box->TextFadePos, cyan);
 }
 
 void show_sysmenu_screen(void)
 {
-#if 0
-    asm volatile ("call ASM_show_sysmenu_screen\n"
-        :  :  : "eax" );
-    return;
-#endif
     int i;
     ubyte sysscrn_no;
     ubyte drawn;
     ubyte v2;
 
-    if ((game_projector_speed && is_sys_scr_shared_header_flag01()) || (lbKeyOn[KC_SPACE] && !edit_flag))
+    if ((game_projector_speed && is_sys_scr_shared_header_flag01()) ||
+      (is_key_pressed(KC_SPACE, KMod_DONTCARE) && !edit_flag))
     {
-        lbKeyOn[KC_SPACE] = 0;
+        clear_key_pressed(KC_SPACE);
 
-        set_flag02_sysmenu_boxes();
-        set_flag02_sys_scr_shared_boxes();
+        skip_flashy_draw_sysmenu_boxes();
+        skip_flashy_draw_sys_scr_shared_boxes();
         switch (game_system_screen)
         {
-        case 1:
-            set_flag02_net_screen_boxes();
+        case SySc_NETGAME:
+            skip_flashy_draw_net_screen_boxes();
             break;
-        case 2:
-            set_flag02_storage_screen_boxes();
+        case SySc_STORAGE:
+            skip_flashy_draw_storage_screen_boxes();
             break;
-        case 3:
-            set_flag02_controls_screen_boxes();
+        case SySc_CONTROLS:
+            skip_flashy_draw_controls_screen_boxes();
             break;
-        case 4:
-            set_flag02_audio_screen_boxes();
+        case SySc_AUDIO_OPTS:
+            skip_flashy_draw_audio_screen_boxes();
             break;
-        case 5:
-            set_flag02_gfx_screen_boxes();
+        case SySc_GFX_OPTS:
+            skip_flashy_draw_gfx_screen_boxes();
             break;
         }
     }
 
     v2 = 1;
-    sysscrn_no = 0;
+    sysscrn_no = SySc_NONE;
     if (enter_game) {
         sysscrn_no = game_system_screen;
         enter_game = 0;
@@ -528,7 +540,7 @@ void show_sysmenu_screen(void)
     {
         for (i = 0; i < SYSMNU_BUTTONS_COUNT; i++)
         {
-            if (((ingame.Flags & 0x0010) != 0) && (i == 1 || i == 2))
+            if (((ingame.Flags & GamF_MortalGame) != 0) && (i == 1 || i == 2))
                 continue;
             if (restore_savegame && i < 5)
                 continue;
@@ -542,26 +554,26 @@ void show_sysmenu_screen(void)
                 enter_game = 0;
             }
         }
-        if (v2 && (game_system_screen != 0) && (game_system_screen < 6))
+        if (v2 && (game_system_screen != SySc_NONE) && (game_system_screen < SySc_TYPES_COUNT))
         {
             drawn = show_sys_scr_shared_header();
-            if (drawn && (game_system_screen - 1) <= 4)
+            if (drawn)
             {
                 switch (game_system_screen)
                 {
-                case 1:
+                case SySc_NETGAME:
                     show_netgame_unkn_case1();
                     break;
-                case 2:
+                case SySc_STORAGE:
                     show_storage_screen();
                     break;
-                case 3:
+                case SySc_CONTROLS:
                     show_options_controls_screen();
                     break;
-                case 4:
+                case SySc_AUDIO_OPTS:
                     show_options_audio_screen();
                     break;
-                case 5:
+                case SySc_GFX_OPTS:
                     show_options_visual_screen();
                     break;
                 }
@@ -569,7 +581,7 @@ void show_sysmenu_screen(void)
         }
     }
 
-    if (sysscrn_no)
+    if (sysscrn_no != SySc_NONE)
     {
         game_system_screen = sysscrn_no;
         unkn13_SYSTEM_button.Flags &= ~(GBxFlg_TextCopied|GBxFlg_BkCopied);
@@ -577,33 +589,33 @@ void show_sysmenu_screen(void)
         update_sys_scr_shared_header(sysscrn_no);
         if (game_projector_speed)
         {
-            set_flag02_sys_scr_shared_boxes();
+            skip_flashy_draw_sys_scr_shared_boxes();
         }
         switch (game_system_screen)
         {
-        case 1:
+        case SySc_NETGAME:
             game_projector_speed = 1;
             reset_net_screen_boxes_flags();
             set_flag01_net_screen_boxes();
             break;
-        case 2:
+        case SySc_STORAGE:
             save_slot_base = 0;
             load_save_slot_names();
             reset_storage_screen_boxes_flags();
             break;
-        case 3:
+        case SySc_CONTROLS:
             reset_controls_screen_boxes_flags();
             break;
-        case 4:
+        case SySc_AUDIO_OPTS:
             reset_options_audio_boxes_flags();
             break;
-        case 5:
-            reset_options_visual_boxes_flags();
+        case SySc_GFX_OPTS:
+            reset_options_gfx_boxes_flags();
             break;
-        case 6:
-            if (login_control__State == 5)
+        case SySc_LOGOUT:
+            if (login_control__State == LognCt_Unkn5)
             {
-                network_players[LbNetworkPlayerNumber()].Type = 13;
+                net_schedule_local_player_logout();
                 byte_15516D = -1;
                 byte_15516C = -1;
                 switch_net_screen_boxes_to_initiate();
@@ -614,8 +626,8 @@ void show_sysmenu_screen(void)
                 restore_savegame = 0;
                 sysmnu_buttons[5].Y += 150;
             }
-            game_system_screen = 0;
-            if ((ingame.Flags & 0x0010) != 0)
+            game_system_screen = SySc_NONE;
+            if ((ingame.Flags & GamF_MortalGame) != 0)
                 save_game_write(0, save_active_desc);
             break;
         }
@@ -718,7 +730,7 @@ TbBool is_heading_flag01(void)
     return (heading_box.Flags & GBxFlg_Unkn0001) != 0;
 }
 
-void set_flag02_heading_screen_boxes(void)
+void skip_flashy_draw_heading_screen_boxes(void)
 {
     heading_box.Flags |= GBxFlg_Unkn0002;
 }
@@ -819,8 +831,8 @@ void global_date_inputs(void)
 {
     if ((ingame.UserFlags & UsrF_Cheats) != 0)
     {
-        if (lbKeyOn[KC_PERIOD]) {
-            lbKeyOn[KC_PERIOD] = 0;
+        if (is_key_pressed(KC_PERIOD, KMod_DONTCARE)) {
+            clear_key_pressed(KC_PERIOD);
             ingame.Credits += 10000;
         }
     }
@@ -1015,12 +1027,12 @@ static void global_techlevel_box_draw(void)
     draw_text_purple_list2(3, 3, text, 0);
 }
 
-void show_date_time(void)
+void show_purple_status_top_bar(void)
 {
     global_date_box_draw();
     global_time_box_draw();
 
-    if (login_control__State == 5)
+    if (login_control__State == LognCt_Unkn5)
     {
         global_citydrop_box_draw();
         global_techlevel_box_draw();
@@ -1056,548 +1068,9 @@ void mark_system_menu_screen_boxes_redraw(void)
     unkn13_SYSTEM_button.Flags &= ~(GBxFlg_BkgndDrawn|GBxFlg_TextRight|GBxFlg_BkCopied);
 }
 
-void draw_app_icon_hilight(short x, short y, ubyte iconid, ubyte aframe)
-{
-    struct TbSprite *spr;
-
-    lbDisplay.DrawFlags |= 0x8000;
-    spr = &fe_icons_sprites[aframe + byte_155124[iconid] + byte_15512C[iconid]];
-    draw_sprite_purple_list(x, y, spr);
-    lbDisplay.DrawFlags = 0;
-    spr = &fe_icons_sprites[aframe + byte_155124[iconid]];
-    draw_sprite_purple_list(x, y, spr);
-    lbDisplay.DrawFlags = 0;
-}
-
-void draw_app_icon_normal(short x, short y, ubyte iconid, ubyte aframe)
-{
-    struct TbSprite *spr;
-
-    lbDisplay.DrawFlags |= 0x8000;
-    spr = &fe_icons_sprites[aframe + byte_155124[iconid] + byte_15512C[iconid]];
-    draw_sprite_purple_list(x, y, spr);
-    lbDisplay.DrawFlags = 0;
-}
-
-void draw_unread_email_icon(short x, short y, ubyte aframe)
-{
-    struct TbSprite *spr;
-
-    lbDisplay.DrawFlags |= 0x8000;
-    switch (aframe)
-    {
-    case 1:
-        spr = &fe_icons_sprites[79];
-        draw_sprite_purple_list(x, y, spr);
-        break;
-    case 2:
-        play_sample_using_heap(0, 112, 127, 64, 100, 0, 1);
-        // fall through
-    case 3:
-    case 4:
-    case 5:
-        spr = &fe_icons_sprites[77 + aframe];
-        draw_sprite_purple_list(x, y, spr);
-        lbDisplay.DrawFlags = 0;
-        spr = &fe_icons_sprites[96 + aframe];
-        draw_sprite_purple_list(x, y, spr);
-        break;
-    case 6:
-        spr = &fe_icons_sprites[82];
-        draw_sprite_purple_list(x, y, spr);
-        lbDisplay.DrawFlags = 0;
-        break;
-    default:
-        break;
-    }
-    lbDisplay.DrawFlags = 0;
-}
-
 TbBool is_purple_alert_on_top(void)
 {
     return (screentype == SCRT_ALERTBOX);
-}
-
-TbBool is_purple_apps_selection_bar_visible(void)
-{
-    return (screentype != SCRT_MAINMENU) && (screentype != SCRT_LOGIN) && !restore_savegame;
-}
-
-void draw_purple_app_utility_icon(short cx, short cy, short iconid)
-{
-    struct TbSprite *spr;
-
-    spr = &fe_icons_sprites[byte_155124[iconid]];
-    if (mouse_move_over_rect(cx, cx + 1 + spr->SWidth, cy, cy + 1 + spr->SHeight))
-    {
-        if ((byte_1C497E & (1 << iconid)) == 0) {
-            byte_1C497E |= (1 << iconid);
-            play_sample_using_heap(0, 123, 127, 64, 100, 0, 1);
-        }
-        lbDisplay.DrawFlags = Lb_SPRITE_TRANSPAR4;
-        // If clicked, draw the icon without transparency
-        if (lbDisplay.MLeftButton || (joy.Buttons[0] && !net_unkn_pos_02))
-        {
-            lbDisplay.DrawFlags = 0;
-        }
-        if (lbDisplay.MRightButton || (joy.Buttons[0] && !net_unkn_pos_02))
-        {
-            lbDisplay.DrawFlags = 0;
-        }
-        draw_app_icon_hilight(cx, cy, iconid, byte_1C4984[iconid]);
-        byte_1C4984[iconid]++;
-        if (byte_1C4984[iconid] == byte_15512C[iconid])
-            byte_1C4984[iconid] = 0;
-    }
-    else
-    {
-        byte_1C497E &= ~(1 << iconid);
-        lbDisplay.DrawFlags = Lb_SPRITE_TRANSPAR4;
-        draw_app_icon_normal(cx, cy, iconid, byte_1C4984[iconid]);
-        if (byte_1C4984[iconid])
-        {
-            byte_1C4984[iconid]++;
-            if (byte_1C4984[iconid] == byte_15512C[iconid])
-                byte_1C4984[iconid] = 0;
-        }
-        if (word_1C498A == 2 * (iconid + 1)
-            || word_1C498A == 2 * (iconid + 1) + 1)
-            word_1C498A = 0;
-    }
-    lbDisplay.DrawFlags = 0;
-}
-
-TbBool get_purple_app_utility_icon_inputs(short cx, short cy, short iconid)
-{
-    struct TbSprite *spr;
-
-    spr = &fe_icons_sprites[byte_155124[iconid]];
-    if (mouse_move_over_rect(cx, cx + 1 + spr->SWidth, cy, cy + 1 + spr->SHeight))
-    {
-        if (lbDisplay.MLeftButton || (joy.Buttons[0] && !net_unkn_pos_02))
-        {
-            lbDisplay.LeftButton = 0;
-            word_1C498A = 2 * (iconid + 1);
-        }
-        else if (word_1C498A == 2 * (iconid + 1) + 0)
-        {
-            if (mo_weapon != -1 && mo_weapon == research.CurrentWeapon)
-            {
-                player_cryo_remove_weapon_one(mo_from_agent, mo_weapon + 1);
-                research_unkn_func_003();
-                mo_weapon = -1;
-            }
-            else
-            {
-                change_screen = iconid + 1;
-                play_sample_using_heap(0, 111, 127, 64, 100, 0, 2);
-            }
-            word_1C498A = 0;
-        }
-
-        if (lbDisplay.MRightButton || (joy.Buttons[0] && !net_unkn_pos_02))
-        {
-            lbDisplay.RightButton = 0;
-            word_1C498A = 2 * (iconid + 1) + 1;
-        }
-        else if (word_1C498A == 2 * (iconid + 1) + 1)
-        {
-            change_screen = iconid + 1;
-            play_sample_using_heap(0, 111, 127, 64, 100, 0, 2);
-
-            word_1C498A = 0;
-        }
-    }
-    // If not mouse over, make sure to clear the state
-    else if (word_1C498A == 2 * (iconid + 1) + 0)
-        word_1C498A = 0;
-    else if (word_1C498A == 2 * (iconid + 1) + 1)
-        word_1C498A = 0;
-
-    return false;
-}
-
-void draw_purple_app_unread_email_icon(short cx, short cy)
-{
-    struct TbSprite *spr;
-
-    spr = &fe_icons_sprites[79];
-    if ((lbKeyOn[KC_RETURN]
-        && ((game_system_screen != SCRT_WORLDMAP && game_system_screen != SCRT_MISSION)
-            || screentype != SCRT_SYSMENU) && !edit_flag)
-        || mouse_move_over_rect(cx, cx + 1 + spr->SWidth, cy, cy + 1 + spr->SHeight))
-    {
-        if (!byte_1C4980 && !lbKeyOn[KC_RETURN])
-        {
-            byte_1C4980 = 1;
-            play_sample_using_heap(0, 123, 127, 64, 100, 0, 1);
-        }
-        lbDisplay.DrawFlags = Lb_SPRITE_TRANSPAR4;
-        // If clicked, draw the icon without transparency
-        if (lbDisplay.MLeftButton || (joy.Buttons[0] && !net_unkn_pos_02))
-        {
-            lbDisplay.DrawFlags = 0;
-        }
-        draw_unread_email_icon(cx, cy, byte_1C498C);
-        if (gameturn & 1)
-        {
-            if (++byte_1C498C > 5)
-                byte_1C498C = 2;
-        }
-    }
-    else
-    {
-        byte_1C4980 = 0;
-        lbDisplay.DrawFlags = Lb_SPRITE_TRANSPAR4;
-        draw_unread_email_icon(cx, cy, byte_1C498C);
-        if (gameturn & 1)
-        {
-            if (++byte_1C498C > 6)
-                byte_1C498C = 0;
-        }
-    }
-    lbDisplay.DrawFlags = 0;
-}
-
-TbBool get_purple_app_unread_email_icon_inputs(short cx, short cy)
-{
-    struct TbSprite *spr;
-    const char *subtext;
-
-    spr = &fe_icons_sprites[79];
-    if ((lbKeyOn[KC_RETURN]
-        && ((game_system_screen != SCRT_WORLDMAP && game_system_screen != SCRT_MISSION)
-            || screentype != SCRT_SYSMENU) && !edit_flag)
-        || mouse_move_over_rect(cx, cx + 1 + spr->SWidth, cy, cy + 1 + spr->SHeight))
-    {
-        if (lbDisplay.MLeftButton || (joy.Buttons[0] && !net_unkn_pos_02))
-        {
-            lbDisplay.LeftButton = 0;
-            word_1C498A = 50;
-        }
-        else
-        {
-            if (word_1C498A == 50 || lbKeyOn[KC_RETURN])
-            {
-                word_1C498A = 0;
-                lbKeyOn[KC_RETURN] = 0;
-                if (!is_purple_alert_on_top())
-                {
-                    if (activate_queued_mail() == 1)
-                    {
-                        word_1C6F40 = next_brief - 5;
-                        if (word_1C6F40 < 0)
-                            word_1C6F40 = 0;
-                        open_brief = next_brief;
-                        change_screen = ChSCRT_MISSION;
-                        subtext = gui_strings[372];
-                    }
-                    else
-                    {
-                        word_1C6F3E = next_email - 4;
-                        if (word_1C6F3E < 0)
-                            word_1C6F3E = 0;
-                        change_screen = ChSCRT_MISSION;
-                        subtext = gui_strings[373];
-                        open_brief = -next_email;
-                    }
-                    set_heading_box_text(subtext);
-                    play_sample_using_heap(0, 111, 127, 64, 100, 0, 2);
-                    if (new_mail)
-                    {
-                        play_sample_using_heap(0,
-                          119 + (LbRandomAnyShort() % 3), 127, 64, 100, 0, 3);
-                    }
-                    else
-                    {
-                        byte_1C4980 = new_mail;
-                    }
-                }
-            }
-        }
-    }
-    // If not mouse over, make sure to clear the state
-    else if (word_1C498A == 50)
-        word_1C498A = 0;
-
-    return false;
-}
-
-void draw_purple_app_email_icon(short cx, short cy, short bri)
-{
-    struct TbSprite *spr;
-    char locstr[48];
-    const char *text;
-    short iconid;
-    short tx;
-
-    iconid = bri - word_1C6F40;
-    lbDisplay.DrawFlags = Lb_SPRITE_TRANSPAR4;
-    spr = &fe_icons_sprites[102];
-    if (mouse_move_over_rect(cx, cx + spr->SWidth + 1, cy,
-        cy + 1 + spr->SHeight))
-    {
-        if ((byte_1C497F & (1 << iconid)) == 0)
-        {
-            byte_1C497F |= (1 << iconid);
-            play_sample_using_heap(0, 123, 127, 64, 100, 0, 1u);
-        }
-        // If clicked, draw the icon without transparency
-        if (lbDisplay.MLeftButton || (joy.Buttons[0] && !net_unkn_pos_02))
-        {
-            lbDisplay.DrawFlags = 0;
-        }
-        lbDisplay.DrawFlags |= 0x8000;
-        draw_sprite_purple_list(cx, cy, spr);
-        lbDisplay.DrawFlags = 0;
-    }
-    else
-    {
-        byte_1C497F &= ~(1 << iconid);
-        lbDisplay.DrawFlags |= 0x8000;
-        draw_sprite_purple_list(cx, cy, spr);
-        lbDisplay.DrawFlags &= ~0x8000;
-    }
-    lbFontPtr = small2_font;
-    lbDisplay.DrawColour = 87;
-    if (mission_remain_until_success(brief_store[bri].Mission))
-        lbDisplay.DrawFlags |= Lb_TEXT_ONE_COLOR;
-    my_set_text_window(cx, cy, spr->SWidth + 2, spr->SHeight);
-    draw_text_purple_list2(8, 3, misc_text[4], 0);
-
-    lbFontPtr = med2_font;
-    sprintf(locstr, "%d", brief_store[bri].RefNum);
-    text = loctext_to_gtext(locstr);
-    tx = (35 - LbTextStringWidth(locstr)) >> 1;
-    draw_text_purple_list2(tx, 10, text, 0);
-
-    lbFontPtr = small2_font;
-    sprintf(locstr, "%02d/%02d", (int) brief_store[bri].RecvDay,
-        (int) brief_store[bri].RecvMonth);
-    text = loctext_to_gtext(locstr);
-    tx = (35 - LbTextStringWidth(locstr)) >> 1;
-    draw_text_purple_list2(tx, 23, text, 0);
-
-    sprintf(locstr, "%02dNC", (int) brief_store[bri].RecvYear);
-    text = loctext_to_gtext(locstr);
-    tx = (35 - LbTextStringWidth(locstr)) >> 1;
-    draw_text_purple_list2(tx, 30, text, 0);
-
-    draw_text_purple_list2(4, 37, gui_strings[375], 0);
-    lbDisplay.DrawFlags = 0;
-}
-
-TbBool get_purple_app_email_icon_inputs(short cx, short cy, short bri)
-{
-    struct TbSprite *spr;
-
-    spr = &fe_icons_sprites[102];
-    if (mouse_move_over_rect(cx, cx + spr->SWidth + 1, cy,
-        cy + 1 + spr->SHeight))
-    {
-        if (lbDisplay.MLeftButton || (joy.Buttons[0] && !net_unkn_pos_02))
-        {
-            lbDisplay.LeftButton = 0;
-            word_1C498A = 2 * (bri + 1) + 100;
-        }
-        else if (word_1C498A == 2 * (bri + 1) + 100)
-        {
-            change_screen = ChSCRT_MISSION;
-            set_heading_box_text(gui_strings[372]);
-            open_brief = bri + 1;
-            play_sample_using_heap(0, 111, 127, 64, 100, 0, 2);
-
-            word_1C498A = 0;
-        }
-    }
-    // If not mouse over, make sure to clear the state
-    else if (word_1C498A == 2 * (bri + 1) + 100)
-        word_1C498A = 0;
-
-    return false;
-}
-
-TbBool is_purple_apps_utility_space_reserved(short iconid)
-{
-    return  (iconid != ApBar_PANET);
-}
-
-TbBool is_purple_apps_utility_visible(short iconid)
-{
-    // Show research icon only if the player has research facility
-    if ((iconid == ApBar_RESEARCH) && (research.NumBases == 0))
-        return false;
-
-    if (login_control__State == 5)
-    {
-        TbBool visible;
-
-        if (is_unkn_current_player()) {
-            visible = (iconid != ApBar_PANET && iconid != ApBar_RESEARCH);
-        } else {
-            visible = (iconid != ApBar_PANET &&
-              iconid != ApBar_WORLDMAP &&
-              iconid != ApBar_RESEARCH);
-        }
-        if ((unkn_flags_08 & 0x02) == 0 || (unkn_flags_08 & 0x01) == 0)
-            visible = (iconid == ApBar_SYSTEM);
-        return visible;
-    }
-
-    // Completely hide Public Access Network icon
-    return (iconid != ApBar_PANET);
-}
-
-/** Show a collection of icons at bottom of the screen.
- */
-void show_purple_apps_selection_bar(void)
-{
-#if 0
-    asm volatile ("call ASM_show_purple_apps_selection_bar\n"
-        :  :  : "eax" );
-    return;
-#endif
-    ushort bri;
-    short iconid;
-    short cx, cy;
-
-    // Show utility icons in bottom left
-    cx = global_apps_bar_box.X;
-    cy = global_apps_bar_box.Y;
-
-    for (iconid = 0; iconid < 6; iconid++)
-    {
-        if (is_purple_apps_utility_visible(iconid))
-        {
-            draw_purple_app_utility_icon(cx, cy, iconid);
-        }
-        if (is_purple_apps_utility_space_reserved(iconid))
-        {
-            struct TbSprite *spr;
-            spr = &fe_icons_sprites[byte_155124[iconid]];
-            cx += spr->SWidth + 3;
-        }
-    }
-
-    // Show unread mail notification icon
-    if (new_mail
-        && (game_system_screen != SCRT_MISSION || screentype != SCRT_SYSMENU))
-    {
-        draw_purple_app_unread_email_icon(cx, cy);
-    }
-
-    // Show email icons in bottom right
-    {
-        struct TbSprite *spr;
-        spr = &fe_icons_sprites[102];
-        cx = global_apps_bar_box.X + global_apps_bar_box.Width - spr->SWidth;
-    }
-
-    for (bri = word_1C6F40; bri < next_brief; bri++)
-    {
-        if (bri >= word_1C6F40 + PURPLE_APPS_EMAIL_ICONS_LIMIT)
-            break;
-
-        draw_purple_app_email_icon(cx, cy, bri);
-
-        {
-            struct TbSprite *spr;
-            spr = &fe_icons_sprites[102];
-            cx -= spr->SWidth + 3;
-        }
-    }
-}
-
-TbBool input_purple_apps_selection_bar(void)
-{
-    short iconid;
-    ushort bri;
-    short cx, cy;
-
-    // Get inputs from utility icons in bottom left
-    cx = global_apps_bar_box.X;
-    cy = global_apps_bar_box.Y;
-
-    for (iconid = 0; iconid < 6; iconid++)
-    {
-        if (is_purple_apps_utility_visible(iconid))
-        {
-            if (!is_purple_alert_on_top())
-                get_purple_app_utility_icon_inputs(cx, cy, iconid);
-        }
-        if (is_purple_apps_utility_space_reserved(iconid))
-        {
-            struct TbSprite *spr;
-            spr = &fe_icons_sprites[byte_155124[iconid]];
-            cx += spr->SWidth + 3;
-        }
-    }
-
-    // Get inputs from unread mail notification icon
-    if (new_mail
-        && (game_system_screen != SCRT_MISSION || screentype != SCRT_SYSMENU))
-    {
-        get_purple_app_unread_email_icon_inputs(cx, cy);
-    }
-
-    // Get inputs from email icons in bottom right
-    {
-        struct TbSprite *spr;
-        spr = &fe_icons_sprites[102];
-        cx = global_apps_bar_box.X + global_apps_bar_box.Width - spr->SWidth;
-    }
-
-    for (bri = word_1C6F40; bri < next_brief; bri++)
-    {
-        if (bri >= word_1C6F40 + PURPLE_APPS_EMAIL_ICONS_LIMIT)
-            break;
-
-        get_purple_app_email_icon_inputs(cx, cy, bri);
-
-        {
-            struct TbSprite *spr;
-            spr = &fe_icons_sprites[102];
-            cx -= spr->SWidth + 3;
-        }
-    }
-
-    if (!net_unkn_pos_01b)
-    {
-        if (lbKeyOn[KC_F1])
-        {
-            lbKeyOn[KC_F1] = 0;
-            change_screen = ChSCRT_SYSMENU;
-        }
-        if (lbKeyOn[KC_F2])
-        {
-            lbKeyOn[KC_F2] = 0;
-            change_screen = ChSCRT_WORLDMAP;
-        }
-        if (lbKeyOn[KC_F3])
-        {
-            lbKeyOn[KC_F3] = 0;
-            change_screen = ChSCRT_CRYO;
-        }
-        if (lbKeyOn[KC_F4])
-        {
-            lbKeyOn[KC_F4] = 0;
-            change_screen = ChSCRT_EQUIP;
-        }
-        if (lbKeyOn[KC_F5])
-        {
-            lbKeyOn[KC_F5] = 0;
-            if (research.NumBases > 0)
-                change_screen = ChSCRT_RESEARCH;
-        }
-        if (lbKeyOn[KC_F6])
-        {
-            lbKeyOn[KC_F6] = 0;
-            if (open_brief != 0)
-                change_screen = ChSCRT_MISSION;
-        }
-    }
-
-    return false;
 }
 
 void init_global_boxes(void)
@@ -1608,26 +1081,30 @@ void init_global_boxes(void)
     start_x = (scr_w - global_top_bar_box.Width) / 2;
     global_top_bar_box.X = start_x;
     global_top_bar_box.Y = 4;
-    start_x = (scr_w - global_apps_bar_box.Width) / 2;
-    global_apps_bar_box.X = start_x;
-    global_apps_bar_box.Y = lbDisplay.GraphicsWindowHeight - global_apps_bar_box.Height;
+
+    init_global_app_bar_box();
+}
+
+void skip_flashy_draw_loading_screen_boxes(void)
+{
+    loading_INITIATING_box.Flags |= GBxFlg_Unkn0002;
 }
 
 void show_mission_loading_screen(void)
 {
     LbMouseChangeSprite(0);
     reload_background();
-    play_sample_using_heap(0, 118, 127, 64, 100, 0, 3);
+    play_sample_using_heap(0, 118, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
 
     ulong finished = 0; // Amount of frames after the drawing animation finished
     do
     {
         memcpy(lbDisplay.WScreen, back_buffer, lbDisplay.GraphicsScreenWidth * lbDisplay.GraphicsScreenHeight);
         text_buf_pos = lbDisplay.GraphicsScreenWidth * lbDisplay.GraphicsScreenHeight;
-        if ((0 != game_projector_speed && (loading_INITIATING_box.Flags & GBxFlg_Unkn0001))
+        if ((game_projector_speed && (loading_INITIATING_box.Flags & GBxFlg_Unkn0001))
           || (is_key_pressed(KC_SPACE, KMod_DONTCARE) && !edit_flag)) {
             clear_key_pressed(KC_SPACE);
-            loading_INITIATING_box.Flags |= GBxFlg_Unkn0002;
+            skip_flashy_draw_loading_screen_boxes();
         }
         //loading_INITIATING_box.DrawFn(&loading_INITIATING_box); -- incompatible calling convention
         asm volatile ("call *%1\n"
@@ -1643,19 +1120,6 @@ void show_mission_loading_screen(void)
 
     loading_INITIATING_box.Flags = GBxFlg_Unkn0001;
     wait_for_sound_sample_finish(118);
-}
-
-TbResult load_small_font_for_current_purple_mode(void)
-{
-    PathInfo *pinfo;
-    short max_detail;
-    TbResult ret;
-
-    max_detail = 0;//UNKN_sprites_scale / 2;
-    pinfo = &game_dirs[DirPlace_Data];
-    ret = load_sprites_small_font_up_to(pinfo->directory, max_detail);
-    setup_sprites_small_font();
-    return ret;
 }
 
 TbResult load_mapout(ubyte **pp_buf, const char *dir)
@@ -1697,59 +1161,65 @@ TbResult load_mapout(ubyte **pp_buf, const char *dir)
     return ret;
 }
 
-TbResult init_read_all_sprite_files(void)
+TbResult load_all_sprites_purple_mode(void)
 {
     PathInfo *pinfo;
     ubyte *p_buf;
     TbResult tret, ret;
+    short max_detail;
 
+    max_detail = 0;//UNKN_sprites_scale / 2;
     p_buf = (ubyte *)&purple_draw_list[750];
     tret = Lb_OK;
 
     pinfo = &game_dirs[DirPlace_LangData];
 
-    ret = load_sprites_fe_icons(&p_buf, pinfo->directory, 0, 1);
+    ret = load_sprites_fe_icons(&p_buf, pinfo->directory, 0, max_detail + 1);
     if (tret == Lb_OK)
         tret = ret;
 
     pinfo = &game_dirs[DirPlace_Data];
 
-    ret = load_sprites_wicons(&p_buf, pinfo->directory);
+    ret = load_sprites_wepicons(&p_buf, pinfo->directory);
     if (tret == Lb_OK)
         tret = ret;
 
-    ret = load_sprites_fepanel(&p_buf, pinfo->directory, 0, 0);
+    ret = load_sprites_fepanel(&p_buf, pinfo->directory, 0, max_detail + 0);
     if (tret == Lb_OK)
         tret = ret;
 
-    ret = load_sprites_fe_mouse_pointers(&p_buf, pinfo->directory, 0, 1);
+    ret = load_sprites_fe_mouse_pointers(&p_buf, pinfo->directory, 0, max_detail + 1);
     if (tret == Lb_OK)
         tret = ret;
 
-    ret = load_sprites_med_font(&p_buf, pinfo->directory, 0, 1);
+    ret = load_sprites_med_font(&p_buf, pinfo->directory, 0, max_detail + 1);
     if (tret == Lb_OK)
         tret = ret;
 
-    ret = load_sprites_big_font(&p_buf, pinfo->directory, 1, 2);
+    ret = load_sprites_big_font(&p_buf, pinfo->directory, 1, max_detail + 2);
     if (tret == Lb_OK)
         tret = ret;
 
-    ret = load_sprites_small_med_font(&p_buf, pinfo->directory, 1, 0);
+    ret = load_sprites_small_med_font(&p_buf, pinfo->directory, 1, max_detail + 0);
     if (tret == Lb_OK)
         tret = ret;
 
-    ret = load_sprites_med2_font(&p_buf, pinfo->directory, 2, 1);
+    ret = load_sprites_med2_font(&p_buf, pinfo->directory, 2, max_detail + 1);
     if (tret == Lb_OK)
         tret = ret;
 
-    ret = load_sprites_small2_font(&p_buf, pinfo->directory, 2, 0);
+    ret = load_sprites_small2_font(&p_buf, pinfo->directory, 2, max_detail + 0);
+    if (tret == Lb_OK)
+        tret = ret;
+
+    ret = load_sprites_small_font_up_to(pinfo->directory, max_detail + 0);
     if (tret == Lb_OK)
         tret = ret;
 
     dword_1C6DE4 = p_buf;
-    p_buf += 24480;
+    p_buf += 255 * 96;
     dword_1C6DE8 = p_buf;
-    p_buf += 24480;
+    p_buf += 255 * 96;
 
     ret = load_mapout(&p_buf, pinfo->directory);
     if (tret == Lb_OK)
@@ -1759,8 +1229,8 @@ TbResult init_read_all_sprite_files(void)
     p_buf += cryo_cyborg_part_buf_max_size();
     back_buffer = p_buf;
 
-    setup_sprites_icons();
-    setup_sprites_wicons();
+    setup_sprites_fe_icons();
+    setup_sprites_wepicons();
     setup_sprites_fepanel();
     setup_sprites_fe_mouse_pointers();
     setup_sprites_small_font();
@@ -1770,6 +1240,10 @@ TbResult init_read_all_sprite_files(void)
     setup_sprites_med2_font();
     setup_sprites_big_font();
 
+    // Clear the network graphics buffers
+    LbMemorySet(dword_1C6DE4, 0, 255 * 96);
+    LbMemorySet(dword_1C6DE8, 0, 255 * 96);
+
     if (tret == Lb_FAIL) {
         LOGERR("Some files were not loaded successfully");
         ingame.DisplayMode = DpM_UNKN_1;
@@ -1777,9 +1251,11 @@ TbResult init_read_all_sprite_files(void)
     return tret;
 }
 
-void init_menu_screen_colors_and_sprites(void)
+void init_purple_mode_colors_and_sprites(void)
 {
-    init_read_all_sprite_files();
+    LOGSYNC("Start");
+
+    load_all_sprites_purple_mode();
     LbMouseChangeSpriteOffset(0, 0);
     LbFileLoadAt("data/s-proj.pal", display_palette);
     // Colour tables should be loaded when we can provide palette data
@@ -1794,5 +1270,8 @@ void init_menu_screen_colors_and_sprites(void)
     LbPaletteSet(display_palette);
     show_black_screen();
     reload_background();
+
+    LOGSYNC("Done");
 }
+
 /******************************************************************************/

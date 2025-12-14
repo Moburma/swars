@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file player.c
  *     Player state and information handling.
@@ -20,15 +20,27 @@
 
 #include <assert.h>
 #include "bfutility.h"
+#include "ssampply.h"
 
+#include "display.h"
 #include "game.h"
+#include "game_options.h"
 #include "guitext.h"
 #include "hud_panel.h"
 #include "people.h"
+#include "sound.h"
 #include "thing.h"
 #include "weapon.h"
 #include "swlog.h"
 /******************************************************************************/
+
+void player_mission_agents_reset(PlayerIdx plyr)
+{
+    PlayerInfo *p_plyr;
+
+    p_plyr = &players[plyr];
+    p_plyr->MissionAgents = 0x0F;
+}
 
 void player_update_from_cryo_agent(ushort cryo_no, PlayerInfo *p_player, ushort plagent)
 {
@@ -134,14 +146,14 @@ void player_agents_init_prev_weapon(PlayerIdx plyr)
     for (plagent = 0; plagent < playable_agents; plagent++)
     {
         struct Thing *p_agent;
-        ushort weptype;
+        WeaponType wtype;
 
         p_agent = p_locplayer->MyAgent[plagent];
         if (p_agent->Type == TT_PERSON)
-            weptype = find_nth_weapon_held(p_agent->ThingOffset, 1);
+            wtype = find_nth_weapon_held(p_agent->ThingOffset, 1);
         else
-            weptype = WEP_NULL;
-        p_locplayer->PrevWeapon[plagent] = weptype;
+            wtype = WEP_NULL;
+        p_locplayer->PrevWeapon[plagent] = wtype;
     }
     for (; plagent < AGENTS_SQUAD_MAX_COUNT; plagent++)
     {
@@ -188,21 +200,55 @@ short player_agent_current_or_prev_weapon(PlayerIdx plyr, ushort plagent)
     return curwep;
 }
 
-short player_agent_weapon_delay(PlayerIdx plyr, ushort plagent, ubyte weapon)
+short player_agent_weapon_delay(PlayerIdx plyr, ushort plagent, WeaponType wtype)
 {
     PlayerInfo *p_player;
 
     p_player = &players[plyr];
-    return p_player->WepDelays[plagent][weapon];
+    return p_player->WepDelays[plagent][wtype];
 }
 
+void player_agent_set_weapon_delay(PlayerIdx plyr, ushort plagent, WeaponType wtype, short delay_turns)
+{
+    PlayerInfo *p_player;
 
-TbBool player_agent_has_weapon(PlayerIdx plyr, ushort plagent, ubyte weapon)
+    if (delay_turns < 0)
+        delay_turns = 0;
+    else if (delay_turns > 255)
+        delay_turns = 255;
+
+    p_player = &players[plyr];
+    p_player->WepDelays[plagent][wtype] = delay_turns;
+}
+
+void player_agent_clear_weapon_delays(PlayerIdx plyr, ushort plagent)
+{
+    PlayerInfo *p_player;
+    WeaponType wtype;
+
+    p_player = &players[plyr];
+    for (wtype = WEP_NULL; wtype < WEP_TYPES_COUNT; wtype++)
+    {
+        p_player->WepDelays[plagent][wtype] = 0;
+    }
+}
+
+void player_agents_clear_weapon_delays(PlayerIdx plyr)
+{
+    ushort plagent;
+
+    for (plagent = 0; plagent < playable_agents; plagent++)
+    {
+        player_agent_clear_weapon_delays(plyr, plagent);
+    }
+}
+
+TbBool player_agent_has_weapon(PlayerIdx plyr, ushort plagent, WeaponType wtype)
 {
     PlayerInfo *p_player;
 
     p_player = &players[plyr];
-    return weapons_has_weapon(p_player->Weapons[plagent], weapon);
+    return weapons_has_weapon(p_player->Weapons[plagent], wtype);
 }
 
 TbBool player_agent_is_alive(PlayerIdx plyr, ushort plagent)
@@ -231,19 +277,39 @@ TbBool player_agent_is_executing_commands(PlayerIdx plyr, ushort plagent)
     return person_is_executing_commands(p_agent->ThingOffset);
 }
 
-TbBool free_slot(ushort plagent, ubyte weapon)
+TbBool free_slot(ushort plagent, WeaponType wtype)
 {
+#if 0
     TbBool ret;
     asm volatile ("call ASM_free_slot\n"
-        : "=r" (ret) : "a" (plagent & 0xff), "d" (weapon));
+        : "=r" (ret) : "a" (plagent & 0xff), "d" (wtype-1));
     return ret;
+#endif
+    PlayerInfo *p_locplyr;
+    TbBool has_free;
+    ushort fp;
+
+    p_locplyr = &players[local_player_no];
+
+    fp = weapon_fourpack_index(wtype);
+    if ((fp < WFRPK_COUNT) && weapons_has_weapon(p_locplyr->Weapons[plagent], wtype))
+    {
+        has_free = cryo_agents.FourPacks[plagent].Amount[fp] < WEAPONS_FOURPACK_MAX_COUNT;
+    }
+    else
+    {
+        ushort used_slots;
+        used_slots = weapons_count_used_slots(p_locplyr->Weapons[plagent]);
+        has_free = used_slots < WEAPONS_CARRIED_MAX_COUNT;
+    }
+    return has_free;
 }
 
-TbBool player_cryo_add_weapon_one(ushort cryo_no, ubyte weapon)
+TbBool player_cryo_add_weapon_one(ushort cryo_no, WeaponType wtype)
 {
     TbBool added;
 
-    added = weapons_add_one(&cryo_agents.Weapons[cryo_no], &cryo_agents.FourPacks[cryo_no], weapon);
+    added = weapons_add_one(&cryo_agents.Weapons[cryo_no], &cryo_agents.FourPacks[cryo_no], wtype);
     if (!added)
         return false;
 
@@ -278,11 +344,11 @@ TbBool player_cryo_add_cybmod(ushort cryo_no, ubyte cybmod)
     return true;
 }
 
-TbBool player_cryo_remove_weapon_one(ushort cryo_no, ubyte weapon)
+TbBool player_cryo_remove_weapon_one(ushort cryo_no, WeaponType wtype)
 {
     TbBool rmved;
 
-    rmved = weapons_remove_one(&cryo_agents.Weapons[cryo_no], &cryo_agents.FourPacks[cryo_no], weapon);
+    rmved = weapons_remove_one(&cryo_agents.Weapons[cryo_no], &cryo_agents.FourPacks[cryo_no], wtype);
     if (!rmved)
         return false;
 
@@ -367,7 +433,7 @@ void set_default_player_control(void)
     p_locplayer = &players[local_player_no];
     p_locplayer->DoubleMode = 0;
     for (i = 0; i < 4; i++)
-        p_locplayer->UserInput[i].ControlMode = 1;
+        p_locplayer->UserInput[i].ControlMode = UInpCtr_Mouse;
 }
 
 void player_target_clear(PlayerIdx plyr)
@@ -383,6 +449,63 @@ void kill_my_players(PlayerIdx plyr)
 {
     asm volatile ("call ASM_kill_my_players\n"
         : : "a" (plyr));
+}
+
+TbBool player_can_toggle_thermal(PlayerIdx plyr)
+{
+    PlayerInfo *p_player;
+    ThingIdx dcthing;
+
+    // Cannot enable in network mode - this would lead to desync
+    if (in_network_game)
+        return false;
+    // Only local player can enable thermal - state is stored outside of players array
+    if (plyr != local_player_no)
+        return false;
+
+    p_player = &players[plyr];
+    dcthing = p_player->DirectControl[mouser];
+    if (!person_can_sustain_thermal(dcthing))
+        return false;
+
+    return true;
+}
+
+void player_toggle_thermal(PlayerIdx plyr)
+{
+    //TODO thermal view state should be stored in player - now it cannot be used in net games
+    if ((ingame.Flags & GamF_ThermalView) == 0) {
+        ingame.Flags |= GamF_ThermalView;
+    } else {
+        ingame.Flags &= ~GamF_ThermalView;
+    }
+    if ((ingame.Flags & GamF_ThermalView) != 0) {
+        play_sample_using_heap(0, 35, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
+    }
+    // Make zero change to brightness - will reload palette and apply momentary brightness
+    change_brightness(0);
+}
+
+void player_update_thermal(PlayerIdx plyr)
+{
+    PlayerInfo *p_player;
+    ThingIdx dcthing;
+
+    if (plyr != local_player_no) {
+        return;
+    }
+    if ((ingame.Flags & GamF_ThermalView) == 0) {
+        return;
+    }
+
+    p_player = &players[plyr];
+    dcthing = p_player->DirectControl[mouser];
+
+    if (!person_update_thermal(dcthing))
+    {
+        ingame.Flags &= ~GamF_ThermalView;
+        change_brightness(0);
+    }
 }
 
 /******************************************************************************/

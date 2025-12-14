@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file feworld.h
  *     Header file for feworld.c.
@@ -32,9 +32,17 @@ extern "C" {
 
 ubyte show_worldmap_screen(void);
 void init_world_screen_boxes(void);
+
+/** Reset players part of world screen state.
+ *
+ * Resets all parts of world screen which are set by the player
+ * or related to players game progress.
+ */
+void reset_world_screen_player_state(void);
+
 void reset_world_screen_boxes_flags(void);
 void set_flag01_world_screen_boxes(void);
-void set_flag02_world_screen_boxes(void);
+void skip_flashy_draw_world_screen_boxes(void);
 
 /******************************************************************************/
 #ifdef __cplusplus

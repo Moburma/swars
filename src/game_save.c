@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file game_save.c
  *     Loading and saving the game and user profile.
@@ -31,6 +31,7 @@
 #include "femail.h"
 #include "femain.h"
 #include "game_data.h"
+#include "game_options.h"
 #include "game.h"
 #include "keyboard.h"
 #include "misstat.h"
@@ -246,10 +247,6 @@ void apply_user_settings(void)
 
 void set_default_user_settings(void)
 {
-#if 0
-    asm volatile ("call ASM_set_default_user_settings\n"
-        :  :  : "eax" );
-#endif
     set_default_game_keys();
     set_default_player_control();
     set_default_sfx_settings();
@@ -268,9 +265,13 @@ void read_user_settings(void)
     int i;
 
     read_mortal_salt_backup = false;
+    fh = INVALID_FILE;
     get_user_settings_fname(fname, login_name);
+    if (login_name[0] == '\0')
+        read_mortal_salt_backup = true;
 
-    fh = LbFileOpen(fname, Lb_FILE_MODE_READ_ONLY);
+    if (LbFileExists(fname))
+        fh = LbFileOpen(fname, Lb_FILE_MODE_READ_ONLY);
 
     // Try default settings file instead
     if ((fh == INVALID_FILE) && (strlen(login_name) > 0))
@@ -293,7 +294,7 @@ void read_user_settings(void)
         assert(sizeof(locflags) == sizeof(ingame.UserFlags));
 
         if (LbFileLengthHandle(fh) > 126)
-            LbFileRead(fh, &fmtver, 4);
+            LbFileRead(fh, &fmtver, sizeof(u32));
         else
             fmtver = 0;
 
@@ -302,12 +303,26 @@ void read_user_settings(void)
             set_default_game_keys();
             LbFileRead(fh, kbkeys, 23 * sizeof(ushort));
             LbFileRead(fh, jskeys, 23 * sizeof(ushort));
+        } else if (fmtver == 1) {
+            set_default_game_keys();
+            LbFileRead(fh, kbkeys, 29 * sizeof(ushort));
+            LbFileRead(fh, jskeys, 29 * sizeof(ushort));
+        } else if (fmtver == 2) {
+            set_default_game_keys();
+            LbFileRead(fh, kbkeys, 50 * sizeof(ushort));
+            LbFileRead(fh, jskeys, 50 * sizeof(ushort));
         } else {
+#ifdef MORE_GAME_KEYS
+            if (fmtver != 3)
+#else
+            if (fmtver != 2)
+#endif
+                LOGWARN("Settings may be invalid, as \"%s\" has unrecognized format version %d", fname, (int)fmtver);
             LbFileRead(fh, kbkeys, GKey_KEYS_COUNT * sizeof(ushort));
             LbFileRead(fh, jskeys, GKey_KEYS_COUNT * sizeof(ushort));
         }
 
-        LbFileRead(fh, &byte_1C4A9F, 1);
+        LbFileRead(fh, &ctl_joystick_type, sizeof(ctl_joystick_type));
         LbFileRead(fh, &players[local_player_no].DoubleMode,
           sizeof(players[local_player_no].DoubleMode));
         for (i = 0; i != 4; i++)
@@ -348,10 +363,10 @@ void read_user_settings(void)
     }
 
     i = -1;
-    if (byte_1C4A9F)
-        i = joy_func_067(&joy, byte_1C4A9F);
+    if (ctl_joystick_type)
+        i = joy_func_067(&joy, ctl_joystick_type);
     if (i != 1)
-        byte_1C4A9F = 0;
+        ctl_joystick_type = JTyp_NONE;
 }
 
 TbBool save_user_settings(void)
@@ -362,21 +377,20 @@ TbBool save_user_settings(void)
     int i;
 
     get_user_settings_fname(fname, login_name);
-    fmtver = 1;
+#ifdef MORE_GAME_KEYS
+    fmtver = 3;
+#else
+    fmtver = 2;
+#endif
 
     fh = LbFileOpen(fname, Lb_FILE_MODE_NEW);
     if (fh == INVALID_FILE)
         return 1;
 
-#ifdef MORE_GAME_KEYS_SUPPORTED //TODO disable until new keys are added and ready
     LbFileWrite(fh, &fmtver, sizeof(fmtver));
     LbFileWrite(fh, kbkeys, GKey_KEYS_COUNT * sizeof(ushort));
     LbFileWrite(fh, jskeys, GKey_KEYS_COUNT * sizeof(ushort));
-#else
-    LbFileWrite(fh, kbkeys, 23 * sizeof(ushort));
-    LbFileWrite(fh, jskeys, 23 * sizeof(ushort));
-#endif
-    LbFileWrite(fh, &byte_1C4A9F, sizeof(byte_1C4A9F));
+    LbFileWrite(fh, &ctl_joystick_type, sizeof(ctl_joystick_type));
     LbFileWrite(fh, &players[local_player_no].DoubleMode,
       sizeof(players[local_player_no].DoubleMode));
     for (i = 0; i < 4; i++)
@@ -508,7 +522,7 @@ int save_game_write(ubyte slot, char *desc)
     save_game_buffer[gblen] = ingame.AutoResearch;
     gblen += 1;
 
-    if (((ingame.Flags & 0x10) != 0) || (desc[0] == '\0'))
+    if (((ingame.Flags & GamF_MortalGame) != 0) || (desc[0] == '\0'))
     {
         struct Campaign *p_campgn;
         p_campgn = &campaigns[background_type];
@@ -523,16 +537,16 @@ int save_game_write(ubyte slot, char *desc)
         gblen += 1;
     }
 
-    if ((ingame.Flags & 0x10) != 0)
+    if ((ingame.Flags & GamF_MortalGame) != 0)
     {
         save_mortal_salt = time(0);
         resave_salt_to_keys();
     }
 
-    simple_salt = ((ingame.Flags & 0x10) == 0);
+    simple_salt = ((ingame.Flags & GamF_MortalGame) == 0);
     decrypt_verify = save_game_encrypt(fmtver, simple_salt, save_game_buffer, gblen);
 
-    if ((ingame.Flags & 0x10) != 0)
+    if ((ingame.Flags & GamF_MortalGame) != 0)
         sprintf(locstr, "qdata/savegame/synwarsm.sav");
     else if (slot >= 9)
         sprintf(locstr, "qdata/savegame/swars%03d.sav", slot - 1);
@@ -602,7 +616,7 @@ ubyte load_game(int slot, char *desc)
         return 1;
     LbFileRead(fh, desc, 25);
     LbFileRead(fh, &gblen, 4);
-    LbFileRead(fh, &fmtver, 4);
+    LbFileRead(fh, &fmtver, sizeof(u32));
     LbFileRead(fh, save_game_buffer, gblen);
     LbFileRead(fh, &decrypt_verify, 4);
     LbFileClose(fh);
@@ -715,7 +729,8 @@ ubyte load_game(int slot, char *desc)
     else
     {
         PlayerInfo *p_locplayer;
-        int agent, i;
+        int i;
+
         p_locplayer = &players[local_player_no];
 
         i = sizeof(PlayerInfo) - offsetof(PlayerInfo, FourPacks);
@@ -742,17 +757,15 @@ ubyte load_game(int slot, char *desc)
                 p_locplayer->FourPacks[WFRPK_KOGAS][i] = 1;
             if (weapons_has_weapon(p_locplayer->Weapons[i], WEP_CRAZYGAS))
                 p_locplayer->FourPacks[WFRPK_CRAZYGAS][i] = 1;
+        }
 
+        for (i = 0; i < LOCAL_USERS_MAX_COUNT; i++)
+        {
             p_locplayer->UserVX[i] = 0;
             p_locplayer->UserVZ[i] = 0;
         }
 
-        for (agent = 0; agent < 32; agent++)
-        {
-            for (i = 0; i < 4; i++) {
-                p_locplayer->WepDelays[i][agent] = 0;
-            }
-        }
+        player_agents_clear_weapon_delays(local_player_no);
     }
     players_sync_from_cryo();
 

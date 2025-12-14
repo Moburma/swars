@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file lvobjctv.h
  *     Header file for lvobjctv.c.
@@ -38,6 +38,9 @@ enum ObjectiveStatuses {
     ObvStatu_COMPLETED,
     ObvStatu_FAILED,
 };
+
+/* Temporary value for MissionStatus, as it does not use ObvStatu_FAILED as it should */
+#define ObvStatu_MissTmp_FAILED -1
 
 /* deprecated - when callbacks are defined within objectv_defs[],
  * there will be no need to reference specific objective.

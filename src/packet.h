@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file packet.h
  *     Header file for packet.c.
@@ -28,6 +28,7 @@ extern "C" {
 #pragma pack(1)
 
 struct Thing;
+struct NetworkPlayer;
 
 enum PacketActions
 {
@@ -99,10 +100,46 @@ enum PacketActions
     PAct_3D = 0x3D,
     PAct_3E = 0x3E,
     PAct_3F = 0x3F,
-    PAct_40 = 0x40,
+    PAct_THERMAL_TOGGLE = 0x40,
+    PAct_CHEAT_AGENT_TELEPORT = 0x41,
+    PAct_CHEAT_ALL_AGENTS = 0x42,
     PAct_AGENT_SELF_DESTRUCT = 0xFF,
 };
 
+enum PacketCheatAllAgents
+{
+    PCheatAA_RESURRECT_AND_WEPAPN = 0,
+    PCheatAA_BEEFUP_AND_MODS = 1,
+};
+
+enum PacketActionResults
+{
+    PARes_DONE = 0,	/**< Action was performed, with success or not. */
+    PARes_SUCCESS,	/**< Action was performed, success confirmed. */
+    PARes_EBADRQC,	/**< Action skipped, unsupported action code. */
+    PARes_EINVAL,	/**< Action skipped, invalid argument (ie. number out of range, thing of wrong type). */
+    PARes_EBADSLT,	/**< Action skipped, invalid agent slot (player action but thing is not players agent). */
+    PARes_EALREADY,	/**< Action skipped, already in requested state or already performing the command. */
+    PARes_TNGBADST,	/**< Action skipped, thing in bad state (ie. agent is performing contradictory command). */
+};
+
+enum PacketRecordMode {
+  PktR_NONE = 0x0,
+  PktR_RECORD = 0x1,
+  PktR_PLAYBACK = 0x2,
+};
+
+/** Per-player packet, for players input exchange.
+ *
+ * A Packet represents an information from a specific player, required
+ * to achieve sync between players. If a player does something which
+ * results in a change in game world, this action needs to generate
+ * a packet so that the change can happen for all clients in a network
+ * game. Actions which are irrelevent for other players (like moving
+ * the camera, or switching view mode) should not generate packets,
+ * or generate them only if not claimed by an important action.
+ *
+ */
 struct Packet
 {
     ushort Action;
@@ -125,26 +162,49 @@ struct Packet
     short X4;
     short Y4;
     short Z4;
-    long D1Seed;
-    long D2Check;
+    s32 D1Seed;
+    s32 D2Check;
 };
 
+/** Per-player packet, for players input exchange.
+ *
+ * Short version, for low bandwidth links (serial port and modem).
+ */
+struct ShortPacket
+{
+    ushort Action;
+    ushort Data;
+    short X;
+    short Y;
+    short Z;
+    ubyte BCheck;
+};
 
 #pragma pack()
 /******************************************************************************/
 extern struct Packet packets[8];
-extern void (*my_build_packet)(struct Packet *packet, ushort type, ulong param1, long x, long y, long z);
+extern void (*my_build_packet)(struct Packet *packet, ushort action, ulong param1, long x, long y, long z);
+extern ubyte pktrec_mode;
+extern ushort packet_rec_no;
+extern ubyte packet_rec_use_levelno;
 
-void build_packet(struct Packet *packet, ushort type, ulong param1, long x, long y, long z);
-void build_packet2(struct Packet *packet, ushort type, ulong param1, long x, long y, long z);
-void build_packet3(struct Packet *packet, ushort type, ulong param1, long x, long y, long z);
-void build_packet4(struct Packet *packet, ushort type, ulong param1, long x, long y, long z);
+const char * get_packet_action_name(ushort atype);
+const char * get_packet_action_result_text(short result);
+
+void build_packet(struct Packet *packet, ushort action, ulong param1, long x, long y, long z);
+void build_packet2(struct Packet *packet, ushort action, ulong param1, long x, long y, long z);
+void build_packet3(struct Packet *packet, ushort action, ulong param1, long x, long y, long z);
+void build_packet4(struct Packet *packet, ushort action, ulong param1, long x, long y, long z);
 
 void PacketRecord_Close(void);
 void PacketRecord_OpenWrite(void);
 void PacketRecord_OpenRead(void);
-void PacketRecord_Read(struct Packet *p_pckt);
+TbResult PacketRecord_Read(struct Packet *p_pckt);
 void PacketRecord_Write(struct Packet *p_pckt);
+TbResult PacketRecord_ReadNP(struct NetworkPlayer *p_netplyr);
+void PacketRecord_WriteNP(struct NetworkPlayer *p_netplyr);
+TbBool PacketRecord_IsPlayback(void);
+TbBool PacketRecord_IsRecord(void);
 /******************************************************************************/
 #ifdef __cplusplus
 }

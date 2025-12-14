@@ -27,6 +27,12 @@
 extern "C" {
 #endif
 /******************************************************************************/
+#define FULL_VOL 127
+#define HALF_VOL 64
+#define EQUL_PAN 64
+#define NORM_PTCH 100
+#define LOOP_NO 0
+#define LOOP_4EVER -1
 
 typedef void * TbSampleHandle;
 
@@ -53,6 +59,8 @@ void ReleaseLoopedSample(ushort source_id, short smp_id);
 
 void StopSample(long source_id, short smp_id);
 void StopAllSamples(void);
+void PauseAllSamples(void);
+void ResumeAllSamples(void);
 
 /******************************************************************************/
 #ifdef __cplusplus

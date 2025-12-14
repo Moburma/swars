@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file hud_panel.h
  *     Header file for hud_panel.c.
@@ -122,9 +122,6 @@ extern long scanner_unkn3CC;
 extern short gui_scale;
 
 int SCANNER_objective_info_height(void);
-
-void draw_text_linewrap1b(int base_x, int *p_pos_y, const char *text);
-void draw_text_linewrap2b(int base_x, int *p_pos_y, const char *text);
 
 void draw_new_panel(void);
 

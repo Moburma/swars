@@ -1,8 +1,8 @@
 # *****************************************************************************
-#  Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+#  Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 # *****************************************************************************
 #   @file guitext_comm_ita.po
-#      GUI text for SW Port translation file
+#      GUI text for SyndWarsFX translation file
 #  @par Purpose:
 #      Contains translation of the national text in the game.
 #  @par Comment:
@@ -18,10 +18,10 @@
 # *****************************************************************************
 msgid ""
 msgstr ""
-"Project-Id-Version: GUI text for SW Port\n"
-"Report-Msgid-Bugs-To: https://github.com/swfans/swars/issues\n"
-"POT-Creation-Date: 2025-09-01 07:11+0200\n"
-"PO-Revision-Date: 2025-09-17 02:02+0200\n"
+"Project-Id-Version: GUI text for SyndWarsFX\n"
+"Report-Msgid-Bugs-To: https://github.com/swfans/syndwarsfx/issues\n"
+"POT-Creation-Date: 2025-12-13 19:42+0100\n"
+"PO-Revision-Date: 2025-12-13 19:53+0100\n"
 "Last-Translator: Mefistotelis <mefistotelis@gmail.com>\n"
 "Language-Team: Syndicate Wars Fans <github.com/swfans>\n"
 "Language: it_IT\n"
@@ -2770,7 +2770,7 @@ msgstr "Continua"
 #. Unidentified text
 #: guitext:457
 msgctxt "Menu interface text"
-msgid "Fyi"
+msgid "FYI"
 msgstr "Per tua informazione"
 
 #. Unidentified text
@@ -2842,8 +2842,8 @@ msgstr "Termina"
 #. Unidentified text
 #: guitext:469
 msgctxt "Menu interface text"
-msgid "Mail Hq"
-msgstr "Qg posta"
+msgid "Mail HQ"
+msgstr "QG posta"
 
 #. Name for option which allows switching screen resolution during missions.
 #: guitext:470
@@ -2860,8 +2860,8 @@ msgstr "Livello dettagli"
 #. Name for option which allows switching mission camera between isometric and perspective view.
 #: guitext:472
 msgctxt "Visual settings option"
-msgid "Perspective"
-msgstr "Prospettiva"
+msgid "Camera Perspective"
+msgstr "Prospettiva della telecamera"
 
 #. Name for option which allows changimg max zoom level.
 #: guitext:473
@@ -3175,29 +3175,17 @@ msgctxt "Visual settings option"
 msgid "Trenchcoat Preference"
 msgstr "Preferenza impermeabile"
 
-#. One of network protocols.
+#. Decrease or increase screen software palette brightness.
 #: guitext:525
-msgctxt "MP protocol"
-msgid "Modem COM1"
-msgstr "Modem su com1"
+msgctxt "Visual settings option"
+msgid "Brighness Correction"
+msgstr ""
 
-#. One of network protocols.
-#: guitext:526
-msgctxt "MP protocol"
-msgid "Modem COM2"
-msgstr "Modem su com2"
-
-#. One of network protocols.
-#: guitext:527
-msgctxt "MP protocol"
-msgid "Modem COM3"
-msgstr "Modem su com3"
-
-#. One of network protocols.
-#: guitext:528
-msgctxt "MP protocol"
-msgid "Modem COM4"
-msgstr "Modem su com4"
+#. Unassigned setting.
+#: guitext:526 guitext:527 guitext:528
+msgctxt "Unused"
+msgid "N528"
+msgstr ""
 
 #. Music track to be played during the next mission.
 #: guitext:529
@@ -3615,221 +3603,29 @@ msgctxt "Trenchcoat flavor"
 msgid "Gothic"
 msgstr "Gotico"
 
-#. Weapon fire trigger key.
-#: guitext:590
-msgctxt "Controls"
-msgid "Fire"
-msgstr "Fuoco"
-
-#. Key for changing mood or active weapon.
-#: guitext:591
-msgctxt "Controls"
-msgid "Change Mood/Weapon"
-msgstr "Modalità modifica/arma"
-
-#. Key for rotating the view left.
-#: guitext:592
-msgctxt "Controls"
-msgid "Spin View Left"
-msgstr "Sposta vista a sinistra"
-
-#. Key for rotating the view right.
-#: guitext:593
-msgctxt "Controls"
-msgid "Spin View Right"
-msgstr "Sposta vista a destra"
-
-#. Key for switching cyborgs.
-#: guitext:594
-msgctxt "Controls"
-msgid "Change Agent"
-msgstr "Cambia agente"
-
-#. Key for ordering the cyborgs to move.
-#: guitext:595
-msgctxt "Controls"
-msgid "Go To Point"
-msgstr "Vai al punto"
-
-#. Key for grouping the cyborgs together.
-#: guitext:596
-msgctxt "Controls"
-msgid "Group Agents"
-msgstr "Raggruppa agenti"
-
-#. Key for moving the view or moving the cyborg directly (if in key control mode).
-#: guitext:597
-msgctxt "Controls"
-msgid "Up"
-msgstr "Su"
-
-#. Key for moving the view or moving the cyborg directly (if in key control mode).
-#: guitext:598
-msgctxt "Controls"
-msgid "Down"
-msgstr "Giù"
-
-#. Key for moving the view or moving the cyborg directly (if in key control mode).
-#: guitext:599
-msgctxt "Controls"
-msgid "Left"
-msgstr "Sinistra"
-
-#. Key for moving the view or moving the cyborg directly (if in key control mode).
-#: guitext:600
-msgctxt "Controls"
-msgid "Right"
-msgstr "Destra"
-
-#. Key for zooming the camera in, magnifying the view.
-#: guitext:601
-msgctxt "Controls"
-msgid "Zoom In"
-msgstr "Ingrandisci"
-
-#. Key for zooming the camera out, showing wider view.
-#: guitext:602
-msgctxt "Controls"
-msgid "Zoom Out"
-msgstr "Rimpicciolisci"
-
-#. Key for self-destructing a cyborg with chest mod.
-#: guitext:603
-msgctxt "Controls"
-msgid "Self-Destruct"
-msgstr "Auto distruzione"
-
-#. Key for leaving a weapon unarmed on the ground.
-#: guitext:604
-msgctxt "Controls"
-msgid "Drop Weapon"
-msgstr "Lascia arma"
-
-#. Key for rotating the camera up (in very limited bounds).
-#: guitext:605
-msgctxt "Controls"
-msgid "Tilt View Up"
-msgstr "Sposta vista in alto"
-
-#. Key for rotating the camera down (in very limited bounds).
-#: guitext:606
-msgctxt "Controls"
-msgid "Tilt View Down"
-msgstr "Sposta vista in basso"
-
-#. Key for pausing the mission.
-#: guitext:607
-msgctxt "Controls"
-msgid "Pause"
-msgstr "Pausa"
-
-#. Key for entering cyborgs direct control.
-#: guitext:608
-msgctxt "Controls"
-msgid "Key Control"
-msgstr "Controllo tasto"
-
-#. How cyborgs from a specific faction are named.
-#: guitext:609
-msgctxt "Noun for cyborgs, full"
-msgid "Agent"
-msgstr "Agente"
-
-#. How cyborgs from a specific faction are named.
-#: guitext:610
-msgctxt "Noun for cyborgs, full"
-msgid "Zealot"
-msgstr "Fanatici"
-
-#. How cyborgs from a specific faction are named.
-#: guitext:611
-msgctxt "Noun for cyborgs, full"
-msgid "Outcast"
-msgstr "Reietto"
-
-#. Name of a field storing mission identifier.
-#: guitext:612
-msgctxt "Debrief screen metric"
-msgid "Mission Reference"
-msgstr "Riferimento missione"
-
-#. Name of a field storing mission end status.
-#: guitext:613
-msgctxt "Debrief screen metric"
-msgid "Mission Status"
-msgstr "Stato missione"
-
-#. Name of a field storing completed objectives.
-#: guitext:614
-msgctxt "Debrief screen metric"
-msgid "Objectives Completed"
-msgstr "Obiettivi completati"
-
-#. Name of a field storing time spent within the mission (as counted within the game world).
-#: guitext:615
-msgctxt "Debrief screen metric"
-msgid "City Drop Time"
-msgstr "Ora lancio sulla città"
-
-#. Name of a field storing time elapsed since mission start (as counted within the game world).
-#: guitext:616
-msgctxt "Debrief screen metric"
-msgid "Mission Time Elapsed"
-msgstr "Tempo missione trascorso"
-
-#. Name of a field storing credits received during the mission and at its completion.
-#: guitext:617
-msgctxt "Debrief screen metric"
-msgid "Net Fiscal Gain"
-msgstr "Reddito fiscale netto"
-
-#. Name of a field storing computed mission efficiency.
-#: guitext:618
-msgctxt "Debrief screen metric"
-msgid "Efficiency"
-msgstr "Efficienza"
-
-#. Name of a field storing persuaded survivors count.
-#: guitext:619
-msgctxt "Debrief screen metric"
-msgid "Civilians Persuaded"
-msgstr "Civili persuasi"
-
-#. Name of a field storing persuaded survivors count.
+#. One of network protocols.
 #: guitext:620
-msgctxt "Debrief screen metric"
-msgid "Militia Persuaded"
-msgstr "Miliziani persuasi"
+msgctxt "MP protocol"
+msgid "Modem COM1"
+msgstr "Modem su COM1"
 
-#. Name of a field storing persuaded survivors count.
+#. One of network protocols.
 #: guitext:621
-msgctxt "Debrief screen metric"
-msgid "Adversaries Persuaded"
-msgstr "Avversari persuasi"
+msgctxt "MP protocol"
+msgid "Modem COM2"
+msgstr "Modem su COM2"
 
-#. Name of a field storing kill count.
+#. One of network protocols.
 #: guitext:622
-msgctxt "Debrief screen metric"
-msgid "Civilians killed"
-msgstr "Civili uccisi"
+msgctxt "MP protocol"
+msgid "Modem COM3"
+msgstr "Modem su COM3"
 
-#. Name of a field storing kill count.
+#. One of network protocols.
 #: guitext:623
-msgctxt "Debrief screen metric"
-msgid "Militia killed"
-msgstr "Miliziani uccisi"
-
-#. Name of a field storing kill count.
-#: guitext:624
-msgctxt "Debrief screen metric"
-msgid "Adversaries killed"
-msgstr "Avversari uccisi"
-
-#. Name of a field storing number of owned cyborgs killed.
-#: guitext:625
-msgctxt "Debrief screen metric"
-msgid "Agents lost"
-msgstr "Agenti perduti"
+msgctxt "MP protocol"
+msgid "Modem COM4"
+msgstr "Modem su COM4"
 
 #. Merging text when formatting dates and time periods.
 #: guitext:626
@@ -3855,35 +3651,11 @@ msgctxt "Date formatting"
 msgid "Hours"
 msgstr "Ore"
 
-#. Name of a field storing last visited city during a multi-city missison.
-#: guitext:630
-msgctxt "Debrief screen metric"
-msgid "Last City Visited"
-msgstr "Ultima città visitata"
-
-#. Name of a field storing amount of persuaded agents which were stored in Cryovats.
-#: guitext:631
-msgctxt "Debrief screen metric"
-msgid "Agents Gained"
-msgstr "Agenti conquistati"
-
-#. Name of a field storing a comma separated list of items researched during mission time.
-#: guitext:632
-msgctxt "Debrief screen metric"
-msgid "Research Completed:"
-msgstr "Ricerca completata:"
-
-#. Name of a field storing amount of credits spent during mission time.
-#: guitext:633
-msgctxt "Debrief screen metric"
-msgid "Expenditure"
-msgstr "Spese"
-
-#. Name of a field storing amount of credits received during the mission and at its completion.
+#. Title on pause secreen.
 #: guitext:634
-msgctxt "Debrief screen metric"
-msgid "Income"
-msgstr "Introiti"
+msgctxt "In-mission menu title"
+msgid "Uplink paused"
+msgstr "Uplink in pausa"
 
 #. Status when the mission was failed before withdrawing, or whwn the withdrawal counts as fail (which are most missions).
 #: guitext:635
@@ -3933,24 +3705,6 @@ msgctxt "Mission deny message"
 msgid "You Have Too Few Acolytes To Complete The Mission"
 msgstr "Hai troppo pochi accoliti per completare la missione"
 
-#. Name of a campaign selectable at start of new game.
-#: guitext:643
-msgctxt "Campaign name"
-msgid "Eurocorp Syndicate"
-msgstr "Sindacato eurocorp"
-
-#. Name of a campaign selectable at start of new game.
-#: guitext:644
-msgctxt "Campaign name"
-msgid "Church Of The New Epoch"
-msgstr "Chiesa della nuova epoca"
-
-#. Name of a campaign selectable at start of new game.
-#: guitext:645
-msgctxt "Campaign name"
-msgid "The Unguided"
-msgstr "I non guidati"
-
 #. Standard skin, with no artificial epidermis applied.
 #: guitext:646
 msgctxt "Epidermis version"
@@ -3979,7 +3733,7 @@ msgstr "Resistente e-m"
 #: guitext:650
 msgctxt "Epidermis version"
 msgid "Low E-M Profile"
-msgstr "Prof. e-m basso"
+msgstr "Prof. E-M basso"
 
 #. Button allowing paying for extra surveillance before mission, for Church campaign.
 #: guitext:651
@@ -3987,118 +3741,555 @@ msgctxt "Brief screen buttons"
 msgid "Inquisitor"
 msgstr "Inquisitore"
 
+#. Weapon fire trigger key.
+#: guitext:800
+msgctxt "Controls"
+msgid "Fire"
+msgstr "Fuoco"
+
+#. Key for changing mood or active weapon.
+#: guitext:801
+msgctxt "Controls"
+msgid "Change Mood/Weapon"
+msgstr "Modalità modifica/arma"
+
+#. Key for rotating the view left.
+#: guitext:802
+msgctxt "Controls"
+msgid "Spin View Left"
+msgstr "Sposta vista a sinistra"
+
+#. Key for rotating the view right.
+#: guitext:803
+msgctxt "Controls"
+msgid "Spin View Right"
+msgstr "Sposta vista a destra"
+
+#. Key for switching cyborgs.
+#: guitext:804
+msgctxt "Controls"
+msgid "Change Agent"
+msgstr "Cambia agente"
+
+#. Key for ordering the cyborgs to move.
+#: guitext:805
+msgctxt "Controls"
+msgid "Go To Point"
+msgstr "Vai al punto"
+
+#. Key for grouping the cyborgs together.
+#: guitext:806
+msgctxt "Controls"
+msgid "Group Agents"
+msgstr "Raggruppa agenti"
+
+#. Key for moving the view or moving the cyborg directly (if in key control mode).
+#: guitext:807
+msgctxt "Controls"
+msgid "Up"
+msgstr "Su"
+
+#. Key for moving the view or moving the cyborg directly (if in key control mode).
+#: guitext:808
+msgctxt "Controls"
+msgid "Down"
+msgstr "Giù"
+
+#. Key for moving the view or moving the cyborg directly (if in key control mode).
+#: guitext:809
+msgctxt "Controls"
+msgid "Left"
+msgstr "Sinistra"
+
+#. Key for moving the view or moving the cyborg directly (if in key control mode).
+#: guitext:810
+msgctxt "Controls"
+msgid "Right"
+msgstr "Destra"
+
+#. Key for zooming the camera in, magnifying the view.
+#: guitext:811
+msgctxt "Controls"
+msgid "Zoom In"
+msgstr "Ingrandisci"
+
+#. Key for zooming the camera out, showing wider view.
+#: guitext:812
+msgctxt "Controls"
+msgid "Zoom Out"
+msgstr "Rimpicciolisci"
+
+#. Key for self-destructing a cyborg with chest mod.
+#: guitext:813
+msgctxt "Controls"
+msgid "Self-Destruct"
+msgstr "Auto distruzione"
+
+#. Key for leaving a weapon unarmed on the ground.
+#: guitext:814
+msgctxt "Controls"
+msgid "Drop Weapon"
+msgstr "Lascia arma"
+
+#. Key for rotating the camera up (in very limited bounds).
+#: guitext:815
+msgctxt "Controls"
+msgid "Tilt View Up"
+msgstr "Sposta vista in alto"
+
+#. Key for rotating the camera down (in very limited bounds).
+#: guitext:816
+msgctxt "Controls"
+msgid "Tilt View Down"
+msgstr "Sposta vista in basso"
+
+#. Key for pausing the mission.
+#: guitext:817
+msgctxt "Controls"
+msgid "Pause"
+msgstr "Pausa"
+
+#. Key for entering cyborgs direct control.
+#: guitext:818
+msgctxt "Controls"
+msgid "Key Control"
+msgstr "Controllo tasto"
+
+#. Keys for cyborg # selection; filler slot - text unused, as the game generates it from other translations.
+#: guitext:819 guitext:820 guitext:821 guitext:822
+msgctxt "Controls"
+msgid "Cyborg N"
+msgstr ""
+
+#. Key for switching mode of camera lens.
+#: guitext:823
+msgctxt "Controls"
+msgid "Camera Perspective"
+msgstr "Prospettiva della telecamera"
+
+#. Key for disabling or enabling scanner pulses.
+#: guitext:824
+msgctxt "Controls"
+msgid "Scanner Pulse toggle"
+msgstr ""
+
+#. Key for changing colour of half-transparent buildings under deep radar.
+#: guitext:825
+msgctxt "Controls"
+msgid "Deep Radar sur. colour"
+msgstr "Superficie Radar di profondità"
+
+#. Key for changing colour of half-transparent buildings under deep radar.
+#: guitext:826
+msgctxt "Controls"
+msgid "Deep Radar line colour"
+msgstr "Linea Radar di profondità"
+
+#. Key for making all buildings either transparent or completely invisible.
+#: guitext:827
+msgctxt "Controls"
+msgid "Deep Radar expand"
+msgstr "Espans. Radar di profondità"
+
+#. Key for increasing brightness of the scanner area, or whole panel if set to transfluent.
+#: guitext:828
+msgctxt "Controls"
+msgid "Scanner brighter"
+msgstr ""
+
+#. Key for decreasing brightness of the scanner area, or whole panel if set to transfluent.
+#: guitext:829
+msgctxt "Controls"
+msgid "Scanner darker"
+msgstr ""
+
+#. Key for switching between tracks used for danger / tension sound.
+#: guitext:830
+msgctxt "Controls"
+msgid "Change tension track"
+msgstr "Traccia della tensione"
+
+#. Key for switching between music tracks.
+#: guitext:831
+msgctxt "Controls"
+msgid "Change music track"
+msgstr ""
+
+#. Key for increasing volume of sound effects / digital sound samples.
+#: guitext:832
+msgctxt "Controls"
+msgid "Sounds volume up"
+msgstr "Aum. il vol. dei suoni"
+
+#. Key for decreasing volume of sound effects / digital sound samples.
+#: guitext:833
+msgctxt "Controls"
+msgid "Sounds volume down"
+msgstr "Abb. il vol. dei suoni"
+
+#. Key for increasing volume of danger / tension sound.
+#: guitext:834
+msgctxt "Controls"
+msgid "Tension volume up"
+msgstr "Aum. il vol. d. tensione"
+
+#. Key for decreasing volume of danger / tension sound.
+#: guitext:835
+msgctxt "Controls"
+msgid "Tension volume down"
+msgstr "Abb. il vol. d. tensione"
+
+#. Key for increasing volume of background music.
+#: guitext:836
+msgctxt "Controls"
+msgid "Music volume up"
+msgstr "Aum. il vol. d. musica"
+
+#. Key for decreasing volume of background music.
+#: guitext:837
+msgctxt "Controls"
+msgid "Music volume down"
+msgstr "Abb. il vol. d. musica"
+
+#. Key for immediately restarting the current mission.
+#: guitext:838
+msgctxt "Controls"
+msgid "Restart mission"
+msgstr ""
+
+#. Key for increasing speed at which the game world progresses.
+#: guitext:839
+msgctxt "Controls"
+msgid "Speed up action"
+msgstr ""
+
+#. Key for decreasing speed at which the game world progresses.
+#: guitext:840
+msgctxt "Controls"
+msgid "Slow down action"
+msgstr ""
+
+#. Key for capturing the momentary screen content and saving on disk as image file.
+#: guitext:841
+msgctxt "Controls"
+msgid "Save screenshot"
+msgstr ""
+
+#. Key for changing wielded weapon into the one is slot 1. Allows to also hide the waepon, or select weapon for the whole group.
+#: guitext:842
+msgctxt "Controls"
+msgid "Select weapon 1"
+msgstr ""
+
+#. Key for changing wielded weapon into the one is slot 2.
+#: guitext:843
+msgctxt "Controls"
+msgid "Select weapon 2"
+msgstr ""
+
+#. Key for changing wielded weapon into the one is slot 3.
+#: guitext:844
+msgctxt "Controls"
+msgid "Select weapon 3"
+msgstr ""
+
+#. Key for changing wielded weapon into the one is slot 4.
+#: guitext:845
+msgctxt "Controls"
+msgid "Select weapon 4"
+msgstr ""
+
+#. Key for changing wielded weapon into the one is slot 5.
+#: guitext:846
+msgctxt "Controls"
+msgid "Select weapon 5"
+msgstr ""
+
+#. Key for changing wielded weapon into the one is slot 6.
+#: guitext:847
+msgctxt "Controls"
+msgid "Select weapon 6"
+msgstr ""
+
+#. Key for immediately using medikit of any kind which the cyborg has in his slots.
+#: guitext:848
+msgctxt "Controls"
+msgid "Use Medikit"
+msgstr "Usa il Kit medico"
+
+#. Key for switching supershield (shield using weapon power) on and off.
+#: guitext:849
+msgctxt "Controls"
+msgid "Toggle Supershield"
+msgstr ""
+
+#. Key for switching thermal view (allowing to see people inside buildings) on and off.
+#: guitext:850
+msgctxt "Controls"
+msgid "Toggle Thermal View"
+msgstr ""
+
+#. Key for future use; does nothing currently.
+#: guitext:851 guitext:852 guitext:853 guitext:854 guitext:855
+msgctxt "Controls"
+msgid "Future key"
+msgstr ""
+
+#. Name of a field storing mission identifier.
+#: guitext:902
+msgctxt "Debrief screen metric"
+msgid "Mission Reference"
+msgstr "Riferimento missione"
+
+#. Name of a field storing mission end status.
+#: guitext:903
+msgctxt "Debrief screen metric"
+msgid "Mission Status"
+msgstr "Stato missione"
+
+#. Name of a field storing completed objectives.
+#: guitext:904
+msgctxt "Debrief screen metric"
+msgid "Objectives Completed"
+msgstr "Obiettivi completati"
+
+#. Name of a field storing time spent within the mission (as counted within the game world).
+#: guitext:905
+msgctxt "Debrief screen metric"
+msgid "City Drop Time"
+msgstr "Ora lancio sulla città"
+
+#. Name of a field storing time elapsed since mission start (as counted within the game world).
+#: guitext:906
+msgctxt "Debrief screen metric"
+msgid "Mission Time Elapsed"
+msgstr "Tempo missione trascorso"
+
+#. Name of a field storing credits received during the mission and at its completion.
+#: guitext:907
+msgctxt "Debrief screen metric"
+msgid "Net Fiscal Gain"
+msgstr "Reddito fiscale netto"
+
+#. Name of a field storing computed mission efficiency.
+#: guitext:908
+msgctxt "Debrief screen metric"
+msgid "Efficiency"
+msgstr "Efficienza"
+
+#. Name of a field storing persuaded survivors count.
+#: guitext:909
+msgctxt "Debrief screen metric"
+msgid "Civilians Persuaded"
+msgstr "Civili persuasi"
+
+#. Name of a field storing persuaded survivors count.
+#: guitext:910
+msgctxt "Debrief screen metric"
+msgid "Militia Persuaded"
+msgstr "Miliziani persuasi"
+
+#. Name of a field storing persuaded survivors count.
+#: guitext:911
+msgctxt "Debrief screen metric"
+msgid "Adversaries Persuaded"
+msgstr "Avversari persuasi"
+
+#. Name of a field storing kill count.
+#: guitext:912
+msgctxt "Debrief screen metric"
+msgid "Civilians killed"
+msgstr "Civili uccisi"
+
+#. Name of a field storing kill count.
+#: guitext:913
+msgctxt "Debrief screen metric"
+msgid "Militia killed"
+msgstr "Miliziani uccisi"
+
+#. Name of a field storing kill count.
+#: guitext:914
+msgctxt "Debrief screen metric"
+msgid "Adversaries killed"
+msgstr "Avversari uccisi"
+
+#. Name of a field storing number of owned cyborgs killed.
+#: guitext:915
+msgctxt "Debrief screen metric"
+msgid "Agents lost"
+msgstr "Agenti perduti"
+
+#. Name of a field storing last visited city during a multi-city missison.
+#: guitext:920
+msgctxt "Debrief screen metric"
+msgid "Last City Visited"
+msgstr "Ultima città visitata"
+
+#. Name of a field storing amount of persuaded agents which were stored in Cryovats.
+#: guitext:921
+msgctxt "Debrief screen metric"
+msgid "Agents Gained"
+msgstr "Agenti conquistati"
+
+#. Name of a field storing a comma separated list of items researched during mission time.
+#: guitext:922
+msgctxt "Debrief screen metric"
+msgid "Research Completed:"
+msgstr "Ricerca completata:"
+
+#. Name of a field storing amount of credits spent during mission time.
+#: guitext:923
+msgctxt "Debrief screen metric"
+msgid "Expenditure"
+msgstr "Spese"
+
+#. Name of a field storing amount of credits received during the mission and at its completion.
+#: guitext:924
+msgctxt "Debrief screen metric"
+msgid "Income"
+msgstr "Introiti"
+
 #. Generic text
-#: guitext:1961
+#: guitext:961
 msgctxt "MP game status"
 msgid "Has Left The Game"
 msgstr "Ha abbandonato il gioco"
 
 #. Generic text
-#: guitext:1962
+#: guitext:962
 msgctxt "MP game status"
 msgid "Host Has Quit"
 msgstr "L'host ha abbandonato"
 
+#. Name of a campaign selectable at start of new game.
+#: guitext:1000
+msgctxt "Campaign name"
+msgid "Eurocorp Syndicate"
+msgstr "Sindacato Eurocorp"
+
+#. How cyborgs from a specific faction are named.
+#: guitext:1001
+msgctxt "Noun for cyborgs, full"
+msgid "Agent"
+msgstr "Agente"
+
+#. Name of a campaign selectable at start of new game.
+#: guitext:1100
+msgctxt "Campaign name"
+msgid "Church Of The New Epoch"
+msgstr "Chiesa della Nuova Epoca"
+
+#. How cyborgs from a specific faction are named.
+#: guitext:1101
+msgctxt "Noun for cyborgs, full"
+msgid "Zealot"
+msgstr "Fanatici"
+
+#. Name of a campaign selectable at start of new game.
+#: guitext:1200
+msgctxt "Campaign name"
+msgid "The Unguided"
+msgstr "I Non Guidati"
+
+#. How cyborgs from a specific faction are named.
+#: guitext:1201
+msgctxt "Noun for cyborgs, full"
+msgid "Outcast"
+msgstr "Reietto"
+
 #. Pool of unused entries, for future texts
-#: guitext:652 guitext:653 guitext:654 guitext:655 guitext:656 guitext:657
-#: guitext:658 guitext:659 guitext:660 guitext:661 guitext:662 guitext:663
-#: guitext:664 guitext:665 guitext:666 guitext:667 guitext:668 guitext:669
-#: guitext:670 guitext:671 guitext:672 guitext:673 guitext:674 guitext:675
-#: guitext:676 guitext:677 guitext:678 guitext:679 guitext:680 guitext:681
-#: guitext:682 guitext:683 guitext:684 guitext:685 guitext:686 guitext:687
-#: guitext:688 guitext:689 guitext:690 guitext:691 guitext:692 guitext:693
-#: guitext:694 guitext:695 guitext:696 guitext:697 guitext:698 guitext:699
-#: guitext:700 guitext:701 guitext:702 guitext:703 guitext:704 guitext:705
-#: guitext:706 guitext:707 guitext:708 guitext:709 guitext:710 guitext:711
-#: guitext:712 guitext:713 guitext:714 guitext:715 guitext:716 guitext:717
-#: guitext:718 guitext:719 guitext:720 guitext:721 guitext:722 guitext:723
-#: guitext:724 guitext:725 guitext:726 guitext:727 guitext:728 guitext:729
-#: guitext:730 guitext:731 guitext:732 guitext:733 guitext:734 guitext:735
-#: guitext:736 guitext:737 guitext:738 guitext:739 guitext:740 guitext:741
-#: guitext:742 guitext:743 guitext:744 guitext:745 guitext:746 guitext:747
-#: guitext:748 guitext:749 guitext:750 guitext:751 guitext:752 guitext:753
-#: guitext:754 guitext:755 guitext:756 guitext:757 guitext:758 guitext:759
-#: guitext:760 guitext:761 guitext:762 guitext:763 guitext:764 guitext:765
-#: guitext:766 guitext:767 guitext:768 guitext:769 guitext:770 guitext:771
-#: guitext:772 guitext:773 guitext:774 guitext:775 guitext:776 guitext:777
-#: guitext:778 guitext:779 guitext:780 guitext:781 guitext:782 guitext:783
-#: guitext:784 guitext:785 guitext:786 guitext:787 guitext:788 guitext:789
-#: guitext:790 guitext:791 guitext:792 guitext:793 guitext:794 guitext:795
-#: guitext:796 guitext:797 guitext:798 guitext:799 guitext:800 guitext:801
-#: guitext:802 guitext:803 guitext:804 guitext:805 guitext:806 guitext:807
-#: guitext:808 guitext:809 guitext:810 guitext:811 guitext:812 guitext:813
-#: guitext:814 guitext:815 guitext:816 guitext:817 guitext:818 guitext:819
-#: guitext:820 guitext:821 guitext:822 guitext:823 guitext:824 guitext:825
-#: guitext:826 guitext:827 guitext:828 guitext:829 guitext:830 guitext:831
-#: guitext:832 guitext:833 guitext:834 guitext:835 guitext:836 guitext:837
-#: guitext:838 guitext:839 guitext:840 guitext:841 guitext:842 guitext:843
-#: guitext:844 guitext:845 guitext:846 guitext:847 guitext:848 guitext:849
-#: guitext:850 guitext:851 guitext:852 guitext:853 guitext:854 guitext:855
-#: guitext:856 guitext:857 guitext:858 guitext:859 guitext:860 guitext:861
-#: guitext:862 guitext:863 guitext:864 guitext:865 guitext:866 guitext:867
-#: guitext:868 guitext:869 guitext:870 guitext:871 guitext:872 guitext:873
-#: guitext:874 guitext:875 guitext:876 guitext:877 guitext:878 guitext:879
-#: guitext:880 guitext:881 guitext:882 guitext:883 guitext:884 guitext:885
-#: guitext:886 guitext:887 guitext:888 guitext:889 guitext:890 guitext:891
-#: guitext:892 guitext:893 guitext:894 guitext:895 guitext:896 guitext:897
-#: guitext:898 guitext:899 guitext:900 guitext:901 guitext:902 guitext:903
-#: guitext:904 guitext:905 guitext:906 guitext:907 guitext:908 guitext:909
-#: guitext:910 guitext:911 guitext:912 guitext:913 guitext:914 guitext:915
-#: guitext:916 guitext:917 guitext:918 guitext:919 guitext:920 guitext:921
-#: guitext:922 guitext:923 guitext:924 guitext:925 guitext:926 guitext:927
-#: guitext:928 guitext:929 guitext:930 guitext:931 guitext:932 guitext:933
-#: guitext:934 guitext:935 guitext:936 guitext:937 guitext:938 guitext:939
-#: guitext:940 guitext:941 guitext:942 guitext:943 guitext:944 guitext:945
-#: guitext:946 guitext:947 guitext:948 guitext:949 guitext:950 guitext:951
-#: guitext:952 guitext:953 guitext:954 guitext:955 guitext:956 guitext:957
-#: guitext:958 guitext:959 guitext:960 guitext:961 guitext:962 guitext:963
-#: guitext:964 guitext:965 guitext:966 guitext:967 guitext:968 guitext:969
-#: guitext:970 guitext:971 guitext:972 guitext:973 guitext:974 guitext:975
-#: guitext:976 guitext:977 guitext:978 guitext:979 guitext:980 guitext:981
-#: guitext:982 guitext:983 guitext:984 guitext:985 guitext:986 guitext:987
-#: guitext:988 guitext:989 guitext:990 guitext:991 guitext:992 guitext:993
-#: guitext:994 guitext:995 guitext:996 guitext:997 guitext:998 guitext:999
-#: guitext:1000 guitext:1001 guitext:1002 guitext:1003 guitext:1004
-#: guitext:1005 guitext:1006 guitext:1007 guitext:1008 guitext:1009
-#: guitext:1010 guitext:1011 guitext:1012 guitext:1013 guitext:1014
-#: guitext:1015 guitext:1016 guitext:1017 guitext:1018 guitext:1019
-#: guitext:1020 guitext:1021 guitext:1022 guitext:1023 guitext:1024
-#: guitext:1025 guitext:1026 guitext:1027 guitext:1028 guitext:1029
-#: guitext:1030 guitext:1031 guitext:1032 guitext:1033 guitext:1034
-#: guitext:1035 guitext:1036 guitext:1037 guitext:1038 guitext:1039
-#: guitext:1040 guitext:1041 guitext:1042 guitext:1043 guitext:1044
-#: guitext:1045 guitext:1046 guitext:1047 guitext:1048 guitext:1049
-#: guitext:1050 guitext:1051 guitext:1052 guitext:1053 guitext:1054
-#: guitext:1055 guitext:1056 guitext:1057 guitext:1058 guitext:1059
-#: guitext:1060 guitext:1061 guitext:1062 guitext:1063 guitext:1064
-#: guitext:1065 guitext:1066 guitext:1067 guitext:1068 guitext:1069
-#: guitext:1070 guitext:1071 guitext:1072 guitext:1073 guitext:1074
-#: guitext:1075 guitext:1076 guitext:1077 guitext:1078 guitext:1079
-#: guitext:1080 guitext:1081 guitext:1082 guitext:1083 guitext:1084
-#: guitext:1085 guitext:1086 guitext:1087 guitext:1088 guitext:1089
-#: guitext:1090 guitext:1091 guitext:1092 guitext:1093 guitext:1094
-#: guitext:1095 guitext:1096 guitext:1097 guitext:1098 guitext:1099
-#: guitext:1100 guitext:1101 guitext:1102 guitext:1103 guitext:1104
-#: guitext:1105 guitext:1106 guitext:1107 guitext:1108 guitext:1109
-#: guitext:1110 guitext:1111 guitext:1112 guitext:1113 guitext:1114
-#: guitext:1115 guitext:1116 guitext:1117 guitext:1118 guitext:1119
-#: guitext:1120 guitext:1121 guitext:1122 guitext:1123 guitext:1124
-#: guitext:1125 guitext:1126 guitext:1127 guitext:1128 guitext:1129
-#: guitext:1130 guitext:1131 guitext:1132 guitext:1133 guitext:1134
-#: guitext:1135 guitext:1136 guitext:1137 guitext:1138 guitext:1139
-#: guitext:1140 guitext:1141 guitext:1142 guitext:1143 guitext:1144
-#: guitext:1145 guitext:1146 guitext:1147 guitext:1148 guitext:1149
-#: guitext:1150 guitext:1151 guitext:1152 guitext:1153 guitext:1154
-#: guitext:1155 guitext:1156 guitext:1157 guitext:1158 guitext:1159
-#: guitext:1160 guitext:1161 guitext:1162 guitext:1163 guitext:1164
-#: guitext:1165 guitext:1166 guitext:1167 guitext:1168 guitext:1169
-#: guitext:1170 guitext:1171 guitext:1172 guitext:1173 guitext:1174
-#: guitext:1175 guitext:1176 guitext:1177 guitext:1178 guitext:1179
-#: guitext:1180 guitext:1181 guitext:1182 guitext:1183 guitext:1184
-#: guitext:1185 guitext:1186 guitext:1187 guitext:1188 guitext:1189
-#: guitext:1190 guitext:1191 guitext:1192 guitext:1193 guitext:1194
-#: guitext:1195 guitext:1196 guitext:1197 guitext:1198 guitext:1199
-#: guitext:1200 guitext:1201 guitext:1202 guitext:1203 guitext:1204
+#: guitext:590 guitext:591 guitext:592 guitext:593 guitext:594 guitext:595
+#: guitext:596 guitext:597 guitext:598 guitext:599 guitext:600 guitext:601
+#: guitext:602 guitext:603 guitext:604 guitext:605 guitext:606 guitext:607
+#: guitext:608 guitext:609 guitext:610 guitext:611 guitext:612 guitext:613
+#: guitext:614 guitext:615 guitext:616 guitext:617 guitext:618 guitext:619
+#: guitext:620 guitext:621 guitext:622 guitext:623 guitext:624 guitext:625
+#: guitext:630 guitext:631 guitext:632 guitext:633 guitext:643 guitext:644
+#: guitext:645 guitext:652 guitext:653 guitext:654 guitext:655 guitext:656
+#: guitext:657 guitext:658 guitext:659 guitext:660 guitext:661 guitext:662
+#: guitext:663 guitext:664 guitext:665 guitext:666 guitext:667 guitext:668
+#: guitext:669 guitext:670 guitext:671 guitext:672 guitext:673 guitext:674
+#: guitext:675 guitext:676 guitext:677 guitext:678 guitext:679 guitext:680
+#: guitext:681 guitext:682 guitext:683 guitext:684 guitext:685 guitext:686
+#: guitext:687 guitext:688 guitext:689 guitext:690 guitext:691 guitext:692
+#: guitext:693 guitext:694 guitext:695 guitext:696 guitext:697 guitext:698
+#: guitext:699 guitext:700 guitext:701 guitext:702 guitext:703 guitext:704
+#: guitext:705 guitext:706 guitext:707 guitext:708 guitext:709 guitext:710
+#: guitext:711 guitext:712 guitext:713 guitext:714 guitext:715 guitext:716
+#: guitext:717 guitext:718 guitext:719 guitext:720 guitext:721 guitext:722
+#: guitext:723 guitext:724 guitext:725 guitext:726 guitext:727 guitext:728
+#: guitext:729 guitext:730 guitext:731 guitext:732 guitext:733 guitext:734
+#: guitext:735 guitext:736 guitext:737 guitext:738 guitext:739 guitext:740
+#: guitext:741 guitext:742 guitext:743 guitext:744 guitext:745 guitext:746
+#: guitext:747 guitext:748 guitext:749 guitext:750 guitext:751 guitext:752
+#: guitext:753 guitext:754 guitext:755 guitext:756 guitext:757 guitext:758
+#: guitext:759 guitext:760 guitext:761 guitext:762 guitext:763 guitext:764
+#: guitext:765 guitext:766 guitext:767 guitext:768 guitext:769 guitext:770
+#: guitext:771 guitext:772 guitext:773 guitext:774 guitext:775 guitext:776
+#: guitext:777 guitext:778 guitext:779 guitext:780 guitext:781 guitext:782
+#: guitext:783 guitext:784 guitext:785 guitext:786 guitext:787 guitext:788
+#: guitext:789 guitext:790 guitext:791 guitext:792 guitext:793 guitext:794
+#: guitext:795 guitext:796 guitext:797 guitext:798 guitext:799 guitext:856
+#: guitext:857 guitext:858 guitext:859 guitext:860 guitext:861 guitext:862
+#: guitext:863 guitext:864 guitext:865 guitext:866 guitext:867 guitext:868
+#: guitext:869 guitext:870 guitext:871 guitext:872 guitext:873 guitext:874
+#: guitext:875 guitext:876 guitext:877 guitext:878 guitext:879 guitext:880
+#: guitext:881 guitext:882 guitext:883 guitext:884 guitext:885 guitext:886
+#: guitext:887 guitext:888 guitext:889 guitext:890 guitext:891 guitext:892
+#: guitext:893 guitext:894 guitext:895 guitext:896 guitext:897 guitext:898
+#: guitext:899 guitext:900 guitext:901 guitext:916 guitext:917 guitext:918
+#: guitext:919 guitext:925 guitext:926 guitext:927 guitext:928 guitext:929
+#: guitext:930 guitext:931 guitext:932 guitext:933 guitext:934 guitext:935
+#: guitext:936 guitext:937 guitext:938 guitext:939 guitext:940 guitext:941
+#: guitext:942 guitext:943 guitext:944 guitext:945 guitext:946 guitext:947
+#: guitext:948 guitext:949 guitext:950 guitext:951 guitext:952 guitext:953
+#: guitext:954 guitext:955 guitext:956 guitext:957 guitext:958 guitext:959
+#: guitext:960 guitext:963 guitext:964 guitext:965 guitext:966 guitext:967
+#: guitext:968 guitext:969 guitext:970 guitext:971 guitext:972 guitext:973
+#: guitext:974 guitext:975 guitext:976 guitext:977 guitext:978 guitext:979
+#: guitext:980 guitext:981 guitext:982 guitext:983 guitext:984 guitext:985
+#: guitext:986 guitext:987 guitext:988 guitext:989 guitext:990 guitext:991
+#: guitext:992 guitext:993 guitext:994 guitext:995 guitext:996 guitext:997
+#: guitext:998 guitext:999 guitext:1002 guitext:1003 guitext:1004 guitext:1005
+#: guitext:1006 guitext:1007 guitext:1008 guitext:1009 guitext:1010
+#: guitext:1011 guitext:1012 guitext:1013 guitext:1014 guitext:1015
+#: guitext:1016 guitext:1017 guitext:1018 guitext:1019 guitext:1020
+#: guitext:1021 guitext:1022 guitext:1023 guitext:1024 guitext:1025
+#: guitext:1026 guitext:1027 guitext:1028 guitext:1029 guitext:1030
+#: guitext:1031 guitext:1032 guitext:1033 guitext:1034 guitext:1035
+#: guitext:1036 guitext:1037 guitext:1038 guitext:1039 guitext:1040
+#: guitext:1041 guitext:1042 guitext:1043 guitext:1044 guitext:1045
+#: guitext:1046 guitext:1047 guitext:1048 guitext:1049 guitext:1050
+#: guitext:1051 guitext:1052 guitext:1053 guitext:1054 guitext:1055
+#: guitext:1056 guitext:1057 guitext:1058 guitext:1059 guitext:1060
+#: guitext:1061 guitext:1062 guitext:1063 guitext:1064 guitext:1065
+#: guitext:1066 guitext:1067 guitext:1068 guitext:1069 guitext:1070
+#: guitext:1071 guitext:1072 guitext:1073 guitext:1074 guitext:1075
+#: guitext:1076 guitext:1077 guitext:1078 guitext:1079 guitext:1080
+#: guitext:1081 guitext:1082 guitext:1083 guitext:1084 guitext:1085
+#: guitext:1086 guitext:1087 guitext:1088 guitext:1089 guitext:1090
+#: guitext:1091 guitext:1092 guitext:1093 guitext:1094 guitext:1095
+#: guitext:1096 guitext:1097 guitext:1098 guitext:1099 guitext:1102
+#: guitext:1103 guitext:1104 guitext:1105 guitext:1106 guitext:1107
+#: guitext:1108 guitext:1109 guitext:1110 guitext:1111 guitext:1112
+#: guitext:1113 guitext:1114 guitext:1115 guitext:1116 guitext:1117
+#: guitext:1118 guitext:1119 guitext:1120 guitext:1121 guitext:1122
+#: guitext:1123 guitext:1124 guitext:1125 guitext:1126 guitext:1127
+#: guitext:1128 guitext:1129 guitext:1130 guitext:1131 guitext:1132
+#: guitext:1133 guitext:1134 guitext:1135 guitext:1136 guitext:1137
+#: guitext:1138 guitext:1139 guitext:1140 guitext:1141 guitext:1142
+#: guitext:1143 guitext:1144 guitext:1145 guitext:1146 guitext:1147
+#: guitext:1148 guitext:1149 guitext:1150 guitext:1151 guitext:1152
+#: guitext:1153 guitext:1154 guitext:1155 guitext:1156 guitext:1157
+#: guitext:1158 guitext:1159 guitext:1160 guitext:1161 guitext:1162
+#: guitext:1163 guitext:1164 guitext:1165 guitext:1166 guitext:1167
+#: guitext:1168 guitext:1169 guitext:1170 guitext:1171 guitext:1172
+#: guitext:1173 guitext:1174 guitext:1175 guitext:1176 guitext:1177
+#: guitext:1178 guitext:1179 guitext:1180 guitext:1181 guitext:1182
+#: guitext:1183 guitext:1184 guitext:1185 guitext:1186 guitext:1187
+#: guitext:1188 guitext:1189 guitext:1190 guitext:1191 guitext:1192
+#: guitext:1193 guitext:1194 guitext:1195 guitext:1196 guitext:1197
+#: guitext:1198 guitext:1199 guitext:1202 guitext:1203 guitext:1204
 #: guitext:1205 guitext:1206 guitext:1207 guitext:1208 guitext:1209
 #: guitext:1210 guitext:1211 guitext:1212 guitext:1213 guitext:1214
 #: guitext:1215 guitext:1216 guitext:1217 guitext:1218 guitext:1219
@@ -4250,7 +4441,7 @@ msgstr "L'host ha abbandonato"
 #: guitext:1945 guitext:1946 guitext:1947 guitext:1948 guitext:1949
 #: guitext:1950 guitext:1951 guitext:1952 guitext:1953 guitext:1954
 #: guitext:1955 guitext:1956 guitext:1957 guitext:1958 guitext:1959
-#: guitext:1960
+#: guitext:1960 guitext:1961 guitext:1962
 msgctxt "Unused"
 msgid "N"
 msgstr ""

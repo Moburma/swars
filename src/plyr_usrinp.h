@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file plyr_usrinp.h
  *     Header file for plyr_usrinp.c.
@@ -53,7 +53,24 @@ enum SpecialUserInputBits {
     SpUIn_DoDropOrGoOut    = 0x40000000,
     /** Use fast version of the next action (ie. run to target). */
     SpUIn_DoActionFast     = 0x80000000,
+    SpUIn_AllNonMoveBits   = 0x7FFF0000,
+    SpUIn_AllControlBits   = 0xFFFF0000,
 };
+
+enum SpecialUserInputControlModes {
+    UInpCtr_Keyboard = 0,
+    UInpCtr_Mouse,
+    UInpCtr_Joystick0,
+    UInpCtr_Joystick1,
+    UInpCtr_Joystick2,
+    UInpCtr_Joystick3,
+    UInpCtr_MODES_COUNT,
+    UInpCtrF_Unkn2000 = 0x2000,
+    UInpCtrF_Unkn4000 = 0x4000,
+    UInpCtrF_Unkn8000 = 0x8000,
+};
+
+#define UInpCtr_AllFlagsMask (UInpCtrF_Unkn2000|UInpCtrF_Unkn4000|UInpCtrF_Unkn8000)
 
 /** Per-local-player input mapping struct.
  *
@@ -80,6 +97,8 @@ struct SpecialUserInput
 #pragma pack()
 /******************************************************************************/
 void do_user_input_bits_direction_clear(struct SpecialUserInput *p_usrinp);
+void do_user_input_bits_control_clear_all(struct SpecialUserInput *p_usrinp);
+void do_user_input_bits_control_clear_nonmove(struct SpecialUserInput *p_usrinp);
 void do_user_input_bits_direction_from_kbd(struct SpecialUserInput *p_usrinp);
 void do_user_input_bits_direction_from_joy(struct SpecialUserInput *p_usrinp, ubyte channel);
 short get_agent_move_direction_delta_x(const struct SpecialUserInput *p_usrinp);
@@ -88,9 +107,12 @@ void update_agent_move_direction_deltas(struct SpecialUserInput *p_usrinp);
 
 void do_user_input_bits_actions_from_kbd(struct SpecialUserInput *p_usrinp);
 void do_user_input_bits_actions_from_joy(struct SpecialUserInput *p_usrinp, ubyte channel);
-void do_user_input_bits_actions_from_joy_and_kbd(struct SpecialUserInput *p_usrinp);
 
-void input_user_control_agent(ushort plyr, short dmuser);
+/** Input function for a single user controlling the cyborgs via both keyboard and one joystick.
+ */
+ubyte do_user_input_bits_actions_from_joy_and_kbd(struct SpecialUserInput *p_usrinp);
+
+ubyte input_user_control_agent(ushort plyr, short dmuser);
 
 /******************************************************************************/
 #ifdef __cplusplus

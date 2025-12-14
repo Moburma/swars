@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file building.c
  *     Buildings related functions.
@@ -22,9 +22,11 @@
 #include "bfmemory.h"
 #include "bfutility.h"
 
+#include "ssampply.h"
 #include "bigmap.h"
 #include "bmbang.h"
 #include "enginsngobjs.h"
+#include "game_options.h"
 #include "game_speed.h"
 #include "game.h"
 #include "matrix.h"
@@ -59,7 +61,7 @@ struct BuildingStat bldng_type_stats[] = {
   {"BLD_12",},
   {"BLD_13",},
   {"SHUTTL_LDR",},
-  {"BLD_15",},
+  {"BEZIER_ROAD",},
   {"BLD_16",},
   {"BLD_17",},
   {"DOME",},
@@ -92,7 +94,7 @@ struct BuildingStat bldng_type_stats[] = {
   {"BLD_33",},
   {"BLD_34",},
   {"BLD_35",},
-  {"WIND_ROTOR",},
+  {"MOVN_ROTOR",},
   {"BLD_37",},
   {"BLD_38",},
   {"BLD_39",},
@@ -200,7 +202,7 @@ void process_dome1(struct Thing *p_building)
         }
         else
         {
-            play_dist_sample(p_building, 47, 127, 64, 100, 0, 3);
+            play_dist_sample(p_building, 47, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
             p_building->SubState = 0;
             p_building->Timer1 = 100;
             p_building->State = BldSt_TRA_OPENED;
@@ -215,7 +217,7 @@ void process_dome1(struct Thing *p_building)
         }
         else
         {
-            play_dist_sample(p_building, 47, 127, 64, 100, 0, 3);
+            play_dist_sample(p_building, 47, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
             p_building->SubState = 127;
             p_building->Timer1 = 100;
             p_building->State = BldSt_TRA_CLOSED;
@@ -223,14 +225,14 @@ void process_dome1(struct Thing *p_building)
         break;
     case BldSt_TRA_OPENED:
         if ((p_building->Flag & TngF_TransCloseRq) != 0) {
-            play_dist_sample(p_building, 100, 127, 64, 100, 0, 3);
+            play_dist_sample(p_building, 100, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
             p_building->State = BldSt_TRA_CLOSING;
         }
         p_building->Flag &= ~(TngF_TransCloseRq|TngF_TransOpenRq);
         break;
     case BldSt_TRA_CLOSED:
         if ((p_building->Flag & TngF_TransOpenRq) != 0) {
-            play_dist_sample(p_building, 100, 127, 64, 100, 0, 3);
+            play_dist_sample(p_building, 100, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
             p_building->State = BldSt_TRA_OPENING;
         }
         p_building->Flag &= ~(TngF_TransCloseRq|TngF_TransOpenRq);
@@ -353,7 +355,7 @@ void collapse_building_shuttle_loader(short x, short y, short z, struct Thing *p
             break;
         if (thing <= 0)
         {
-            if (p_building->SubType == SubTT_BLD_15) {
+            if (p_building->SubType == SubTT_BLD_BEZIER_ROAD) {
                 tnode_all_unlink_thing(pvthing);
             }
             break;
@@ -380,7 +382,7 @@ void collapse_building_shuttle_loader(short x, short y, short z, struct Thing *p
             break;
         if (thing <= 0)
         {
-            if (p_building->SubType == SubTT_BLD_15) {
+            if (p_building->SubType == SubTT_BLD_BEZIER_ROAD) {
                 tnode_all_unlink_thing(nxthing);
             }
             break;
@@ -399,7 +401,7 @@ void collapse_building_shuttle_loader(short x, short y, short z, struct Thing *p
 
 void collapse_building_station(struct Thing *p_building)
 {
-    short cntr_cor_x, cntr_cor_z;
+    MapCoord cntr_cor_x, cntr_cor_z;
     short cntr_x, cntr_z;
     short x, z;
 
@@ -447,6 +449,14 @@ void collapse_building_station(struct Thing *p_building)
     }
 }
 
+void init_mgun_explode(struct Thing *p_thing)
+{
+    asm volatile (
+      "call ASM_init_mgun_explode\n"
+        :  : "a" (p_thing));
+    return;
+}
+
 void collapse_building(short x, short y, short z, struct Thing *p_building)
 {
 #if 0
@@ -471,8 +481,8 @@ void collapse_building(short x, short y, short z, struct Thing *p_building)
     {
         short tng_x, tng_y, tng_z;
         get_thing_position_mapcoords(&tng_x, &tng_y, &tng_z, p_building->ThingOffset);
-        play_dist_sample(p_building, 0x2Du, 127, 64, 100, 0, 3);
-        p_sthing = create_sound_effect(tng_x, tng_y, tng_z, 0x2Eu, 127, -1);
+        play_dist_sample(p_building, 45, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
+        p_sthing = create_sound_effect(tng_x, tng_y, tng_z, 46, FULL_VOL, -1);
         if (p_sthing != NULL)
         {
             p_sthing->State = 1;
@@ -488,7 +498,7 @@ void collapse_building(short x, short y, short z, struct Thing *p_building)
     case SubTT_BLD_SHUTLDR:
     case SubTT_BLD_1D:
     case SubTT_BLD_TRAINTRK:
-    case SubTT_BLD_15:
+    case SubTT_BLD_BEZIER_ROAD:
         collapse_building_shuttle_loader(x, y, z, p_building);
         break;
     case SubTT_BLD_STATION:
@@ -548,108 +558,120 @@ void bul_hit_vector(int x, int y, int z, short col, int hp, int type)
         : : "a" (x), "d" (y), "b" (z), "c" (col), "g" (hp), "g" (type));
 }
 
-void init_mgun_laser(struct Thing *p_owner, ushort bmsize)
+void rotate_object(struct Thing *p_object)
 {
-#if 0
+    asm volatile ("call ASM_rotate_object\n"
+        : : "a" (p_object));
+}
+
+int mounted_los(int x1, int y1, int z1, int x2, int y2, int z2)
+{
+    int ret;
     asm volatile (
-      "call ASM_init_mgun_laser\n"
-        : : "a" (p_owner), "d" (bmsize));
-    return;
-#endif
-    struct Thing *p_shot;
-    int prc_x, prc_y, prc_z;
-    int cor_x, cor_y, cor_z;
-    short tgtng_x, tgtng_y, tgtng_z;
-    u32 rhit;
-    short shottng;
-    short angle;
-    short damage;
+      "push %6\n"
+      "push %5\n"
+      "call ASM_mounted_los\n"
+        : "=r" (ret) : "a" (x1), "d" (y1), "b" (z1), "c" (x2), "g" (y2), "g" (z2));
+    return ret;
+}
 
-    if (p_owner->PTarget == NULL)
-        return;
+ThingIdx aquire_target(struct Thing *p_gun)
+{
+    ThingIdx ret;
+    asm volatile (
+      "call ASM_aquire_target\n"
+        : "=r" (ret) : "a" (p_gun));
+    return ret;
+}
 
-    shottng = get_new_thing();
-    if (shottng == 0) {
-        LOGERR("No thing slots for a shot");
-        return;
+ubyte track_target(struct Thing *p_mgun)
+{
+    ubyte ret;
+    asm volatile (
+      "call ASM_track_target\n"
+        : "=r" (ret) : "a" (p_mgun));
+    return ret;
+}
+
+ubyte mgun_shoot_at_target(struct Thing *p_mgun)
+{
+    ubyte turn;
+
+    if (p_mgun->U.UMGun.WeaponTurn != 0) {
+        return 0;
     }
-    p_shot = &things[shottng];
-    if (p_owner->U.UMGun.ShotTurn != 0)
-        angle = p_owner->U.UMGun.AngleY + 48;
-    else
-        angle = p_owner->U.UMGun.AngleY - 48;
-
-    angle = (angle + 0x800) & 0x7FF;
-    prc_x = p_owner->X + 3 * lbSinTable[angle] / 2;
-    prc_z = p_owner->Z - 3 * lbSinTable[angle + LbFPMath_PI/2] / 2;
-    prc_y = p_owner->Y;
-
-    if ((p_owner->PTarget > &things[0]) && (p_owner->PTarget < &things[THINGS_LIMIT]))
-        get_thing_position_mapcoords(&tgtng_x, &tgtng_y, &tgtng_z, p_owner->PTarget->ThingOffset);
-    else
-        tgtng_x = tgtng_y = tgtng_z = 0;
-
-    p_shot->U.UEffect.Angle = p_owner->U.UMGun.AngleY;
-    p_shot->Z = prc_z;
-    p_shot->Y = prc_y;
-    p_shot->X = prc_x;
-    p_shot->VX = tgtng_x;
-    p_shot->VY = (tgtng_y >> 3) + 10;
-    p_shot->VZ = tgtng_z;
-    p_shot->Radius = 50;
-    p_shot->Owner = p_owner->ThingOffset;
-
-    cor_x = PRCCOORD_TO_MAPCOORD(prc_x);
-    cor_y = PRCCOORD_TO_MAPCOORD(prc_y);
-    cor_z = PRCCOORD_TO_MAPCOORD(prc_z);
-
-    rhit = laser_hit_at(cor_x, cor_y, cor_z, &p_shot->VX, &p_shot->VY, &p_shot->VZ, p_shot);
-
-    if (bmsize > 15)
-        bmsize = 15;
-    if (bmsize < 5)
-        bmsize = 5;
-    damage = (bmsize - 4) * weapon_defs[WEP_LASER].HitDamage;
-
-    if ((rhit & 0x80000000) != 0) // hit 3D object collision vector
+    turn = p_mgun->U.UMGun.ShotTurn;
+    p_mgun->U.UMGun.WeaponTurn = 8;
+    p_mgun->U.UMGun.ShotTurn = (turn == 0);
+    switch (p_mgun->U.UMGun.CurrentWeapon)
     {
-        s32 hitvec;
-
-        hitvec = rhit;
-        bul_hit_vector(p_shot->VX, p_shot->VY, p_shot->VZ, -hitvec, 2 * bmsize, 0);
+    default:
+        LOGWARN("Mounted gun weapon %d not supported, using laser",
+          (int)p_mgun->U.UMGun.CurrentWeapon);
+        // fall through
+    case WEP_LASER:
+        init_mgun_laser(p_mgun, 7);
+        break;
     }
-    else if ((rhit & 0x40000000) != 0) // hit SimpleThing
-    {
-        struct SimpleThing *p_hitstng;
-        ThingIdx hittng;
-
-        hittng = (short)rhit;
-        p_hitstng = &sthings[-hittng];
-        //TODO is it really ok to use person hit function for hitting SimpleThings?
-        person_hit_by_bullet((struct Thing *)p_hitstng, damage, p_shot->VX - cor_x,
-          p_shot->VY - cor_y, p_shot->VZ - cor_z, p_owner, 4);
-    }
-    else if (rhit != 0) // hit normal thing
-    {
-        struct Thing *p_hittng;
-        ThingIdx hittng;
-
-        hittng = (short)rhit;
-        p_hittng = &things[hittng];
-        person_hit_by_bullet(p_hittng, damage, p_shot->VX - cor_x,
-          p_shot->VY - cor_y, p_shot->VZ - cor_z, p_owner, 4);
-    }
-    p_shot->StartTimer1 = bmsize;
-    p_shot->Timer1 = bmsize;
-    p_shot->Flag = TngF_Unkn0004;
-    p_shot->Type = TT_LASER11;
-    add_node_thing(p_shot->ThingOffset);
+    return 0;
 }
 
 void process_mounted_gun(struct Thing *p_building)
 {
+#if 0
     asm volatile ("call ASM_process_mounted_gun\n"
         : : "a" (p_building));
+#endif
+    struct Thing *p_target;
+
+    if (p_building->U.UMGun.RecoilTimer > 0)
+        p_building->U.UMGun.RecoilTimer--;
+    if (p_building->PTarget == NULL)
+        p_building->State = 10;
+
+    switch(p_building->State)
+    {
+    case 10:
+        if (((gameturn + p_building->ThingOffset) & 0x07) == 0 && aquire_target(p_building) > 0)
+            p_building->State = 11;
+        break;
+    case 11:
+        if (((gameturn + p_building->ThingOffset) & 0x1F) == 0 && aquire_target(p_building) == 0)
+            p_building->State = 10;
+        if (!track_target(p_building))
+        {
+            rotate_object(p_building);
+            break;
+        }
+        p_target = p_building->PTarget;
+        if (p_target != NULL) // Invalid pointer correction
+        {
+            if ((p_target <= &things[0]) || (p_target >= &things[THINGS_LIMIT])) {
+                LOGERR("Tried to shoot at invalid target 0x%p", p_target);
+                p_building->PTarget = p_target = NULL;
+            }
+        }
+        if (p_target != NULL)
+        {
+            MapCoord tg_cor_x, tg_cor_y, tg_cor_z; // Target/victim coords
+            MapCoord at_cor_x, at_cor_y, at_cor_z; // Attacker coords
+
+            tg_cor_x = PRCCOORD_TO_MAPCOORD(p_target->X);
+            tg_cor_y = PRCCOORD_TO_MAPCOORD(p_target->Y);
+            tg_cor_z = PRCCOORD_TO_MAPCOORD(p_target->Z);
+            if (p_target->Type == TT_PERSON)
+                tg_cor_y += 20;
+            at_cor_x = PRCCOORD_TO_MAPCOORD(p_building->X);
+            at_cor_y = PRCCOORD_TO_MAPCOORD(p_building->Y) + 40;
+            at_cor_z = PRCCOORD_TO_MAPCOORD(p_building->Z);
+            if (mounted_los(at_cor_x, at_cor_y, at_cor_z, tg_cor_x, tg_cor_y, tg_cor_z))
+            {
+                mgun_shoot_at_target(p_building);
+            }
+            rotate_object(p_building);
+        }
+        break;
+    }
 }
 
 void process_gate1(struct Thing *p_building)
@@ -707,7 +729,7 @@ void process_building(struct Thing *p_building)
     case SubTT_BLD_GATE:
         process_gate1(p_building);
         break;
-    case SubTT_BLD_WIND_ROTOR:
+    case SubTT_BLD_MOVN_ROTOR:
         process_bld36(p_building);
         break;
     default:
@@ -716,6 +738,45 @@ void process_building(struct Thing *p_building)
         }
         break;
     }
+}
+
+int building_hit_by_bullet(struct Thing *p_thing, short hp,
+  int vx, int vy, int vz, struct Thing *p_attacker, ushort type)
+{
+    if (p_attacker != NULL) {
+        p_attacker->U.UPerson.Flag3 |= 0x40;
+    }
+    if (p_thing->SubType != 32)
+    {
+        if ((p_thing->Flag & TngF_Destroyed) == 0)
+        {
+            int health;
+
+            play_dist_sample(p_thing, 65, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
+            health = p_thing->Health - (hp >> 1);
+            if (health < 0) {
+                collapse_building(PRCCOORD_TO_MAPCOORD(p_thing->X),
+                  PRCCOORD_TO_MAPCOORD(p_thing->Y), PRCCOORD_TO_MAPCOORD(p_thing->Z), p_thing);
+            }
+            p_thing->Health = health;
+        }
+        return hp;
+    }
+    p_thing->Flag |= TngF_Unkn01000000;
+    if ((p_thing->Flag & TngF_Destroyed) == 0)
+    {
+        int health_decr;
+
+        health_decr = hp >> 1 >> 1;
+        p_thing->Health -= health_decr;
+        p_thing->U.UObject.Cost = 5;
+        if (p_thing->Health <= 0)
+        {
+            init_mgun_explode(p_thing);
+            return p_thing->Health + health_decr;
+        }
+    }
+    return 0;
 }
 
 /******************************************************************************/

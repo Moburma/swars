@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file game_speed.h
  *     Header file for game_speed.c.
@@ -39,7 +39,11 @@ extern ushort fifties_per_gameturn;
  * turns per second. */
 extern ushort game_num_fps;
 
-TbBool get_speed_control_inputs(void);
+/**
+ * Handles game speed control inputs.
+ * @return Returns true if packet was created, false otherwise.
+ */
+ubyte get_speed_control_inputs(void);
 
 void wait_next_gameturn(void);
 

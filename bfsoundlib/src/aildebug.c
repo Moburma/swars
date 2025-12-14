@@ -32,8 +32,8 @@
 #include "miscutil.h"
 #include "ailss.h"
 #include "mssdig.h"
-#include "mssxmidi.h"
 #include "mssxdig.h"
+#include "mssxmidi.h"
 /******************************************************************************/
 static long long tmcount_start = 0;
 
@@ -643,6 +643,32 @@ void AIL_end_sample(SNDSAMPLE *s)
         fprintf(AIL_debugfile, "%s(0x%p)\n", __func__, s);
 
     AIL2OAL_API_end_sample(s);
+
+    if (AIL_debug && (AIL_indent == 1 || AIL_sys_debug))
+        fprintf(AIL_debugfile, "Finished\n");
+    AIL_indent--;
+}
+
+void AIL_stop_sample(SNDSAMPLE *s)
+{
+    AIL_indent++;
+    if (AIL_debug && (AIL_indent == 1 || AIL_sys_debug))
+        fprintf(AIL_debugfile, "%s(0x%p)\n", __func__, s);
+
+    AIL2OAL_API_stop_sample(s);
+
+    if (AIL_debug && (AIL_indent == 1 || AIL_sys_debug))
+        fprintf(AIL_debugfile, "Finished\n");
+    AIL_indent--;
+}
+
+void AIL_resume_sample(SNDSAMPLE *s)
+{
+    AIL_indent++;
+    if (AIL_debug && (AIL_indent == 1 || AIL_sys_debug))
+        fprintf(AIL_debugfile, "%s(0x%p)\n", __func__, s);
+
+    AIL2OAL_API_resume_sample(s);
 
     if (AIL_debug && (AIL_indent == 1 || AIL_sys_debug))
         fprintf(AIL_debugfile, "Finished\n");

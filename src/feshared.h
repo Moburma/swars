@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file feshared.h
  *     Header file for feshared.c.
@@ -32,17 +32,16 @@ struct ScreenBox;
 #pragma pack()
 /******************************************************************************/
 extern struct ScreenTextBox system_screen_shared_header_box;
-extern struct ScreenBox system_screen_shared_content_box;
 
 TbBool is_sys_scr_shared_header_flag01(void);
 void mark_sys_scr_shared_header_box_redraw(void);
 void update_sys_scr_shared_header(ubyte sysscrn_no);
 ubyte show_sys_scr_shared_header(void);
 
-void mark_sys_scr_shared_content_box_redraw(void);
-
 void reset_sys_scr_shared_boxes_flags(void);
-void set_flag02_sys_scr_shared_boxes(void);
+void skip_flashy_draw_sys_scr_shared_boxes(void);
+
+void init_sys_scr_shared_boxes(void);
 /******************************************************************************/
 #ifdef __cplusplus
 }

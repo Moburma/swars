@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file vehicle.c
  *     Routines implementing vehicle.
@@ -37,6 +37,7 @@
 #include "sound.h"
 #include "thing.h"
 #include "swlog.h"
+#include "weapon.h"
 /******************************************************************************/
 
 #pragma pack(1)
@@ -293,9 +294,9 @@ void veh_add(struct Thing *p_vehicle, short frame)
         p_mgun->U.UMGun.MatrixIndex = mat;
         p_mgun->StartFrame = frame;
 
-        coord_x = (p_vehicle->X >> 8);
-        coord_y = (p_vehicle->Y >> 8);
-        coord_z = (p_vehicle->Z >> 8);
+        coord_x = PRCCOORD_TO_MAPCOORD(p_vehicle->X);
+        coord_y = PRCCOORD_TO_MAPCOORD(p_vehicle->Y);
+        coord_z = PRCCOORD_TO_MAPCOORD(p_vehicle->Z);
         byte_1C83D1 = 0;
         sub_6031C(coord_x, coord_z, -19 - prim_unknprop01, coord_y + 20);
         p_mgun->X = 0;
@@ -322,9 +323,9 @@ void veh_add(struct Thing *p_vehicle, short frame)
         p_mgun->U.UMGun.MatrixIndex = mat;
         p_mgun->StartFrame = frame;
 
-        coord_x = (p_vehicle->X >> 8);
-        coord_y = (p_vehicle->Y >> 8);
-        coord_z = (p_vehicle->Z >> 8);
+        coord_x = PRCCOORD_TO_MAPCOORD(p_vehicle->X);
+        coord_y = PRCCOORD_TO_MAPCOORD(p_vehicle->Y);
+        coord_z = PRCCOORD_TO_MAPCOORD(p_vehicle->Z);
         byte_1C83D1 = 0;
         sub_6031C(coord_x, coord_z, -27 - prim_unknprop01, coord_y + 20);
         p_mgun->X = 0;
@@ -938,7 +939,7 @@ void process_tank_turret(struct Thing *p_tank)
         if (dt_angle <= 1) {
             // Play rotation stop sample
             if (!IsSamplePlaying(p_tank->ThingOffset, 47, 0))
-                play_dist_sample(p_tank, 47, 127, 0x40u, 100, 0, 1);
+                play_dist_sample(p_tank, 47, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
             p_turret->Flag2 &= ~TgF2_Unkn0200;
         }
     }
@@ -948,7 +949,7 @@ void process_tank_turret(struct Thing *p_tank)
         // Huge values of OldTarget (beyond pi) indicate that previously we had no target.
         if ((abs(dt_angle) >= LbFPMath_PI/75) && (p_tank->OldTarget < abs(angle) || p_tank->OldTarget > LbFPMath_PI)) {
             if (!IsSamplePlaying(p_tank->ThingOffset, 48, 0))
-                play_dist_sample(p_tank, 48, 127, 0x40u, 100, 0, 1);
+                play_dist_sample(p_tank, 48, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
             p_turret->Flag2 |= TgF2_Unkn0200;
         }
     }
@@ -1094,6 +1095,12 @@ void process_parked_flyer(struct Thing *p_vehicle)
         : : "a" (p_vehicle));
 }
 
+void init_mech_explode(struct Thing *p_vehicle)
+{
+    asm volatile ("call ASM_init_mech_explode\n"
+        : : "a" (p_vehicle));
+}
+
 void process_train(struct Thing *p_vehicle)
 {
     int dtvel;
@@ -1151,7 +1158,7 @@ void process_train(struct Thing *p_vehicle)
         {
             p_vehicle->State = VehSt_UNKN_14;
             p_vehicle->U.UVehicle.Timer2 = 100;
-            play_dist_sample(p_vehicle, 225 + (LbRandomAnyShort() % 4), 0x7Fu, 0x40u, 100, 0, 1);
+            play_dist_sample(p_vehicle, 225 + (LbRandomAnyShort() % 4), FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
         }
         break;
     case VehSt_UNKN_14:
@@ -1431,6 +1438,48 @@ void preprogress_trains_turns(ulong nturns)
                 process_vehicle(p_thing);
         }
     }
+}
+
+int vehicle_hit_by_bullet(struct Thing *p_vehicle, short hp,
+  int vx, int vy, int vz, struct Thing *p_attacker, ushort type)
+{
+    int health_decr;
+
+    if ((p_vehicle->Flag & TngF_Destroyed) != 0) {
+        return 0;
+    }
+
+    p_vehicle->Flag |= TngF_Unkn01000000;
+    if (p_vehicle->SubType == SubTT_VEH_TANK)
+        hp = hp >> 1;
+    if (p_vehicle->SubType == SubTT_VEH_MECH)
+        hp >>= 2;
+
+    play_dist_sample(p_vehicle, 65, FULL_VOL, EQUL_PAN, NORM_PTCH, 0, 1);
+
+    if (type == DMG_UZI || type == DMG_MINIGUN)
+        hp >>= 1;
+    health_decr = hp >> 1;
+
+    p_vehicle->Health -= health_decr;
+    p_vehicle->U.UVehicle.RecoilTimer = 5;
+    if (p_vehicle->Health > 0) {
+        return health_decr;
+    }
+
+    p_vehicle->OldTarget = p_attacker->ThingOffset;
+    if (p_vehicle->SubType == SubTT_VEH_MECH)
+    {
+        p_vehicle->Flag |= TngF_Destroyed;
+        init_mech_explode(p_vehicle);
+    }
+    else
+    {
+        p_vehicle->Flag |= TngF_Destroyed;
+        start_crashing(p_vehicle);
+        play_dist_sample(p_vehicle, 95, FULL_VOL, EQUL_PAN, NORM_PTCH, 0, 1);
+    }
+    return p_vehicle->Health + health_decr;
 }
 
 /******************************************************************************/

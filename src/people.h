@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file people.h
  *     Header file for people.c.
@@ -126,6 +126,37 @@ enum PersonFlags3 {
     PrsF3_Unkn80     = 0x80,
 };
 
+enum PersonAnims {
+    ANIM_PERS_IDLE  = 0,
+    ANIM_PERS_WEPLIGHT_IDLE = 1,
+    ANIM_PERS_WEPHEAVY_IDLE = 2,
+    ANIM_PERS_Unkn03  = 3,
+    ANIM_PERS_Unkn04  = 4,
+    ANIM_PERS_Unkn05  = 5,
+    ANIM_PERS_Unkn06  = 6,
+    ANIM_PERS_WEPHEAVY_Unkn07 = 7,
+    ANIM_PERS_Unkn08  = 8,
+    ANIM_PERS_Unkn09  = 9,
+    ANIM_PERS_Unkn10  = 10,
+    ANIM_PERS_LAY_DOWN = 11,
+    ANIM_PERS_Unkn12  = 12,
+    ANIM_PERS_Unkn13  = 13,
+    ANIM_PERS_Unkn14  = 14,
+    ANIM_PERS_WEPHEAVY_Unkn15 = 15,
+    ANIM_PERS_PUSH_BACK = 16,
+    ANIM_PERS_Unkn17  = 17,
+    ANIM_PERS_DEAD_ASH = 18,
+    ANIM_PERS_Unkn19  = 19,
+    ANIM_PERS_DEAD_BODY  = 20,
+    ANIM_PERS_Unkn21  = 21,
+    ANIM_PERS_TOTAL_COUNT,
+};
+
+enum PersonSex {
+    PERSON_MALE  = 0,
+    PERSON_FEMALE,
+};
+
 /** Max health of a person; cannot safely go beyond that.
  */
 #define PERSON_MAX_HEALTH_LIMIT 16383
@@ -134,7 +165,22 @@ enum PersonFlags3 {
  */
 #define PERSON_MAX_ENERGY_LIMIT 32255
 
+/** Max shield charge of a person.
+ */
+#define PERSON_MAX_SHIELD 1024
+
 #define PERSON_MAX_SPEED 2048
+
+/** Multiplayer when transferring weapon energy points to shield points.
+ */
+#define PERSON_ENERGY_TO_SHIELD_MUL 4
+
+enum ThingWeaponSelectFlags {
+    WepSel_TOGGLE = 0,
+    WepSel_HIDE,
+    WepSel_SELECT,
+    WepSel_SKIP,
+};
 
 struct Thing;
 
@@ -172,11 +218,6 @@ struct MyPath {
     ushort Next;
 };
 
-struct Direction {
-  short DiX;
-  short DiY;
-};
-
 #pragma pack()
 /******************************************************************************/
 extern struct PeepStat peep_type_stats[];
@@ -211,11 +252,49 @@ void snprint_person_state(char *buf, ulong buflen, struct Thing *p_thing);
 
 TbBool person_is_dead(ThingIdx thing);
 TbBool person_is_dead_or_dying(ThingIdx thing);
+ubyte person_get_selected_weapon(ThingIdx thing);
 
-TbBool person_carries_weapon(struct Thing *p_person, ubyte weapon);
-TbBool person_carries_any_medikit(struct Thing *p_person);
+TbBool person_carries_weapon(struct Thing *p_person, WeaponType wtype);
+
+/** Returns if a person carries medikit of any kind.
+ */
+TbBool person_carries_any_medikit(ThingIdx person);
 
 TbBool person_can_accept_control(ThingIdx person);
+
+TbBool person_can_use_medikit(ThingIdx person);
+
+TbBool person_has_supershield_active(ThingIdx person);
+TbBool person_can_toggle_supershield(ThingIdx person);
+void person_supershield_toggle(struct Thing *p_person);
+
+/** Returns if a person can be used as energy source to enable thermal view.
+ */
+TbBool person_can_sustain_thermal(ThingIdx person);
+
+/** Updates person state due to thermal enabled; returns true if thermal is sustained.
+ */
+TbBool person_update_thermal(ThingIdx person);
+
+/** Returns slot at which given person is in given players agents, or -1.
+ */
+short person_slot_as_player_agent(struct Thing *p_person, PlayerIdx plyr);
+
+/** Returns if the person contains a link to players direct control slot in ComCur field.
+ */
+TbBool person_has_slot_in_any_player_dcontrol(ThingIdx person);
+
+/** Returns player for which given person is in direct control list, or -1.
+ */
+short person_get_dcontrol_player(ThingIdx person);
+
+/** Returns slot at which given person is in given players direct control list, or -1.
+ */
+short person_slot_in_player_dcontrol(ThingIdx person, PlayerIdx plyr);
+
+/** Returns sex of a person, either PERSON_MALE or PERSON_FEMALE.
+ */
+ubyte person_sex(struct Thing *p_person);
 
 void set_person_stats_type(struct Thing *p_person, ushort type);
 void set_person_health_shield_type(struct Thing *p_person, ushort stype);
@@ -228,6 +307,7 @@ short calc_person_speed(struct Thing *p_person);
 void check_persons_target(struct Thing *p_person);
 void check_persons_target2(struct Thing *p_person);
 void process_stamina(struct Thing *p_person);
+void process_shield(struct Thing *p_person);
 void process_person(struct Thing *p_person);
 void process_random_speech(struct Thing *p_person, ubyte a2);
 
@@ -283,7 +363,7 @@ TbBool person_is_persuaded_by_player(ThingIdx thing, ushort plyr);
 void player_change_person(short thing, ushort plyr);
 void make_peeps_scatter(struct Thing *p_person, int x, int z);
 int person_hit_by_bullet(struct Thing *p_person, short hp,
-  int vx, int vy, int vz, struct Thing *p_attacker, int type);
+  int vx, int vy, int vz, struct Thing *p_attacker, ushort type);
 
 /** Restores agents health by consuming a medikit, or just restores if no medikit available.
  */
@@ -303,11 +383,21 @@ void person_init_get_item(struct Thing *p_person, short item, ushort plyr);
 void person_init_get_item_fast(struct Thing *p_person, short item, ushort plyr);
 void person_init_plant_mine_fast(struct Thing *p_thing, short x, short y, short z, int face);
 void person_init_plant_mine(struct Thing *p_person, short x, short y, short z, int face);
-int thing_select_specific_weapon(struct Thing *p_person, ushort weapon, uint flag);
+
+/** Selects a wielded weapon for the thing, or hides the weapon currently in hands.
+ *
+ * @param p_person The thing which will have current weapon switched.
+ * @param wtype The weapon type to be used.
+ * @param flag Value from ThingWeaponSelectFlags enum, telling whether to select or hide weapon.
+ * @return Gives Value from ThingWeaponSelectFlags enum based on results of the action.
+ */
+ubyte thing_select_specific_weapon(struct Thing *p_person, WeaponType wtype, ubyte flag);
+ubyte thing_select_best_weapon_for_range(struct Thing *p_person, int range);
+ubyte thing_deselect_weapon(struct Thing *p_person);
+
 void person_go_enter_vehicle_fast(struct Thing *p_person, struct Thing *p_vehicle, ushort plyr);
 void person_go_enter_vehicle(struct Thing *p_person, struct Thing *p_vehicle);
 void person_init_follow_person(struct Thing *p_person, struct Thing *p_other);
-void person_shield_toggle(struct Thing *p_person, PlayerIdx plyr);
 void person_self_destruct(struct Thing *p_person);
 
 struct Thing *new_sim_person(int x, int y, int z, ubyte subtype);

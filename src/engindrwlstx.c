@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file engindrwlstx.c
  *     Drawlists execution for the 3D engine.
@@ -43,6 +43,8 @@
 #include "enginshadws.h"
 #include "enginshrapn.h"
 #include "engintrns.h"
+#include "game_data.h"
+#include "game_options.h"
 #include "game_speed.h"
 #include "game_sprani.h"
 #include "game_sprts.h"
@@ -54,6 +56,7 @@
 #include "vehicle.h"
 /******************************************************************************/
 #define MAX_LIGHTS_AFFECTING_FACE 100
+#define SINGLE_TEXTURE_DIM 32
 
 extern ushort tnext_screen_point;
 extern ushort tnext_draw_item;
@@ -66,6 +69,11 @@ ushort next_special_face = 1;
 ushort next_special_face4 = 1;
 
 extern long dword_176CC4;
+
+extern struct Thing *dword_176CC8;
+extern int dword_176CCC;
+extern int dword_176CD0;
+
 extern long unkn1_pos_x;
 extern long unkn1_pos_y;
 extern struct TbSprite *unkn1_spr;
@@ -80,10 +88,10 @@ extern long dword_176D04;
 
 extern ubyte byte_176D49;
 
-extern long dword_19F4FC;
-extern long dword_19F500;
-extern long dword_19F504;
-extern long dword_19F508;
+extern long engn_nuclear_shade_timer;
+extern long engn_nuclear_shade_x;
+extern long engn_nuclear_shade_y;
+extern long engn_nuclear_shade_z;
 
 extern short word_1A5834;
 extern short word_1A5836;
@@ -365,7 +373,8 @@ void reset_drawlist(void)
     dword_176CC4 = 0;
 }
 
-int calculate_enginepoint_shade_1(struct PolyPoint *p_pt1, struct SingleObjectFace3 *p_face, ushort pt2)
+int calculate_enginepoint_shade_1(struct PolyPoint *p_pt1,
+  struct SingleObjectFace3 *p_face, ushort pt2)
 {
 #if 0
     int ret;
@@ -382,13 +391,13 @@ int calculate_enginepoint_shade_1(struct PolyPoint *p_pt1, struct SingleObjectFa
     p_pt2 = &game_object_points[p_face->PointNo[pt2]];
     p_sobj = &game_objects[p_face->Object];
 
-    dist_x = dword_19F500 - p_pt2->X - p_sobj->MapX;
-    dist_y = dword_19F504 - p_pt2->Y - p_sobj->OffsetY;
-    dist_z = dword_19F508 - p_pt2->Z - p_sobj->MapZ;
+    dist_x = engn_nuclear_shade_x - p_pt2->X - p_sobj->MapX;
+    dist_y = engn_nuclear_shade_y - p_pt2->Y - p_sobj->OffsetY;
+    dist_z = engn_nuclear_shade_z - p_pt2->Z - p_sobj->MapZ;
     distance = (dist_y * dist_y + dist_x * dist_x + dist_z * dist_z) >> 17;
 
     if (distance != 0)
-        p_pt1->S += dword_19F4FC * (0x1000000 / distance);
+        p_pt1->S += engn_nuclear_shade_timer * (0x1000000 / distance);
     else
         p_pt1->S = 0x3F0000;
 
@@ -398,7 +407,8 @@ int calculate_enginepoint_shade_1(struct PolyPoint *p_pt1, struct SingleObjectFa
     return p_pt1->S;
 }
 
-int calculate_enginepoint_shade_2(struct PolyPoint *p_pt1, struct SingleObjectFace4 *p_face4, ushort pt2)
+int calculate_enginepoint_shade_2(struct PolyPoint *p_pt1,
+  struct SingleObjectFace4 *p_face4, ushort pt2)
 {
 #if 0
     int ret;
@@ -415,13 +425,13 @@ int calculate_enginepoint_shade_2(struct PolyPoint *p_pt1, struct SingleObjectFa
     p_pt2 = &game_object_points[p_face4->PointNo[pt2]];
     p_sobj = &game_objects[p_face4->Object];
 
-    dist_x = dword_19F500 - p_pt2->X - p_sobj->MapX;
-    dist_y = dword_19F504 - p_pt2->Y - p_sobj->OffsetY;
-    dist_z = dword_19F508 - p_pt2->Z - p_sobj->MapZ;
+    dist_x = engn_nuclear_shade_x - p_pt2->X - p_sobj->MapX;
+    dist_y = engn_nuclear_shade_y - p_pt2->Y - p_sobj->OffsetY;
+    dist_z = engn_nuclear_shade_z - p_pt2->Z - p_sobj->MapZ;
     distance = (dist_y * dist_y + dist_x * dist_x + dist_z * dist_z) >> 17;
 
     if (distance != 0)
-        p_pt1->S += dword_19F4FC * (0x1000000 / distance);
+        p_pt1->S += engn_nuclear_shade_timer * (0x1000000 / distance);
     else
         p_pt1->S = 0x3F0000;
 
@@ -429,6 +439,19 @@ int calculate_enginepoint_shade_2(struct PolyPoint *p_pt1, struct SingleObjectFa
         p_pt1->S = 0x3F0000;
 
     return p_pt1->S;
+}
+
+void set_nuclear_shade_point(MapCoord x, MapCoord y, MapCoord z)
+{
+    engn_nuclear_shade_x = x;
+    engn_nuclear_shade_y = y;
+    engn_nuclear_shade_z = z;
+    engn_nuclear_shade_timer = 0;
+}
+
+void set_nuclear_shade_timer(ulong tmval)
+{
+    engn_nuclear_shade_timer = tmval;
 }
 
 uint cummulate_shade_from_quick_lights(ushort light_first)
@@ -452,6 +475,287 @@ uint cummulate_shade_from_quick_lights(ushort light_first)
         return shade;
 }
 
+ushort floor_texture_index(struct SingleFloorTexture *p_sftex)
+{
+    return (p_sftex - game_textures);
+}
+
+void set_floor_texture_uv(ushort sftex, struct PolyPoint *p_pt1, struct PolyPoint *p_pt2,
+  struct PolyPoint *p_pt3, struct PolyPoint *p_pt4, ubyte gflags)
+{
+    struct SingleFloorTexture *p_sftex;
+    int limit;
+
+    limit = get_memory_ptr_allocated_count((void **)&game_textures);
+    if ((limit >= 0) && (sftex >= limit)) {
+        LOGERR("Texture %d above allocated count of %d", (int)sftex, limit);
+        sftex = 0; // continue with texture 0 instead
+    }
+
+    p_sftex = &game_textures[sftex];
+
+    assert(vec_tmap[p_sftex->Page] != NULL);
+    vec_map = vec_tmap[p_sftex->Page];
+    if ((gflags & FGFlg_Unkn02) != 0) {
+        assert(scratch_buf1 != NULL);
+        vec_map = scratch_buf1;
+    }
+
+    p_pt1->U = p_sftex->TMapX1 << 16;
+    p_pt1->V = p_sftex->TMapY1 << 16;
+    p_pt2->U = p_sftex->TMapX2 << 16;
+    p_pt2->V = p_sftex->TMapY2 << 16;
+    p_pt3->U = p_sftex->TMapX3 << 16;
+    p_pt3->V = p_sftex->TMapY3 << 16;
+    p_pt4->U = p_sftex->TMapX4 << 16;
+    p_pt4->V = p_sftex->TMapY4 << 16;
+}
+
+/** Set texture as active and put its UV coordinates into given points.
+ */
+void set_face_texture_uv(ushort stex, struct PolyPoint *p_pt1,
+  struct PolyPoint *p_pt2, struct PolyPoint *p_pt3, ubyte gflags)
+{
+    struct SingleTexture *p_stex;
+
+    p_stex = &game_face_textures[stex];
+
+    assert(vec_tmap[p_stex->Page] != NULL);
+    vec_map = vec_tmap[p_stex->Page];
+    if ((gflags & FGFlg_Unkn02) != 0) {
+        assert(scratch_buf1 != NULL);
+        vec_map = scratch_buf1;
+    }
+
+    p_pt1->U = p_stex->TMapX1 << 16;
+    p_pt1->V = p_stex->TMapY1 << 16;
+    p_pt2->U = p_stex->TMapX2 << 16;
+    p_pt2->V = p_stex->TMapY2 << 16;
+    p_pt3->U = p_stex->TMapX3 << 16;
+    p_pt3->V = p_stex->TMapY3 << 16;
+}
+
+/** Sets UV coordinates for damaged ground, given index with neighbors definitions.
+ */
+void set_floor_texture_uv_damaged_ground(struct PolyPoint *p_pt1,
+  struct PolyPoint *p_pt2, struct PolyPoint *p_pt3, struct PolyPoint *p_pt4, ubyte neighbrs)
+{
+    vec_map = vec_tmap[4];
+
+    switch (neighbrs)
+    {
+    case 1:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 5) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 5) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 6 - 1) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 6 - 1) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        break;
+    case 2:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 5 - 1) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 5 - 1) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 4) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 4) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        break;
+    case 3:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 7 - 1) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 7 - 1) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 6) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 6) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        break;
+    case 4:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 5) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 6 - 1) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 5) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 6 - 1) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        break;
+    case 5:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 5 - 1) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 5 - 1) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 4) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 4) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        break;
+    case 6:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 7 - 1) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 7 - 1) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 6) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 6) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        break;
+    case 7:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 6 - 1) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 6 - 1) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 5) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 5) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        break;
+    case 8:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 4) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 4) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 5 - 1) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 5 - 1) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        break;
+    case 9:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 6) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 6) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 7 - 1) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 7 - 1) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        break;
+    case 10:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 6 - 1) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 5) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 6 - 1) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 5) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        break;
+    case 11:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 4) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 4) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 5 - 1) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 5 - 1) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        break;
+    case 12:
+        p_pt1->U = (SINGLE_TEXTURE_DIM * 6) << 16;
+        p_pt1->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt2->U = (SINGLE_TEXTURE_DIM * 6) << 16;
+        p_pt2->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        p_pt3->U = (SINGLE_TEXTURE_DIM * 7 - 1) << 16;
+        p_pt3->V = (SINGLE_TEXTURE_DIM * 2) << 16;
+        p_pt4->U = (SINGLE_TEXTURE_DIM * 7 - 1) << 16;
+        p_pt4->V = (SINGLE_TEXTURE_DIM * 3 - 1) << 16;
+        break;
+    }
+}
+
+void set_floor_texture_uv_shade3(ushort face, struct PolyPoint *p_pt1,
+  struct PolyPoint *p_pt2, struct PolyPoint *p_pt3)
+{
+    struct SingleObjectFace3 *p_face;
+
+    p_face = &game_object_faces[face];
+    assert(vec_tmap[4] != NULL);
+    vec_map = vec_tmap[4];
+    {
+        struct Normal *p_nrml;
+        sbyte texU, texV;
+
+        p_nrml = &game_normals[p_face->Shade0];
+        texU = p_nrml->LightRatio;
+        texV = p_nrml->LightRatio >> 8;
+        p_pt1->U = (texU + SINGLE_TEXTURE_DIM * 1) << 16;
+        p_pt1->V = (texV + SINGLE_TEXTURE_DIM * 4) << 16;
+    }
+    {
+        struct Normal *p_nrml;
+        sbyte texU, texV;
+
+        p_nrml = &game_normals[p_face->Shade1];
+        texU = p_nrml->LightRatio;
+        texV = p_nrml->LightRatio >> 8;
+        p_pt2->U = (texU + SINGLE_TEXTURE_DIM * 1) << 16;
+        p_pt2->V = (texV + SINGLE_TEXTURE_DIM * 4) << 16;
+    }
+    {
+        struct Normal *p_nrml;
+        sbyte texU, texV;
+
+        p_nrml = &game_normals[p_face->Shade2];
+        texU = p_nrml->LightRatio;
+        texV = p_nrml->LightRatio >> 8;
+        p_pt3->U = (texU + SINGLE_TEXTURE_DIM * 1) << 16;
+        p_pt3->V = (texV + SINGLE_TEXTURE_DIM * 4) << 16;
+    }
+}
+
+void set_floor_texture_uv_shade4(ushort face4, struct PolyPoint *p_pt1,
+  struct PolyPoint *p_pt2, struct PolyPoint *p_pt3, struct PolyPoint *p_pt4)
+{
+    struct SingleObjectFace4 *p_face4;
+
+    p_face4 = &game_object_faces4[face4];
+    assert(vec_tmap[4] != NULL);
+    vec_map = vec_tmap[4];
+    {
+        struct Normal *p_nrml;
+        sbyte texU, texV;
+
+        p_nrml = &game_normals[p_face4->Shade0];
+        texU = p_nrml->LightRatio;
+        texV = p_nrml->LightRatio >> 8;
+        p_pt1->U = (texU + SINGLE_TEXTURE_DIM * 1) << 16;
+        p_pt1->V = (texV + SINGLE_TEXTURE_DIM * 4) << 16;
+    }
+    {
+        struct Normal *p_nrml;
+        sbyte texU, texV;
+
+        p_nrml = &game_normals[p_face4->Shade1];
+        texU = p_nrml->LightRatio;
+        texV = p_nrml->LightRatio >> 8;
+        p_pt2->U = (texU + SINGLE_TEXTURE_DIM * 1) << 16;
+        p_pt2->V = (texV + SINGLE_TEXTURE_DIM * 4) << 16;
+    }
+    {
+        struct Normal *p_nrml;
+        sbyte texU, texV;
+
+        p_nrml = &game_normals[p_face4->Shade2];
+        texU = p_nrml->LightRatio;
+        texV = p_nrml->LightRatio >> 8;
+        p_pt3->U = (texU + SINGLE_TEXTURE_DIM * 1) << 16;
+        p_pt3->V = (texV + SINGLE_TEXTURE_DIM * 4) << 16;
+    }
+    {
+        struct Normal *p_nrml;
+        sbyte texU, texV;
+
+        p_nrml = &game_normals[p_face4->Shade3];
+        texU = p_nrml->LightRatio;
+        texV = p_nrml->LightRatio >> 8;
+        p_pt4->U = (texU + SINGLE_TEXTURE_DIM * 1) << 16;
+        p_pt4->V = (texV + SINGLE_TEXTURE_DIM * 4) << 16;
+    }
+}
 
 /**
  * Draw triangular face with normally textured surface, but dark.
@@ -479,21 +783,7 @@ void draw_object_face3_textrd_dk(ushort face)
 
     if (p_face->Texture != 0)
     {
-        struct SingleTexture *p_stex;
-
-        p_stex = &game_face_textures[p_face->Texture];
-        vec_map = vec_tmap[p_stex->Page];
-        if (p_face->GFlags != 0)
-        {
-            if ((p_face->GFlags & FGFlg_Unkn02) != 0)
-                vec_map = scratch_buf1;
-        }
-        point1.U = p_stex->TMapX1 << 16;
-        point1.V = p_stex->TMapY1 << 16;
-        point2.U = p_stex->TMapX3 << 16;
-        point2.V = p_stex->TMapY3 << 16;
-        point3.U = p_stex->TMapX2 << 16;
-        point3.V = p_stex->TMapY2 << 16;
+        set_face_texture_uv(p_face->Texture, &point1, &point3, &point2, p_face->GFlags);
     }
 
     {
@@ -639,31 +929,66 @@ void draw_sorted_sprite1b(ubyte *frv, ushort frm, short x, short y,
 
 ubyte check_mouse_overlap(ushort sspr)
 {
+#if 0
     ubyte ret;
     asm volatile (
       "call ASM_check_mouse_overlap\n"
         : "=r" (ret) : "a" (sspr));
     return ret;
+#endif
+    struct ScreenBoxBase box;
+    struct SortSprite *p_sspr;
+    struct Frame *p_frm;
+    PlayerInfo *p_locplayer;
+
+    p_sspr = &game_sort_sprites[sspr];
+    box.X = p_sspr->X + ((overall_scale * word_1A5834) >> 8);
+    box.Y = p_sspr->Y + ((overall_scale * word_1A5836) >> 8);
+
+    p_frm = &frame[p_sspr->Frame];
+    box.Width = (overall_scale * p_frm->SWidth) >> 9;
+    box.Height = (overall_scale * p_frm->SHeight) >> 9;
+
+    p_locplayer = &players[local_player_no];
+    if (box.Width < 16)
+    {
+        box.X -= ((17 - box.Width) >> 1);
+        box.Width = 16;
+    }
+    if (box.Height < 20) {
+        box.Y -= ((21 - box.Height) >> 1);
+        box.Height = 20;
+    }
+
+    if (in_box(lbDisplay.MMouseX, lbDisplay.MMouseY, box.X, box.Y, box.Width, box.Height))
+    {
+        p_locplayer->Target = p_sspr->PThing->ThingOffset;
+        p_locplayer->TargetType = TrgTp_Unkn7;
+        return 1;
+    }
+    return 0;
 }
 
-void check_mouse_overlap_item(ushort sspr)
+ubyte check_mouse_overlap_item(ushort sspr)
 {
 #if 0
     asm volatile (
       "call ASM_check_mouse_overlap_item\n"
         : : "a" (sspr));
-#else
+    return 0;
+#endif
+    struct ScreenBoxBase box;
     struct SortSprite *p_sspr;
-    struct Frame *p_frame;
+    struct Frame *p_frm;
     PlayerInfo *p_locplayer;
-    int x, y, w, h;
 
     p_sspr = &game_sort_sprites[sspr];
-    x = p_sspr->X + ((overall_scale * word_1A5834) >> 8);
-    y = p_sspr->Y + ((overall_scale * word_1A5836) >> 8);
-    p_frame = &frame[p_sspr->Frame];
-    w = (overall_scale * p_frame->SWidth) >> 9;
-    h = (overall_scale * p_frame->SHeight) >> 9;
+    box.X = p_sspr->X + ((overall_scale * word_1A5834) >> 8);
+    box.Y = p_sspr->Y + ((overall_scale * word_1A5836) >> 8);
+
+    p_frm = &frame[p_sspr->Frame];
+    box.Width = (overall_scale * p_frm->SWidth) >> 9;
+    box.Height = (overall_scale * p_frm->SHeight) >> 9;
 
     p_locplayer = &players[local_player_no];
     if (p_locplayer->TargetType == TrgTp_DroppedTng)
@@ -673,37 +998,103 @@ void check_mouse_overlap_item(ushort sspr)
         if ( VX )
         {
             if (VX < 12 || VX > 13)
-                return;
-            x = x - (w >> 1);
-            y = y - (h >> 1);
-            w *= 2;
-            h *= 2;
+                return 0;
+            box.X -= (box.Width >> 1);
+            box.Y -= (box.Height >> 1);
+            box.Width *= 2;
+            box.Height *= 2;
         }
     }
-    if (in_box(lbDisplay.MMouseX, lbDisplay.MMouseY, x, y, w, h))
+    if (in_box(lbDisplay.MMouseX, lbDisplay.MMouseY, box.X, box.Y, box.Width, box.Height))
     {
         p_locplayer->Target = p_sspr->PThing->ThingOffset;
         p_locplayer->TargetType = TrgTp_DroppedTng;
+        return 1;
     }
-#endif
+    return 0;
 }
 
 ubyte check_mouse_overlap_corpse(ushort sspr)
 {
+#if 0
     ubyte ret;
     asm volatile (
       "call ASM_check_mouse_overlap_corpse\n"
         : "=r" (ret) : "a" (sspr));
     return ret;
+#endif
+    struct ScreenBoxBase box;
+    struct SortSprite *p_sspr;
+    struct Frame *p_frm;
+    PlayerInfo *p_locplayer;
+
+    p_sspr = &game_sort_sprites[sspr];
+    box.X = p_sspr->X + ((overall_scale * word_1A5834) >> 8);
+    box.Y = p_sspr->Y + ((overall_scale * word_1A5836) >> 8);
+
+    p_frm = &frame[p_sspr->Frame];
+    box.Width = (overall_scale * p_frm->SWidth) >> 9;
+    box.Height = (overall_scale * p_frm->SHeight) >> 9;
+
+    p_locplayer = &players[local_player_no];
+    if (box.Width < 16)
+    {
+        box.X -= ((17 - box.Width) >> 1);
+        box.Width = 16;
+    }
+    if (box.Height < 20) {
+        box.Y -= ((21 - box.Height) >> 1);
+        box.Height = 20;
+    }
+
+    if (in_box(lbDisplay.MMouseX, lbDisplay.MMouseY, box.X, box.Y, box.Width, box.Height))
+    {
+        p_locplayer->Target = p_sspr->PThing->ThingOffset;
+        p_locplayer->TargetType = TrgTp_Unkn1;
+        return 1;
+    }
+    return 0;
 }
 
 ubyte check_mouse_over_unkn2(ushort sspr, struct Thing *p_thing)
 {
+#if 0
     ubyte ret;
     asm volatile (
       "call ASM_check_mouse_over_unkn2\n"
         : "=r" (ret) : "a" (sspr), "d" (p_thing));
     return ret;
+#endif
+    struct ScreenBoxBase box;
+    struct SortSprite *p_sspr;
+    struct Frame *p_frm;
+
+    p_sspr = &game_sort_sprites[sspr];
+    box.X = p_sspr->X + ((overall_scale * word_1A5834) >> 8);
+    box.Y = p_sspr->Y + ((overall_scale * word_1A5836) >> 8);
+
+    p_frm = &frame[p_sspr->Frame];
+    box.Width = (overall_scale * p_frm->SWidth) >> 9;
+    box.Height = (overall_scale * p_frm->SHeight) >> 9;
+
+    if (box.Width < 16)
+    {
+        box.X -= ((17 - box.Width) >> 1);
+        box.Width = 16;
+    }
+    if (box.Height < 20) {
+        box.Y -= ((21 - box.Height) >> 1);
+        box.Height = 20;
+    }
+
+    if (in_box(lbDisplay.MMouseX, lbDisplay.MMouseY, box.X, box.Y, box.Width, box.Height))
+    {
+        dword_176CC8 = p_thing;
+        dword_176CD0 = box.Y - 8;
+        dword_176CCC = box.X + (box.Height >> 1);
+        return 1;
+    }
+    return 0;
 }
 
 void check_mouse_over_face(struct PolyPoint *pt1, struct PolyPoint *pt2,
@@ -762,8 +1153,6 @@ void draw_ex_face(ushort exface)
     struct PolyPoint point3;
     struct PolyPoint point1;
     struct PolyPoint point4;
-    struct SingleFloorTexture *p_sftex;
-    struct SingleTexture *p_stex;
     struct SpecialPoint *p_scrpoint;
 
     p_exface = &ex_faces[exface];
@@ -776,15 +1165,7 @@ void draw_ex_face(ushort exface)
     case 1:
     case 3:
     case 5:
-      p_stex = &game_face_textures[p_exface->Texture];
-      vec_map = vec_tmap[p_stex->Page];
-
-      point1.U = p_stex->TMapX1 << 16;
-      point1.V = p_stex->TMapY1 << 16;
-      point2.U = p_stex->TMapX3 << 16;
-      point2.V = p_stex->TMapY3 << 16;
-      point3.U = p_stex->TMapX2 << 16;
-      point3.V = p_stex->TMapY2 << 16;
+      set_face_texture_uv(p_exface->Texture, &point1, &point3, &point2, 0);
 
       point1.X = p_scrpoint[0].X;
       point1.Y = p_scrpoint[0].Y;
@@ -810,17 +1191,7 @@ void draw_ex_face(ushort exface)
     case 2:
     case 4:
     case 6:
-      p_sftex = &game_textures[p_exface->Texture];
-      vec_map = vec_tmap[p_sftex->Page];
-
-      point1.U = p_sftex->TMapX1 << 16;
-      point1.V = p_sftex->TMapY1 << 16;
-      point2.U = p_sftex->TMapX2 << 16;
-      point2.V = p_sftex->TMapY2 << 16;
-      point3.U = p_sftex->TMapX3 << 16;
-      point3.V = p_sftex->TMapY3 << 16;
-      point4.U = p_sftex->TMapX4 << 16;
-      point4.V = p_sftex->TMapY4 << 16;
+      set_floor_texture_uv(p_exface->Texture, &point1, &point2, &point3, &point4, 0);
 
       point1.X = p_scrpoint[0].X;
       point1.Y = p_scrpoint[0].Y;
@@ -860,262 +1231,6 @@ void draw_ex_face(ushort exface)
     }
 }
 
-void set_floor_tile_point_uv_map_a(struct PolyPoint *p_pt1, struct PolyPoint *p_pt2, struct PolyPoint *p_pt3, struct PolyPoint *p_pt4, ubyte page)
-{
-    switch (page)
-    {
-    case 1:
-        p_pt1->U = 0xA00000;
-        p_pt1->V = 0x400000;
-        p_pt2->U = 0xA00000;
-        p_pt3->U = 0xBF0000;
-        p_pt4->U = 0xBF0000;
-        p_pt2->V = 0x5F0000;
-        p_pt4->V = 0x5F0000;
-        p_pt3->V = 0x400000;
-        break;
-    case 2:
-        p_pt1->V = 0x400000;
-        p_pt2->V = 0x5F0000;
-        p_pt3->U = 0x800000;
-        p_pt3->V = 0x400000;
-        p_pt4->U = 0x800000;
-        p_pt1->U = 0x9F0000;
-        p_pt2->U = 0x9F0000;
-        p_pt4->V = 0x5F0000;
-        break;
-    case 3:
-        p_pt1->U = 0xDF0000;
-        p_pt1->V = 0x400000;
-        p_pt2->U = 0xDF0000;
-        p_pt2->V = 0x5F0000;
-        p_pt3->U = 0xC00000;
-        p_pt4->U = 0xC00000;
-        p_pt4->V = 0x5F0000;
-        p_pt3->V = 0x400000;
-        break;
-    case 4:
-        p_pt3->V = 0x400000;
-        p_pt1->V = 0x5F0000;
-        p_pt4->U = 0xBF0000;
-        p_pt4->V = 0x400000;
-        p_pt2->U = 0xBF0000;
-        p_pt3->U = 0xA00000;
-        p_pt1->U = 0xA00000;
-        p_pt2->V = 0x5F0000;
-        break;
-    case 5:
-        p_pt1->U = 0x9F0000;
-        p_pt1->V = 0x5F0000;
-        p_pt2->U = 0x9F0000;
-        p_pt3->U = 0x800000;
-        p_pt4->U = 0x800000;
-        p_pt2->V = 0x400000;
-        p_pt4->V = 0x400000;
-        p_pt3->V = 0x5F0000;
-        break;
-    case 6:
-        p_pt2->V = 0x400000;
-        p_pt3->U = 0xC00000;
-        p_pt4->U = 0xC00000;
-        p_pt1->U = 0xDF0000;
-        p_pt1->V = 0x5F0000;
-        p_pt2->U = 0xDF0000;
-        p_pt3->V = 0x5F0000;
-        p_pt4->V = 0x400000;
-        break;
-    case 7:
-        p_pt4->U = 0xA00000;
-        p_pt4->V = 0x400000;
-        p_pt3->U = 0xA00000;
-        p_pt2->U = 0xBF0000;
-        p_pt1->U = 0xBF0000;
-        p_pt3->V = 0x5F0000;
-        p_pt1->V = 0x5F0000;
-        p_pt2->V = 0x400000;
-        break;
-    case 8:
-        p_pt1->V = 0x5F0000;
-        p_pt2->V = 0x400000;
-        p_pt3->U = 0x9F0000;
-        p_pt3->V = 0x5F0000;
-        p_pt4->U = 0x9F0000;
-        p_pt1->U = 0x800000;
-        p_pt2->U = 0x800000;
-        p_pt4->V = 0x400000;
-        break;
-    case 9:
-        p_pt1->U = 0xC00000;
-        p_pt1->V = 0x5F0000;
-        p_pt2->U = 0xC00000;
-        p_pt2->V = 0x400000;
-        p_pt3->U = 0xDF0000;
-        p_pt4->U = 0xDF0000;
-        p_pt4->V = 0x400000;
-        p_pt3->V = 0x5F0000;
-        break;
-    case 10:
-        p_pt2->V = 0x400000;
-        p_pt4->V = 0x5F0000;
-        p_pt1->U = 0xBF0000;
-        p_pt1->V = 0x400000;
-        p_pt3->U = 0xBF0000;
-        p_pt2->U = 0xA00000;
-        p_pt4->U = 0xA00000;
-        p_pt3->V = 0x5F0000;
-        break;
-    case 11:
-        p_pt1->U = 0x800000;
-        p_pt1->V = 0x400000;
-        p_pt2->U = 0x800000;
-        p_pt3->U = 0x9F0000;
-        p_pt4->U = 0x9F0000;
-        p_pt2->V = 0x5F0000;
-        p_pt4->V = 0x5F0000;
-        p_pt3->V = 0x400000;
-        break;
-    case 12:
-        p_pt2->V = 0x5F0000;
-        p_pt3->U = 0xDF0000;
-        p_pt4->U = 0xDF0000;
-        p_pt1->U = 0xC00000;
-        p_pt1->V = 0x400000;
-        p_pt2->U = 0xC00000;
-        p_pt3->V = 0x400000;
-        p_pt4->V = 0x5F0000;
-        break;
-    }
-}
-
-void set_floor_tile_point_uv_map_b(struct PolyPoint *p_pt1, struct PolyPoint *p_pt2, struct PolyPoint *p_pt3, struct PolyPoint *p_pt4, ubyte page)
-{
-    //TODO check if it's the same as this:
-    //set_floor_tile_point_uv_map_a(p_pt3, p_pt1, p_pt4, p_pt2, ((page+8) % 12) + 1);
-    switch (page)
-    {
-    case 1:
-        p_pt1->V = 0x400000;
-        p_pt2->V = 0x5F0000;
-        p_pt3->U = 0xBF0000;
-        p_pt3->V = 0x400000;
-        p_pt4->U = 0xBF0000;
-        p_pt1->U = 0xA00000;
-        p_pt2->U = 0xA00000;
-        p_pt4->V = 0x5F0000;
-        break;
-    case 2:
-        p_pt1->U = 0x9F0000;
-        p_pt2->U = 0x9F0000;
-        p_pt2->V = 0x5F0000;
-        p_pt3->U = 0x800000;
-        p_pt4->V = 0x5F0000;
-        p_pt1->V = 0x400000;
-        p_pt3->V = 0x400000;
-        p_pt4->U = 0x800000;
-        break;
-    case 3:
-        p_pt1->U = 0xDF0000;
-        p_pt1->V = 0x400000;
-        p_pt2->U = 0xDF0000;
-        p_pt3->U = 0xC00000;
-        p_pt4->U = 0xC00000;
-        p_pt2->V = 0x5F0000;
-        p_pt4->V = 0x5F0000;
-        p_pt3->V = 0x400000;
-        break;
-    case 4:
-        p_pt3->V = 0x400000;
-        p_pt1->V = 0x5F0000;
-        p_pt4->U = 0xBF0000;
-        p_pt4->V = 0x400000;
-        p_pt2->U = 0xBF0000;
-        p_pt3->U = 0xA00000;
-        p_pt1->U = 0xA00000;
-        p_pt2->V = 0x5F0000;
-        break;
-    case 5:
-        p_pt2->V = 0x400000;
-        p_pt3->U = 0x800000;
-        p_pt4->U = 0x800000;
-        p_pt1->U = 0x9F0000;
-        p_pt1->V = 0x5F0000;
-        p_pt2->U = 0x9F0000;
-        p_pt3->V = 0x5F0000;
-        p_pt4->V = 0x400000;
-        break;
-    case 6:
-        p_pt1->U = 0xDF0000;
-        p_pt1->V = 0x5F0000;
-        p_pt2->U = 0xDF0000;
-        p_pt2->V = 0x400000;
-        p_pt3->U = 0xC00000;
-        p_pt4->U = 0xC00000;
-        p_pt4->V = 0x400000;
-        p_pt3->V = 0x5F0000;
-        break;
-    case 7:
-        p_pt4->V = 0x400000;
-        p_pt3->V = 0x5F0000;
-        p_pt2->V = 0x400000;
-        p_pt1->V = 0x5F0000;
-        p_pt4->U = 0xA00000;
-        p_pt2->U = 0xBF0000;
-        p_pt1->U = 0xBF0000;
-        p_pt3->U = 0xA00000;
-        break;
-    case 8:
-        p_pt1->U = 0x800000;
-        p_pt2->U = 0x800000;
-        p_pt2->V = 0x400000;
-        p_pt3->U = 0x9F0000;
-        p_pt4->U = 0x9F0000;
-        p_pt1->V = 0x5F0000;
-        p_pt3->V = 0x5F0000;
-        p_pt4->V = 0x400000;
-        break;
-    case 9:
-        p_pt1->U = 0xC00000;
-        p_pt2->U = 0xC00000;
-        p_pt2->V = 0x400000;
-        p_pt3->U = 0xDF0000;
-        p_pt4->V = 0x400000;
-        p_pt1->V = 0x5F0000;
-        p_pt3->V = 0x5F0000;
-        p_pt4->U = 0xDF0000;
-        break;
-    case 10:
-        p_pt2->U = 0xA00000;
-        p_pt2->V = 0x400000;
-        p_pt4->U = 0xA00000;
-        p_pt1->U = 0xBF0000;
-        p_pt3->U = 0xBF0000;
-        p_pt4->V = 0x5F0000;
-        p_pt3->V = 0x5F0000;
-        p_pt1->V = 0x400000;
-        break;
-    case 11:
-        p_pt1->U = 0x800000;
-        p_pt2->U = 0x800000;
-        p_pt2->V = 0x5F0000;
-        p_pt3->U = 0x9F0000;
-        p_pt4->U = 0x9F0000;
-        p_pt4->V = 0x5F0000;
-        p_pt1->V = 0x400000;
-        p_pt3->V = 0x400000;
-        break;
-    case 12:
-        p_pt1->V = 0x400000;
-        p_pt2->V = 0x5F0000;
-        p_pt3->U = 0xDF0000;
-        p_pt3->V = 0x400000;
-        p_pt4->U = 0xDF0000;
-        p_pt1->U = 0xC00000;
-        p_pt2->U = 0xC00000;
-        p_pt4->V = 0x5F0000;
-        break;
-    }
-}
-
 void draw_floor_tile1a(ushort tl)
 {
 #if 0
@@ -1136,9 +1251,6 @@ void draw_floor_tile1a(ushort tl)
     vec_mode = p_floortl->Flags;
     if ((p_floortl->Flags == 5) || (p_floortl->Flags == 21))
     {
-        struct SingleFloorTexture *p_sftex;
-
-        p_sftex = p_floortl->Texture;
         if (byte_19EC6F) {
             if (current_map == 11) // map011 Orbital Station
                 vec_mode = 6;
@@ -1148,15 +1260,7 @@ void draw_floor_tile1a(ushort tl)
             else
                 vec_mode = 19;
         }
-        vec_map = vec_tmap[p_sftex->Page];
-        point2.U = p_sftex->TMapX1 << 16;
-        point2.V = p_sftex->TMapY1 << 16;
-        point3.U = p_sftex->TMapX3 << 16;
-        point3.V = p_sftex->TMapY3 << 16;
-        point1.U = p_sftex->TMapX4 << 16;
-        point1.V = p_sftex->TMapY4 << 16;
-        point4.U = p_sftex->TMapX2 << 16;
-        point4.V = p_sftex->TMapY2 << 16;
+        set_floor_texture_uv(floor_texture_index(p_floortl->Texture), &point2, &point4, &point3, &point1, 0);
     }
     point1.X = p_floortl->X[0];
     point1.Y = p_floortl->Y[0];
@@ -1198,9 +1302,8 @@ void draw_floor_tile1a(ushort tl)
     // damage overlays
     if ((p_floortl->Page > 0) && (p_floortl->Page <= 12))
     {
-        vec_map = vec_tmap[4];
         vec_mode = 6;
-        set_floor_tile_point_uv_map_b(&point1, &point2, &point3, &point4, p_floortl->Page);
+        set_floor_texture_uv_damaged_ground(&point1, &point2, &point3, &point4, p_floortl->Page);
         draw_trigpoly(&point1, &point2, &point3);
         if (vec_mode == 2)
             vec_mode = 27;
@@ -1230,28 +1333,16 @@ void draw_floor_tile1b(ushort tl)
     vec_mode = p_floortl->Flags;
     if ((p_floortl->Flags == 5) || (p_floortl->Flags == 21))
     {
-        struct SingleFloorTexture *p_sftex;
-
-        p_sftex = p_floortl->Texture;
         if (byte_19EC6F) {
             if (current_map == 11) // map011 Orbital Station
                 vec_mode = 6;
-        }
-        else {
+        } else {
             if (p_floortl->Flags == 5)
                 vec_mode = 2;
             else
                 vec_mode = 19;
         }
-        vec_map = vec_tmap[p_sftex->Page];
-        point2.U = p_sftex->TMapX1 << 16;
-        point2.V = p_sftex->TMapY1 << 16;
-        point3.U = p_sftex->TMapX3 << 16;
-        point3.V = p_sftex->TMapY3 << 16;
-        point1.U = p_sftex->TMapX4 << 16;
-        point1.V = p_sftex->TMapY4 << 16;
-        point4.U = p_sftex->TMapX2 << 16;
-        point4.V = p_sftex->TMapY2 << 16;
+        set_floor_texture_uv(floor_texture_index(p_floortl->Texture), &point2, &point4, &point3, &point1, 0);
     }
     point1.X = p_floortl->X[0];
     point1.Y = p_floortl->Y[0];
@@ -1292,9 +1383,8 @@ void draw_floor_tile1b(ushort tl)
     // damage overlays
     if ((p_floortl->Page > 0) && (p_floortl->Page <= 12))
     {
-        vec_map = vec_tmap[4];
         vec_mode = 6;
-        set_floor_tile_point_uv_map_a(&point1, &point2, &point3, &point4, p_floortl->Page);
+        set_floor_texture_uv_damaged_ground(&point1, &point2, &point3, &point4, p_floortl->Page);
         draw_trigpoly(&point1, &point2, &point4);
         if (vec_mode == 2)
             vec_mode = 27;
@@ -1304,9 +1394,8 @@ void draw_floor_tile1b(ushort tl)
     //TODO why the second time using the same page?
     if ((p_floortl->Page > 0) && (p_floortl->Page <= 12))
     {
-        vec_map = vec_tmap[4];
         vec_mode = 6;
-        set_floor_tile_point_uv_map_b(&point1, &point2, &point3, &point4, p_floortl->Page);
+        set_floor_texture_uv_damaged_ground(&point1, &point2, &point3, &point4, p_floortl->Page);
         draw_trigpoly(&point1, &point2, &point4);
         if (vec_mode == 2)
             vec_mode = 27;
@@ -1340,14 +1429,8 @@ void draw_object_face3g_textrd(ushort face)
 
     if (p_face->Texture != 0)
     {
-        struct SingleTexture *p_stex;
-
-        p_stex = &game_face_textures[p_face->Texture];
-        vec_map = vec_tmap[p_stex->Page];
         if (p_face->GFlags != 0)
         {
-            if ((p_face->GFlags & FGFlg_Unkn02) != 0)
-                vec_map = scratch_buf1;
             if ((p_face->GFlags & FGFlg_Unkn40) != 0) {
                 uint frame;
                 frame = gameturn + p_face->Object;
@@ -1355,12 +1438,7 @@ void draw_object_face3g_textrd(ushort face)
                     vec_mode = 5;
             }
         }
-        point1.U = p_stex->TMapX1 << 16;
-        point1.V = p_stex->TMapY1 << 16;
-        point2.U = p_stex->TMapX3 << 16;
-        point2.V = p_stex->TMapY3 << 16;
-        point3.U = p_stex->TMapX2 << 16;
-        point3.V = p_stex->TMapY2 << 16;
+        set_face_texture_uv(p_face->Texture, &point1, &point3, &point2, p_face->GFlags);
     }
     else
     {
@@ -1474,21 +1552,7 @@ void draw_object_face4d_textrd_dk(ushort face4)
 
     if (p_face4->Texture != 0)
     {
-        struct SingleFloorTexture *p_sftex;
-
-        p_sftex = &game_textures[p_face4->Texture];
-        vec_map = vec_tmap[p_sftex->Page];
-        if (p_face4->GFlags != 0)
-        {
-            if ((p_face4->GFlags & FGFlg_Unkn02) != 0)
-                vec_map = scratch_buf1;
-        }
-        point1.U = p_sftex->TMapX1 << 16;
-        point1.V = p_sftex->TMapY1 << 16;
-        point2.U = p_sftex->TMapX3 << 16;
-        point2.V = p_sftex->TMapY3 << 16;
-        point3.U = p_sftex->TMapX2 << 16;
-        point3.V = p_sftex->TMapY2 << 16;
+        set_floor_texture_uv(p_face4->Texture, &point1, &point3, &point2, &point4, p_face4->GFlags);
     }
 
     {
@@ -1756,18 +1820,7 @@ void draw_special_object_face4(ushort face4)
 
     if ((p_face4->Flags == 10) || (p_face4->Flags == 9))
     {
-        struct SingleFloorTexture *p_sftex;
-
-        p_sftex = &game_textures[p_face4->Texture];
-        vec_map = vec_tmap[p_sftex->Page];
-        point2.U = p_sftex->TMapX1 << 16;
-        point2.V = p_sftex->TMapY1 << 16;
-        point1.U = p_sftex->TMapX2 << 16;
-        point1.V = p_sftex->TMapY2 << 16;
-        point3.U = p_sftex->TMapX3 << 16;
-        point3.V = p_sftex->TMapY3 << 16;
-        point4.U = p_sftex->TMapX4 << 16;
-        point4.V = p_sftex->TMapY4 << 16;
+        set_floor_texture_uv(p_face4->Texture, &point2, &point1, &point3, &point4, p_face4->GFlags);
     }
     {
         if (vec_mode == 2)
@@ -1827,13 +1880,13 @@ void draw_sort_sprite1b(int sspr)
         }
     }
     bright += br_inc;
-    if ((p_thing->U.UPerson.AnimMode == 12) || ((ingame.Flags & GamF_ThermalView) != 0))
+    if ((p_thing->U.UPerson.AnimMode == ANIM_PERS_Unkn12) || ((ingame.Flags & GamF_ThermalView) != 0))
         bright = 32;
 
     word_1A5834 = 120;
     word_1A5836 = 120;
 
-    if (((p_thing->Flag2 & TgF2_Unkn2000) != 0) && (ingame.DisplayMode == 50))
+    if (((p_thing->Flag2 & TgF2_InsideBuilding) != 0) && (ingame.DisplayMode == 50))
     {
         if ((ingame.Flags & GamF_ThermalView) != 0) {
             ushort fr;
@@ -1944,18 +1997,7 @@ void draw_object_face4_pole(ushort face4)
 
     if (p_face4->Texture != 0)
     {
-        struct SingleFloorTexture *p_sftex;
-
-        p_sftex = &game_textures[p_face4->Texture];
-        vec_map = vec_tmap[p_sftex->Page];
-        point3.U = p_sftex->TMapX1 << 16;
-        point3.V = p_sftex->TMapY1 << 16;
-        point2.U = p_sftex->TMapX2 << 16;
-        point2.V = p_sftex->TMapY2 << 16;
-        point1.U = p_sftex->TMapX3 << 16;
-        point1.V = p_sftex->TMapY3 << 16;
-        point4.U = p_sftex->TMapX4 << 16;
-        point4.V = p_sftex->TMapY4 << 16;
+        set_floor_texture_uv(p_face4->Texture, &point3, &point2, &point1, &point4, p_face4->GFlags);
     }
     {
         struct SinglePoint *p_point;
@@ -2098,14 +2140,8 @@ void draw_object_face3_textrd(ushort face)
 
     if (p_face->Texture != 0)
     {
-        struct SingleTexture *p_stex;
-
-        p_stex = &game_face_textures[p_face->Texture];
-        vec_map = vec_tmap[p_stex->Page];
         if (p_face->GFlags != 0)
         {
-            if ((p_face->GFlags & FGFlg_Unkn02) != 0)
-                vec_map = scratch_buf1;
             if ((p_face->GFlags & FGFlg_Unkn40) != 0) {
                 uint frame;
                 frame = gameturn + p_face->Object;
@@ -2113,12 +2149,7 @@ void draw_object_face3_textrd(ushort face)
                     vec_mode = 5;
             }
         }
-        point1.U = p_stex->TMapX1 << 16;
-        point1.V = p_stex->TMapY1 << 16;
-        point2.U = p_stex->TMapX3 << 16;
-        point2.V = p_stex->TMapY3 << 16;
-        point3.U = p_stex->TMapX2 << 16;
-        point3.V = p_stex->TMapY2 << 16;
+        set_face_texture_uv(p_face->Texture, &point1, &point3, &point2, p_face->GFlags);
     }
 
     {
@@ -2286,14 +2317,8 @@ void draw_object_face4d_textrd(ushort face4)
     vec_mode = p_face4->Flags;
     if (p_face4->Texture != 0)
     {
-        struct SingleFloorTexture *p_sftex;
-
-        p_sftex = &game_textures[p_face4->Texture];
-        vec_map = vec_tmap[p_sftex->Page];
         if (p_face4->GFlags != 0)
         {
-            if ((p_face4->GFlags & FGFlg_Unkn02) != 0)
-                vec_map = scratch_buf1;
             if ((p_face4->GFlags & FGFlg_Unkn40) != 0) {
                 uint frame;
                 frame = gameturn + p_face4->Object;
@@ -2302,16 +2327,10 @@ void draw_object_face4d_textrd(ushort face4)
             }
         }
         if ((p_face4->GFlags & FGFlg_Unkn20) != 0) {
-            point2.U = p_sftex->TMapX4 << 16;
-            point2.V = p_sftex->TMapY4 << 16;
+            set_floor_texture_uv(p_face4->Texture, &point1, &point3, &point4, &point2, p_face4->GFlags);
         } else {
-            point2.U = p_sftex->TMapX3 << 16;
-            point2.V = p_sftex->TMapY3 << 16;
+            set_floor_texture_uv(p_face4->Texture, &point1, &point3, &point2, &point4, p_face4->GFlags);
         }
-        point1.U = p_sftex->TMapX1 << 16;
-        point1.V = p_sftex->TMapY1 << 16;
-        point3.U = p_sftex->TMapX2 << 16;
-        point3.V = p_sftex->TMapY2 << 16;
     }
 
     {
@@ -2521,13 +2540,7 @@ void draw_object_face4g_textrd(ushort face4)
     vec_mode = p_face4->Flags;
     if (p_face4->Texture != 0)
     {
-        struct SingleFloorTexture *p_sftex;
-
-        p_sftex = &game_textures[p_face4->Texture];
-        vec_map = vec_tmap[p_sftex->Page];
         {
-            if ((p_face4->GFlags & FGFlg_Unkn02) != 0)
-                vec_map = scratch_buf1;
             if ((p_face4->GFlags & (FGFlg_Unkn40|FGFlg_Unkn02)) != 0) {
                 uint frame;
                 frame = gameturn + 4 * p_face4->Object;
@@ -2540,16 +2553,10 @@ void draw_object_face4g_textrd(ushort face4)
             }
         }
         if ((p_face4->GFlags & FGFlg_Unkn20) != 0) {
-            point2.U = p_sftex->TMapX4 << 16;
-            point2.V = p_sftex->TMapY4 << 16;
+            set_floor_texture_uv(p_face4->Texture, &point1, &point3, &point4, &point2, p_face4->GFlags);
         } else {
-            point2.U = p_sftex->TMapX3 << 16;
-            point2.V = p_sftex->TMapY3 << 16;
+            set_floor_texture_uv(p_face4->Texture, &point1, &point3, &point2, &point4, p_face4->GFlags);
         }
-        point1.U = p_sftex->TMapX1 << 16;
-        point1.V = p_sftex->TMapY1 << 16;
-        point3.U = p_sftex->TMapX2 << 16;
-        point3.V = p_sftex->TMapY2 << 16;
     }
 
     if (ingame.draw_unknprop_01 == 0)
@@ -2717,37 +2724,7 @@ void draw_object_face3_reflect(ushort face)
     p_face = &game_object_faces[face];
     vec_colour = p_face->ExCol;
     vec_mode = 27;
-    vec_map = vec_tmap[4];
-    {
-        struct Normal *p_nrml;
-        sbyte texU, texV;
-
-        p_nrml = &game_normals[p_face->Shade0];
-        texU = p_nrml->LightRatio;
-        texV = p_nrml->LightRatio >> 8;
-        point1.U = (texU + 32) << 16;
-        point1.V = (texV + 128) << 16;
-    }
-    {
-        struct Normal *p_nrml;
-        sbyte texU, texV;
-
-        p_nrml = &game_normals[p_face->Shade2];
-        texU = p_nrml->LightRatio;
-        texV = p_nrml->LightRatio >> 8;
-        point2.U = (texU + 32) << 16;
-        point2.V = (texV + 128) << 16;
-    }
-    {
-        struct Normal *p_nrml;
-        sbyte texU, texV;
-
-        p_nrml = &game_normals[p_face->Shade1];
-        texU = p_nrml->LightRatio;
-        texV = p_nrml->LightRatio >> 8;
-        point3.U = (texU + 32) << 16;
-        point3.V = (texV + 128) << 16;
-    }
+    set_floor_texture_uv_shade3(face, &point1, &point3, &point2);
 
     {
         struct SinglePoint *p_point;
@@ -2814,47 +2791,7 @@ void draw_object_face4_reflect(ushort face4)
     p_face4 = &game_object_faces4[face4];
     vec_colour = p_face4->ExCol;
     vec_mode = 27;
-    vec_map = vec_tmap[4];
-    {
-        struct Normal *p_nrml;
-        sbyte texU, texV;
-
-        p_nrml = &game_normals[p_face4->Shade0];
-        texU = p_nrml->LightRatio;
-        texV = p_nrml->LightRatio >> 8;
-        point1.U = (texU + 32) << 16;
-        point1.V = (texV + 128) << 16;
-    }
-    {
-        struct Normal *p_nrml;
-        sbyte texU, texV;
-
-        p_nrml = &game_normals[p_face4->Shade2];
-        texU = p_nrml->LightRatio;
-        texV = p_nrml->LightRatio >> 8;
-        point2.U = (texU + 32) << 16;
-        point2.V = (texV + 128) << 16;
-    }
-    {
-        struct Normal *p_nrml;
-        sbyte texU, texV;
-
-        p_nrml = &game_normals[p_face4->Shade1];
-        texU = p_nrml->LightRatio;
-        texV = p_nrml->LightRatio >> 8;
-        point3.U = (texU + 32) << 16;
-        point3.V = (texV + 128) << 16;
-    }
-    {
-        struct Normal *p_nrml;
-        sbyte texU, texV;
-
-        p_nrml = &game_normals[p_face4->Shade3];
-        texU = p_nrml->LightRatio;
-        texV = p_nrml->LightRatio >> 8;
-        point4.U = (texU + 32) << 16;
-        point4.V = (texV + 128) << 16;
-    }
+    set_floor_texture_uv_shade4(face4, &point1, &point3, &point2, &point4);
 
     {
         struct SinglePoint *p_point;

@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file feresearch.h
  *     Header file for feresearch.c.
@@ -48,8 +48,17 @@ void forward_research_progress_after_mission(int num_days);
 void show_research_screen(void);
 
 void init_research_screen_boxes(void);
+
+/** Reset players part of research screen state.
+ *
+ * Resets all parts of research screen which are set by the player
+ * or related to players game progress.
+ */
+void reset_research_screen_player_state(void);
+
 void reset_research_screen_boxes_flags(void);
 void set_flag01_research_screen_boxes(void);
+void skip_flashy_draw_research_screen_boxes(void);
 void clear_research_screen(void);
 
 /******************************************************************************/

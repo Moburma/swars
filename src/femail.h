@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file femail.h
  *     Header file for femail.c.
@@ -51,6 +51,7 @@ struct NewMailItem { // sizeof=5
 #pragma pack()
 /******************************************************************************/
 extern ubyte new_mail;
+extern short next_ref;
 extern struct NewMailItem newmail_store[29];
 extern ushort next_email;
 extern struct EmailItem email_store[20];

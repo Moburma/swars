@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file thing_debug.c
  *     Thing related debug modes.
@@ -19,7 +19,6 @@
 #include "thing.h"
 
 #include <string.h>
-#include "bfkeybd.h"
 #include "bfbox.h"
 #include "bfline.h"
 #include "bfmath.h"
@@ -31,7 +30,9 @@
 #include "display.h"
 #include "engintrns.h"
 #include "game.h"
+#include "game_options.h"
 #include "game_sprts.h"
+#include "keyboard.h"
 #include "pathtrig.h"
 #include "scandraw.h"
 #include "thing_search.h"
@@ -352,6 +353,7 @@ int person_command_dbg_point_to_target(short x, short y, ushort cmd, struct Thin
     case PCmd_PING_P_V:
     case PCmd_WAIT_OBJT_DESTROY:
     case PCmd_WAND_OBJT_DESTROY:
+    case PCmd_WAIT_P_PERSUADE:
         unused_func_203(x, y, p_cmd->OtherThing, 1u);
         return 1;
     case PCmd_KILL_PERSON:
@@ -616,17 +618,20 @@ void things_debug_hud(void)
     char locstr[100];
     short tng_x, tng_y, tng_z;
     short scr_x, scr_y, ln;
-    short map_x, map_y, map_z;
+    MapCoord cor_x, cor_y, cor_z;
 
-    map_coords_limit(&map_x, &map_y, &map_z, mouse_map_x, 0, mouse_map_z);
-    thing = select_thing_for_debug(map_x, map_y, map_z, -1);
+    map_coords_limit(&cor_x, &cor_y, &cor_z, mouse_map_x, 0, mouse_map_z);
+    thing = select_thing_for_debug(cor_x, cor_y, cor_z, -1);
     // Lock on current thing
-    if (lbKeyOn[KC_W])
+    if (is_key_pressed(KC_W, KMod_SHIFT))
     {
-        lbKeyOn[KC_W] = 0;
-        if (lbShift & KMod_SHIFT) {
-            dword_1DC7A4 = 0;
-        } else if (thing > 0) {
+        clear_key_pressed(KC_W);
+        dword_1DC7A4 = 0;
+    }
+    if (is_key_pressed(KC_W, KMod_NONE))
+    {
+        clear_key_pressed(KC_W);
+        if (thing > 0) {
             dword_1DC7A4 = thing;
         }
     }
@@ -720,6 +725,24 @@ void things_debug_hud(void)
               (int)p_track_thing->ThingOffset,
               (int)p_track_thing->U.UPerson.AnimMode);
             break;
+        case TT_BUILDING:
+            //snprint_building_state(locstr+strlen(locstr), sizeof(locstr)-strlen(locstr), p_track_thing);
+            if (p_track_thing->SubType == SubTT_BLD_MGUN) {
+                snprintf(locstr+strlen(locstr), sizeof(locstr)-strlen(locstr),
+                  " G %d EG %d th %d",
+                 (int)p_track_thing->U.UMGun.Group,
+                  (int)p_track_thing->U.UMGun.EffectiveGroup,
+                  (int)p_track_thing->ThingOffset);
+            } else {
+                snprintf(locstr+strlen(locstr), sizeof(locstr)-strlen(locstr),
+                  " Mood %d G %d comcur %x EG %d th %d",
+                  (int)p_track_thing->U.UObject.Mood,
+                 (int)p_track_thing->U.UObject.Group,
+                  (uint)p_track_thing->U.UObject.ComCur,
+                  (int)p_track_thing->U.UObject.EffectiveGroup,
+                  (int)p_track_thing->ThingOffset);
+            }
+            break;
         default:
             snprintf(locstr+strlen(locstr), sizeof(locstr)-strlen(locstr), " th %d",
               (int)p_track_thing->ThingOffset);
@@ -751,6 +774,31 @@ void things_debug_hud(void)
               (int)p_track_thing->U.UPerson.MaxShieldEnergy,
               (int)p_track_thing->StartFrame,
               (int)p_track_thing->Frame);
+            break;
+        case TT_BUILDING:
+            if (p_track_thing->SubType == SubTT_BLD_MGUN) {
+                sprintf(locstr, "F  %08x Spd %d Obj %d He %d/%d ObN %d ShTn %d SF %d F %d",
+                  (uint)p_track_thing->Flag,
+                  (int)p_track_thing->Speed,
+                  (int)p_track_thing->U.UMGun.Object,
+                  (int)p_track_thing->Health,
+                  (int)p_track_thing->U.UMGun.MaxHealth,
+                  (int)p_track_thing->U.UMGun.ObjectNo,
+                  (int)p_track_thing->U.UMGun.ShotTurn,
+                  (int)p_track_thing->StartFrame,
+                  (int)p_track_thing->Frame);
+            } else {
+                sprintf(locstr, "F  %08x Spd %d Obj %d He %d ToD %d Off %d,%d SF %d F %d",
+                  (uint)p_track_thing->Flag,
+                  (int)p_track_thing->Speed,
+                  (int)p_track_thing->U.UObject.Object,
+                  (int)p_track_thing->Health,
+                  (int)p_track_thing->U.UObject.TokenDir,
+                  (int)p_track_thing->U.UObject.OffX,
+                  (int)p_track_thing->U.UObject.OffZ,
+                  (int)p_track_thing->StartFrame,
+                  (int)p_track_thing->Frame);
+            }
             break;
         default:
             sprintf(locstr, "F  %08x Spd %d He %d SF %d F %d",

@@ -1,3 +1,21 @@
+/******************************************************************************/
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
+/******************************************************************************/
+/** @file sound.h
+ *     Header file for sound.c.
+ * @par Purpose:
+ *     Sound related routines.
+ * @par Comment:
+ *     Just a header file - #defines, typedefs, function prototypes etc.
+ * @author   Tomasz Lis
+ * @date     22 Apr 2023 - 02 Nov 2025
+ * @par  Copying and copyrights:
+ *     This program is free software; you can redistribute it and/or modify
+ *     it under the terms of the GNU General Public License as published by
+ *     the Free Software Foundation; either version 2 of the License, or
+ *     (at your option) any later version.
+ */
+/******************************************************************************/
 #ifndef SOUND_H
 #define SOUND_H
 
@@ -7,6 +25,8 @@
 #include "bftypes.h"
 #include "timer.h"
 #include "mssal.h"
+
+/******************************************************************************/
 
 #pragma pack(1)
 
@@ -35,12 +55,15 @@ struct SampleTable {
   struct HeapMgrHandle *hmhandle;
 };
 
+#define STARTSCR_VOLUME_MAX 322
+
 #pragma pack()
 
 extern short startscr_samplevol;
 extern short startscr_midivol;
 extern short startscr_cdvolume;
 
+/******************************************************************************/
 
 void set_default_sfx_settings(void);
 void sfx_apply_samplevol(void);
@@ -49,7 +72,9 @@ void sfx_apply_cdvolume(void);
 void fill_ail_sample_ids(void);
 void monitor_all_samples(void);
 
-struct SampleInfo *play_sample_using_heap(ulong a1, short smptbl_id, ulong a3, ulong a4, ulong a5, char a6, ubyte type);
+struct SampleInfo *play_sample_using_heap(ulong bank_id, short smptbl_id,
+  ulong volume, ulong pan, ulong pitch, sbyte loop_count, ubyte type);
+
 void stop_sample_using_heap(long source_id, ulong sample_number);
 void play_dist_sample(struct Thing *p_thing, ushort smptbl_id, ushort vol, ushort pan, int pitch, int loop, ubyte type);
 int play_dist_speech(struct Thing *p_thing, ushort samp, ushort vol, ushort pan, int pitch, int loop, ubyte type);
@@ -63,4 +88,5 @@ void wait_for_sound_sample_finish(ushort smpl_id);
 void setup_heaps(short setup_cmd, const char *lang);
 void reset_heaps(void);
 
+/******************************************************************************/
 #endif

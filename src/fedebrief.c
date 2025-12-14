@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file fedebrief.c
  *     Front-end desktop and menu system, mission debrief screen.
@@ -25,10 +25,13 @@
 #include "campaign.h"
 #include "display.h"
 #include "febrief.h"
+#include "femain.h"
 #include "guiboxes.h"
 #include "guitext.h"
+#include "game_options.h"
 #include "game_sprts.h"
 #include "game.h"
+#include "keyboard.h"
 #include "thing.h"
 #include "misstat.h"
 #include "player.h"
@@ -55,8 +58,37 @@ extern ushort word_1C4856[8];
 
 void show_debrief_screen(void)
 {
+#if 0
     asm volatile ("call ASM_show_debrief_screen\n"
         :  :  : "eax" );
+#endif
+    ubyte drawn;
+
+    if ((game_projector_speed && is_heading_flag01()) ||
+      (is_key_pressed(KC_SPACE, KMod_DONTCARE) && !edit_flag))
+    {
+        clear_key_pressed(KC_SPACE);
+        skip_flashy_draw_debrief_screen_boxes();
+    }
+    drawn = 1;
+    if (drawn) {
+        drawn = draw_heading_box();
+    }
+    if (drawn) {
+        //drawn = debrief_mission_box.DrawFn(&debrief_mission_box); -- incompatible calling convention
+        asm volatile ("call *%2\n"
+            : "=r" (drawn) : "a" (&debrief_mission_box), "g" (debrief_mission_box.DrawFn));
+    }
+    if (drawn) {
+        //drawn = debrief_people_box.DrawFn(&debrief_people_box); -- incompatible calling convention
+        asm volatile ("call *%2\n"
+            : "=r" (drawn) : "a" (&debrief_people_box), "g" (debrief_people_box.DrawFn));
+    }
+    if (drawn) {
+        //drawn = world_city_info_box.DrawFn(&world_city_info_box); -- incompatible calling convention
+        asm volatile ("call *%2\n"
+            : "=r" (drawn) : "a" (&world_city_info_box), "g" (world_city_info_box.DrawFn));
+    }
 }
 
 void draw_mission_stats_names_column(struct ScreenBox *box,
@@ -145,7 +177,7 @@ void draw_mission_stats_vals_static(struct ScreenBox *box,
     draw_text_purple_list2(x, y, text, 0);
     y += lnheight;
 
-    snprintf(locstr, sizeof(locstr), "%s", gui_strings[635 + p_rep->Status]);
+    snprintf(locstr, sizeof(locstr), "%s", gui_strings[GSTR_ENM_MISSION_STATUS + 1 + p_rep->Status]);
     text = loctext_to_gtext(locstr);
     draw_text_purple_list2(x, y, text, 0);
     y += lnheight;
@@ -178,7 +210,7 @@ void draw_mission_stats_vals_static(struct ScreenBox *box,
 
 void snprint_concat_comma_separated_weapons_list(char *out, ushort outlen, ulong weapons)
 {
-    ushort wtype;
+    WeaponType wtype;
     ushort strid;
     ushort pos;
 
@@ -188,7 +220,7 @@ void snprint_concat_comma_separated_weapons_list(char *out, ushort outlen, ulong
         struct Campaign *p_campgn;
 
         wtype = weapons_prev_weapon(weapons, wtype);
-        if (wtype == 0)
+        if (wtype == WEP_NULL)
             break;
 
         if (strlen(out) > outlen - 4u)
@@ -413,30 +445,30 @@ void draw_mission_people_stats_names_column(struct ScreenBox *box,
     x = 20;
     y = lnheight;
 
-    draw_text_purple_list2(x, y, gui_strings[618], 0);
+    draw_text_purple_list2(x, y, gui_strings[GSTR_MTR_PERSD_CIVIL], 0);
     y += lnheight;
 
-    draw_text_purple_list2(x, y, gui_strings[619], 0);
+    draw_text_purple_list2(x, y, gui_strings[GSTR_MTR_PERSD_MILIT], 0);
     y += lnheight;
 
-    draw_text_purple_list2(x, y, gui_strings[620], 0);
-    y += lnheight;
-    y += lnheight;
-
-    draw_text_purple_list2(x, y, gui_strings[621], 0);
-    y += lnheight;
-
-    draw_text_purple_list2(x, y, gui_strings[622], 0);
-    y += lnheight;
-
-    draw_text_purple_list2(x, y, gui_strings[623], 0);
+    draw_text_purple_list2(x, y, gui_strings[GSTR_MTR_PERSD_ADVERS], 0);
     y += lnheight;
     y += lnheight;
 
-    draw_text_purple_list2(x, y, gui_strings[624], 0);
+    draw_text_purple_list2(x, y, gui_strings[GSTR_MTR_KILLD_CIVIL], 0);
     y += lnheight;
 
-    draw_text_purple_list2(x, y, gui_strings[630], 0);
+    draw_text_purple_list2(x, y, gui_strings[GSTR_MTR_KILLD_MILIT], 0);
+    y += lnheight;
+
+    draw_text_purple_list2(x, y, gui_strings[GSTR_MTR_KILLD_ADVERS], 0);
+    y += lnheight;
+    y += lnheight;
+
+    draw_text_purple_list2(x, y, gui_strings[GSTR_MTR_CYBORGS_LOST], 0);
+    y += lnheight;
+
+    draw_text_purple_list2(x, y, gui_strings[GSTR_MTR_CYBORGS_GAIN], 0);
     y += lnheight;
 }
 
@@ -681,9 +713,7 @@ ubyte show_mission_people_stats(struct ScreenBox *box)
 
 void init_debrief_screen_boxes(void)
 {
-    short scr_w, start_x;
-
-    scr_w = lbDisplay.GraphicsWindowWidth;
+    ScrCoord start_x, start_y;
 
     init_screen_box(&debrief_mission_box, 7u, 72u, 518u, 172, 6);
     debrief_mission_box.SpecialDrawFn = show_mission_stats;
@@ -691,16 +721,33 @@ void init_debrief_screen_boxes(void)
     init_screen_box(&debrief_people_box, 7u, 253u, 518u, 173, 6);
     debrief_people_box.SpecialDrawFn = show_mission_people_stats;
 
-    start_x = (scr_w - debrief_mission_box.Width - world_city_info_box.Width - 23) / 2;
+    // Reposition the components to current resolution
 
-    debrief_mission_box.X = start_x + 7;
-    debrief_people_box.X = start_x + 7;
+    // For this screen, we will just align to other pre-positioned boxes;
+    // No need to compute positions from scratch
+    start_x = heading_box.X;
+    start_y = world_city_info_box.Y;
+
+    // Expect world_city_info_box to be already set
+    debrief_mission_box.X = start_x;
+    debrief_mission_box.Y = start_y;
+
+    debrief_people_box.X = start_x;
+    debrief_people_box.Y = start_y + world_city_info_box.Height - debrief_people_box.Height;
 }
 
 void reset_debrief_screen_boxes_flags(void)
 {
     debrief_people_box.Flags = GBxFlg_Unkn0001;
     debrief_mission_box.Flags = GBxFlg_Unkn0001;
+}
+
+void skip_flashy_draw_debrief_screen_boxes(void)
+{
+    skip_flashy_draw_heading_screen_boxes();
+    debrief_people_box.Flags |= 0x0002;
+    debrief_mission_box.Flags |= 0x0002;
+    world_city_info_box.Flags |= 0x0002;
 }
 
 /******************************************************************************/

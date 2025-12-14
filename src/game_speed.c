@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file game_speed.c
  *     Control of the game speed.
@@ -68,33 +68,24 @@ void frameskip_decrease(void)
     //show_onscreen_msg(game_num_fps+frameskip, "Frame skip %d",frameskip);
 }
 
-/**
- * Handles game speed control inputs.
- * @return Returns true if packet was created, false otherwise.
- */
-TbBool get_speed_control_inputs(void)
+ubyte get_speed_control_inputs(void)
 {
-    if (is_key_pressed(KC_ADD,KMod_CONTROL))
+    ubyte did_inp;
+
+    did_inp = GINPUT_NONE;
+    if (is_gamekey_pressed(GKey_GAMESPEED_INC))
     {
+        clear_gamekey_pressed(GKey_GAMESPEED_INC);
         frameskip_increase();
-        clear_key_pressed(KC_ADD);
+        did_inp |= GINPUT_DIRECT;
     }
-    if (is_key_pressed(KC_EQUALS,KMod_CONTROL))
+    if (is_gamekey_pressed(GKey_GAMESPEED_DEC))
     {
-        frameskip_increase();
-        clear_key_pressed(KC_EQUALS);
-    }
-    if (is_key_pressed(KC_SUBTRACT,KMod_CONTROL))
-    {
+        clear_gamekey_pressed(GKey_GAMESPEED_DEC);
         frameskip_decrease();
-        clear_key_pressed(KC_SUBTRACT);
+        did_inp |= GINPUT_DIRECT;
     }
-    if (is_key_pressed(KC_MINUS,KMod_CONTROL))
-    {
-        frameskip_decrease();
-        clear_key_pressed(KC_MINUS);
-    }
-    return false;
+    return did_inp;
 }
 
 void wait_next_gameturn(void)

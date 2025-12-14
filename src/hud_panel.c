@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file hud_panel.c
  *     Ingame Heads-Up Display panel draw.
@@ -20,22 +20,26 @@
 
 #include <assert.h>
 #include "bfbox.h"
+#include "bffont.h"
 #include "bfgentab.h"
 #include "bfline.h"
 #include "bfmemut.h"
 #include "bfplanar.h"
 #include "bfscreen.h"
 #include "bfsprite.h"
+#include "bfstrut.h"
 #include "bftext.h"
 #include "bfutility.h"
 #include "ssampply.h"
 
 #include "app_sprite.h"
+#include "app_text_sf.h"
 #include "bflib_render_drspr.h"
 #include "bigmap.h"
 #include "display.h"
 #include "engintrns.h"
 #include "game_data.h"
+#include "game_options.h"
 #include "game_speed.h"
 #include "game_sprts.h"
 #include "game.h"
@@ -163,113 +167,6 @@ void update_dropped_item_under_agent_exists(short agent)
     }
 }
 
-/* draws a sprite scaled to double size; remove pending */
-void SCANNER_unkn_func_200(struct TbSprite *p_spr, int x, int y, ubyte col)
-{
-    int xwind_beg;
-    int xwind_end;
-    int xwind_start;
-    sbyte *inp;
-    ubyte *oline;
-    int opitch;
-    int h;
-    TbBool needs_window_bounding;
-
-    xwind_beg = lbDisplay.GraphicsWindowX;
-    xwind_end = lbDisplay.GraphicsWindowX + lbDisplay.GraphicsWindowWidth;
-    xwind_start = lbDisplay.GraphicsWindowX + x;
-    inp = (sbyte *)p_spr->Data;
-    opitch = lbDisplay.GraphicsScreenWidth;
-    oline = &lbDisplay.WScreen[opitch * (lbDisplay.GraphicsWindowY + y) + lbDisplay.GraphicsWindowX + x];
-    if (xwind_start < lbDisplay.GraphicsWindowX) {
-        if (xwind_start + 2 * p_spr->SWidth <= lbDisplay.GraphicsWindowX)
-            return;
-        needs_window_bounding = true;
-    } else {
-        if (xwind_start >= xwind_end)
-            return;
-        needs_window_bounding = (xwind_start + 2 * p_spr->SWidth > xwind_end);
-    }
-
-    if (!needs_window_bounding)
-    {
-        // Simplified and faster drawing when we do not have to check bounds
-        for (h = 0; h < p_spr->SHeight; h++)
-        {
-            ubyte *o;
-
-            o = oline;
-            while (*inp)
-            {
-                int ival;
-                int i;
-
-                ival = *inp;
-                if (ival < 0)
-                {
-                    inp++;
-                    o -= 2 * ival;
-                    continue;
-                }
-                inp += ival + 1;
-                for (i = 0; i < ival; i++)
-                {
-                    o[0] = col;
-                    o[opitch + 0] = col;
-                    o[1] = col;
-                    o[opitch + 1] = col;
-                    o += 2;
-                }
-            }
-            inp++;
-            oline += 2 * opitch;
-        }
-    }
-    else
-    {
-        for (h = 0; h < p_spr->SHeight; h++)
-        {
-            ubyte *o;
-            int xwind_curr;
-
-            o = oline;
-            xwind_curr = xwind_start;
-            while (*inp)
-            {
-                int ival;
-                int i;
-
-                ival = *inp;
-                if (ival < 0)
-                {
-                    inp++;
-                    o -= 2 * ival;
-                    xwind_curr -= 2 * ival;
-                    continue;
-                }
-                inp += ival + 1;
-                for (i = 0; i < ival; i++)
-                {
-                    if (xwind_curr >= xwind_beg && xwind_curr < xwind_end) {
-                        o[0] = col;
-                        o[opitch] = col;
-                    }
-                    xwind_curr++;
-                    o++;
-                    if (xwind_curr >= xwind_beg && xwind_curr < xwind_end) {
-                        o[0] = col;
-                        o[opitch] = col;
-                    }
-                    xwind_curr++;
-                    o++;
-                }
-            }
-            inp++;
-            oline += 2 * opitch;
-        }
-    }
-}
-
 void SCANNER_unkn_func_203(int a1, int a2, int a3, int a4, ubyte a5, int a6, int a7)
 {
     asm volatile (
@@ -299,7 +196,7 @@ int SCANNER_text_draw(const char *text, int start_x, int height)
     {
         while (*str != '\0')
         {
-            struct TbSprite *p_spr;
+            const struct TbSprite *p_spr;
             int chr_width, chr_height;
             ubyte ch;
             TbPixel col;
@@ -310,7 +207,7 @@ int SCANNER_text_draw(const char *text, int start_x, int height)
             } else {
               ch = my_char_to_upper(*str);
               col = pixmap.fade_table[56 * PALETTE_8b_COLORS + sel_c1];
-              p_spr = &lbFontPtr[ch - 31];
+              p_spr = LbFontCharSprite(lbFontPtr, ch);
               chr_width = p_spr->SWidth * height / height_base;
               chr_height = p_spr->SHeight * height / height_base;
               LbSpriteDrawScaledOneColour(x, y, p_spr, chr_width, chr_height, col);
@@ -323,7 +220,7 @@ int SCANNER_text_draw(const char *text, int start_x, int height)
     {
         while (*str != '\0')
         {
-            struct TbSprite *p_spr;
+            const struct TbSprite *p_spr;
             ubyte ch;
             TbPixel col;
 
@@ -333,7 +230,7 @@ int SCANNER_text_draw(const char *text, int start_x, int height)
             } else {
               ch = my_char_to_upper(*str);
               col = pixmap.fade_table[56 * PALETTE_8b_COLORS + sel_c1];
-              p_spr = &lbFontPtr[ch - 31];
+              p_spr = LbFontCharSprite(lbFontPtr, ch);
               LbSpriteDrawOneColour(x, y, p_spr, col);
               x += p_spr->SWidth;
             }
@@ -382,220 +279,6 @@ void SCANNER_move_objective_info(int width, int height, int end_pos)
     }
 }
 
-void draw_text_linewrap1b(int base_x, int *p_pos_y, const char *text)
-{
-    const char *str;
-    int pos_x, pos_y;
-    int base_shift;
-    TbPixel col2;
-
-    col2 = SCANNER_colour[0];
-    str = text;
-    pos_x = base_x;
-    base_shift = 0;
-    pos_y = *p_pos_y;
-    while (*str != '\0')
-    {
-        if (*str == 32)
-        {
-            const char *sstr;
-            int w;
-
-            w = 0;
-            sstr = str + 1;
-            while (*sstr != '\0')
-            {
-                struct TbSprite *p_spr;
-
-                if (*sstr == 32)
-                    break;
-                p_spr = &small_font[my_char_to_upper(*sstr) - 31];
-                w += p_spr->SWidth;
-                sstr++;
-            }
-            if (pos_x + 2 * w < lbDisplay.PhysicalScreenWidth - 16) {
-                pos_x += 8;
-            } else {
-                pos_x = base_x;
-                pos_y += 12;
-            }
-        }
-        else
-        {
-            struct TbSprite *p_spr;
-            ushort fade_lv;
-
-            fade_lv = 40 - (lbSinTable[128 * ((gameturn + base_shift) & 0xF)] >> 13);
-            p_spr = &small_font[my_char_to_upper(*str) - 31];
-            SCANNER_unkn_func_200(p_spr, pos_x + 1, pos_y + 1, colour_lookup[0]);
-            SCANNER_unkn_func_200(p_spr, pos_x, pos_y, pixmap.fade_table[256 * fade_lv + col2]);
-            pos_x += p_spr->SWidth + p_spr->SWidth;
-        }
-        base_shift++;
-        str++;
-    }
-    pos_y += 12;
-    *p_pos_y = pos_y;
-}
-
-void draw_text_linewrap2b(int base_x, int *p_pos_y, const char *text)
-{
-    const char *str;
-    int pos_x, pos_y;
-    int base_shift;
-    TbPixel col2;
-
-    col2 = SCANNER_colour[0];
-    pos_x = base_x;
-    str = text;
-    pos_y = *p_pos_y;
-    base_shift = 0;
-    while (*str != '\0')
-    {
-        if (*str == 32)
-        {
-            const char *sstr;
-            int w;
-
-            w = 0;
-            sstr = str + 1;
-            while (*sstr != '\0')
-            {
-                struct TbSprite *p_spr;
-
-                if (*sstr == 32)
-                  break;
-                p_spr = &small_font[my_char_to_upper(*sstr) - 31];
-                w += p_spr->SWidth;
-                sstr++;
-            }
-            if (pos_x + w < lbDisplay.PhysicalScreenWidth - 8) {
-                pos_x += 4;
-            } else {
-                pos_x = base_x;
-                pos_y += 6;
-            }
-        }
-        else
-        {
-            struct TbSprite *p_spr;
-            ushort fade_lv;
-
-            fade_lv = 40 - (lbSinTable[128 * ((gameturn + base_shift) & 0xF)] >> 13);
-            p_spr = &small_font[my_char_to_upper(*str) - 31];
-            LbSpriteDrawOneColour(pos_x + 1, pos_y + 1, p_spr, colour_lookup[0]);
-            LbSpriteDrawOneColour(pos_x, pos_y,  p_spr, pixmap.fade_table[256 * fade_lv + col2]);
-            pos_x += p_spr->SWidth;
-        }
-        str++;
-        base_shift++;
-    }
-    pos_y += 6;
-    *p_pos_y = pos_y;
-}
-
-void draw_text_linewrap1(int base_x, int *p_pos_y, int plyr, const char *text)
-{
-    const char *str;
-    int pos_x, pos_y;
-    int base_shift;
-    TbPixel col2;
-
-    str = text;
-    pos_x = base_x;
-    pos_y = *p_pos_y;
-    col2 = byte_1C5C30[plyr];
-    base_shift = -180;
-    while (*str != '\0')
-    {
-        if (*str == 32)
-        {
-            if (pos_x + 2 * font_word_length(str + 1) < lbDisplay.PhysicalScreenWidth - 16) {
-                pos_x += 8;
-            } else {
-                pos_x = base_x;
-                pos_y += 12;
-            }
-        }
-        else
-        {
-            struct TbSprite *p_spr;
-            int fd;
-            ubyte ch;
-            TbPixel col1;
-
-            ch = my_char_to_upper(*str);
-            p_spr = &small_font[ch - 31];
-            fd = base_shift + 4 * player_unkn0C9[plyr];
-            if (fd > 63)
-                fd = 63 - (fd - 63);
-            if (fd > 63)
-                fd = 63;
-            if (fd < 0)
-                fd = 0;
-            col1 = pixmap.fade_table[256 * fd + colour_lookup[8]];
-            SCANNER_unkn_func_200(p_spr, pos_x + 1, pos_y + 1, col1);
-            SCANNER_unkn_func_200(p_spr, pos_x, pos_y, col2);
-            pos_x += 2 * p_spr->SWidth;
-        }
-        str++;
-        base_shift++;
-    }
-    pos_y += 12;
-    *p_pos_y = pos_y;
-}
-
-void draw_text_linewrap2(int base_x, int *p_pos_y, int plyr, const char *text)
-{
-    const char *str;
-    int pos_x, pos_y;
-    int base_shift;
-    TbPixel col2;
-
-    str = text;
-    pos_x = base_x;
-    pos_y = *p_pos_y;
-    col2 = byte_1C5C30[plyr];
-    base_shift = -180;
-    while (*str != '\0')
-    {
-        if (*str == 32)
-        {
-            if (pos_x + font_word_length(str + 1) < lbDisplay.PhysicalScreenWidth - 8) {
-                pos_x += 4;
-            } else {
-                pos_x = base_x;
-                pos_y += 6;
-            }
-        }
-        else
-        {
-            struct TbSprite *p_spr;
-            int fd;
-            ubyte ch;
-            TbPixel col1;
-
-            ch = my_char_to_upper(*str);
-            p_spr = &small_font[ch - 31];
-            fd = base_shift + 4 * (ubyte)player_unkn0C9[plyr];
-            if (fd > 63)
-                fd = 63 - (fd - 63);
-            if (fd > 63)
-                fd = 63;
-            if (fd < 0)
-                fd = 0;
-            col1 = pixmap.fade_table[256 * fd + colour_lookup[8]];
-            LbSpriteDrawOneColour(pos_x + 1, pos_y + 1, p_spr, col1);
-            LbSpriteDrawOneColour(pos_x, pos_y, p_spr, col2);
-            pos_x += p_spr->SWidth;
-        }
-        str++;
-        base_shift++;
-    }
-    pos_y += 6;
-    *p_pos_y = pos_y;
-}
-
 void draw_players_chat_talk(int x, int y)
 {
     char locstr[164];
@@ -624,15 +307,10 @@ void draw_players_chat_talk(int x, int y)
         {
             sprintf(locstr, "%s said nothing.", plname);
         }
+        LbStringToUpper(locstr);
 
-        if (lbDisplay.GraphicsScreenHeight >= 400)
-        {
-            draw_text_linewrap1(base_x, &pos_y, plyr, locstr);
-        }
-        else
-        {
-            draw_text_linewrap2(base_x, &pos_y, plyr, locstr);
-        }
+        lbDisplay.DrawColour = net_player_colours[plyr];
+        AppTextDrawMissionChatMessage(base_x, &pos_y, plyr, locstr);
 
         if ( !--player_unkn0C9[plyr] ) {
             player_unknCC9[plyr][0] = '\0';
@@ -718,8 +396,8 @@ TbBool check_scanner_input(void)
             p_pckt = &packets[local_player_no];
 
             lbDisplay.LeftButton = 0;
-            p_usrinp->ControlMode |= 0x8000;
-            if ((p_locplayer->DoubleMode) || ((p_usrinp->ControlMode & 0x1FFF) == 1))
+            p_usrinp->ControlMode |= UInpCtrF_Unkn8000;
+            if ((p_locplayer->DoubleMode) || ((p_usrinp->ControlMode & ~UInpCtr_AllFlagsMask) == UInpCtr_Mouse))
             {
                 map_y = (alt_at_point(map_x, map_z) >> 8) + 20;
                 if ((gameturn & 0x7FFF) - p_usrinp->Turn >= 7)
@@ -738,7 +416,7 @@ TbBool check_scanner_input(void)
             else
             {
                 do_change_mouse(8);
-                build_packet(p_pckt, PAct_CONTROL_MODE, 1, 0, 0, 0);
+                build_packet(p_pckt, PAct_CONTROL_MODE, UInpCtr_Mouse, 0, 0, 0);
             }
             return true;
         }
@@ -756,7 +434,7 @@ TbBool check_scanner_input(void)
             p_usrinp = &p_locplayer->UserInput[mouser];
 
             lbDisplay.RightButton = 0;
-            p_usrinp->ControlMode |= 0x4000;
+            p_usrinp->ControlMode |= UInpCtrF_Unkn4000;
             if (!p_locplayer->DoubleMode)
             {
                 map_y = (alt_at_point(map_x, map_z) >> 8) + 20;
@@ -974,9 +652,12 @@ void draw_fourpack_amount(short x, ushort y, ushort amount)
     }
 }
 
-TbBool panel_agents_weapon_highlighted(PlayerInfo *p_locplayer, ushort plagent, short weptype)
+TbBool panel_agents_weapon_highlighted(PlayerIdx plyr, ushort plagent, WeaponType wtype)
 {
-    return ((weptype == p_locplayer->PanelItem[mouser]) && (agent_with_mouse_over_weapon == plagent));
+    PlayerInfo *p_player;
+
+    p_player = &players[plyr];
+    return ((wtype == p_player->PanelItem[mouser]) && (agent_with_mouse_over_weapon == plagent));
 }
 
 /**
@@ -985,13 +666,13 @@ TbBool panel_agents_weapon_highlighted(PlayerInfo *p_locplayer, ushort plagent, 
  * @param x
  * @param y
  * @param plagent
- * @param weptype
+ * @param wtype
  */
-void draw_fourpack_items(short x, short y, short plagent, short weptype)
+void draw_fourpack_items(short x, short y, short plagent, WeaponType wtype)
 {
     ushort fp;
 
-    fp = weapon_fourpack_index(weptype);
+    fp = weapon_fourpack_index(wtype);
     if (fp < WFRPK_COUNT) {
         PlayerInfo *p_locplayer;
         p_locplayer = &players[local_player_no];
@@ -1017,7 +698,7 @@ TbBool draw_panel_pickable_thing_below_agent(struct Thing *p_agent)
     drawn = false;
     if ((p_pickup != NULL) && (p_pickup->Type == SmTT_DROPPED_ITEM))
     {
-        ushort weptype;
+        WeaponType wtype;
         short x, y;
         ushort spr;
 
@@ -1029,11 +710,11 @@ TbBool draw_panel_pickable_thing_below_agent(struct Thing *p_agent)
             y = lbDisplay.GraphicsScreenHeight - 8 * pop1_sprites_scale - p_spr->SHeight;
         }
         lbDisplay.DrawFlags = 0;
-        weptype = p_pickup->U.UWeapon.WeaponType;
+        wtype = p_pickup->U.UWeapon.WeaponType;
 
         draw_new_panel_sprite_std(x, y, 12);
-        if (weptype)
-            spr = weapon_sprite_index(weptype, false);
+        if (wtype)
+            spr = weapon_sprite_index(wtype, false);
         else
             spr = 70;
         x += game_panel_shifts[PaSh_WEP_CURR_BTN_TO_SYMBOL].x;
@@ -1062,7 +743,7 @@ TbBool draw_panel_pickable_thing_player_targeted(PlayerInfo *p_locplayer)
     drawn = false;
     if (p_pickup != NULL)
     {
-        ushort weptype;
+        WeaponType wtype;
         short x, y;
         ushort spr;
 
@@ -1074,11 +755,11 @@ TbBool draw_panel_pickable_thing_player_targeted(PlayerInfo *p_locplayer)
             y = lbDisplay.GraphicsScreenHeight - 8 * pop1_sprites_scale - p_spr->SHeight;
         }
         lbDisplay.DrawFlags = 0;
-        weptype = p_pickup->U.UWeapon.WeaponType;
+        wtype = p_pickup->U.UWeapon.WeaponType;
 
         draw_new_panel_sprite_std(x, y, 12);
-        if (weptype)
-            spr = weapon_sprite_index(weptype, false);
+        if (wtype)
+            spr = weapon_sprite_index(wtype, false);
         else
             spr = 70;
         x += game_panel_shifts[PaSh_WEP_CURR_BTN_TO_SYMBOL].x;
@@ -1103,23 +784,23 @@ int count_weapons_in_flags(int *p_ncarr_below, int *p_ncarr_above, ulong weapons
 {
     int ncarried, ncarr_below, ncarr_above;
     ulong wepflags;
-    ushort nweptype;
+    WeaponType nwtype;
 
     ncarried = 0;
     ncarr_above = 0;
     ncarr_below = 0;
     wepflags = weapons_carried;
 
-    for (nweptype = 1; nweptype < WEP_TYPES_COUNT; nweptype++, wepflags >>= 1)
+    for (nwtype = WEP_NULL + 1; nwtype < WEP_TYPES_COUNT; nwtype++, wepflags >>= 1)
     {
         if (wepflags == 0)
             break;
         if (wepflags & 1)
         {
             ncarried++;
-            if (nweptype > current_weapon)
+            if (nwtype > current_weapon)
                 ncarr_above++;
-            if (nweptype < current_weapon)
+            if (nwtype < current_weapon)
                 ncarr_below++;
         }
     }
@@ -1129,15 +810,15 @@ int count_weapons_in_flags(int *p_ncarr_below, int *p_ncarr_above, ulong weapons
     return ncarried;
 }
 
-void draw_agent_carried_weapon(PlayerInfo *p_locplayer, ushort plagent, short slot, TbBool ready, short weptype, short cx, short cy)
+void draw_agent_carried_weapon(PlayerIdx plyr, ushort plagent, short slot, TbBool ready, WeaponType wtype, short cx, short cy)
 {
     TbBool wep_highlight;
     TbBool recharging;
     short x, y;
     ushort spr;
 
-    recharging = p_locplayer->WepDelays[plagent][weptype] != 0;
-    wep_highlight = panel_agents_weapon_highlighted(p_locplayer, plagent, weptype);
+    recharging = (player_agent_weapon_delay(plyr, plagent, wtype) != 0);
+    wep_highlight = panel_agents_weapon_highlighted(plyr, plagent, wtype);
 
     lbDisplay.DrawFlags = 0;
     if (!recharging || (gameturn & 1))
@@ -1160,7 +841,7 @@ void draw_agent_carried_weapon(PlayerInfo *p_locplayer, ushort plagent, short sl
             x = cx + game_panel_shifts[PaSh_WEP_NEXT_BTN_TO_SYMBOL].x;
             y = cy + game_panel_shifts[PaSh_WEP_NEXT_BTN_TO_SYMBOL].y;
         }
-        draw_new_panel_sprite_std(x, y, weapon_sprite_index(weptype, ready));
+        draw_new_panel_sprite_std(x, y, weapon_sprite_index(wtype, ready));
     }
 
     if (wep_highlight)
@@ -1186,17 +867,17 @@ void draw_agent_carried_weapon(PlayerInfo *p_locplayer, ushort plagent, short sl
         y = cy + game_panel_shifts[PaSh_WEP_NEXT_BTN_TO_SYMBOL].y;
     }
 
-    draw_fourpack_items(x, y, plagent, weptype);
+    draw_fourpack_items(x, y, plagent, wtype);
 }
 
-void draw_agent_current_weapon(PlayerInfo *p_locplayer, ushort plagent, short slot, TbBool darkened, TbBool ready, short weptype, short cx, short cy)
+void draw_agent_current_weapon(PlayerIdx plyr, ushort plagent, short slot, TbBool darkened, TbBool ready, WeaponType wtype, short cx, short cy)
 {
     TbBool wep_highlight;
     TbBool recharging;
     short x, y;
 
-    recharging = p_locplayer->WepDelays[plagent][weptype] != 0;
-    wep_highlight = panel_agents_weapon_highlighted(p_locplayer, plagent, weptype);
+    recharging = (player_agent_weapon_delay(plyr, plagent, wtype) != 0);
+    wep_highlight = panel_agents_weapon_highlighted(plyr, plagent, wtype);
 
     if (!recharging || (gameturn & 1))
     {
@@ -1206,9 +887,9 @@ void draw_agent_current_weapon(PlayerInfo *p_locplayer, ushort plagent, short sl
             draw_new_panel_sprite_prealp(x, y, 14);
 
         if (!darkened) {
-            draw_new_panel_sprite_std(x, y, weapon_sprite_index(weptype, ready));
+            draw_new_panel_sprite_std(x, y, weapon_sprite_index(wtype, ready));
         } else {
-            draw_new_panel_sprite_dark(x, y, weapon_sprite_index(weptype, ready));
+            draw_new_panel_sprite_dark(x, y, weapon_sprite_index(wtype, ready));
         }
     }
 
@@ -1220,17 +901,17 @@ void draw_agent_current_weapon(PlayerInfo *p_locplayer, ushort plagent, short sl
 
     x = cx + game_panel_shifts[PaSh_WEP_CURR_BTN_TO_SYMBOL].x;
     y = cy + game_panel_shifts[PaSh_WEP_CURR_BTN_TO_SYMBOL].y;
-    draw_fourpack_items(x, y, plagent, weptype);
+    draw_fourpack_items(x, y, plagent, wtype);
 }
 
-void draw_agent_carried_weapon_prealp_list(PlayerInfo *p_locplayer, ushort plagent, short slot, TbBool ready, short weptype, short cx, short cy)
+void draw_agent_carried_weapon_prealp_list(PlayerIdx plyr, ushort plagent, short slot, TbBool ready, WeaponType wtype, short cx, short cy)
 {
     TbBool wep_highlight;
     TbBool recharging;
     short x, y;
 
-    recharging = p_locplayer->WepDelays[plagent][weptype] != 0;
-    wep_highlight = panel_agents_weapon_highlighted(p_locplayer, plagent, weptype);
+    recharging = (player_agent_weapon_delay(plyr, plagent, wtype) != 0);
+    wep_highlight = panel_agents_weapon_highlighted(plyr, plagent, wtype);
 
     x = cx + game_panel_shifts[PaSh_WEP_NEXT_BTN_TO_SYMBOL].x;
     y = cy + game_panel_shifts[PaSh_WEP_NEXT_BTN_TO_SYMBOL].y;
@@ -1243,10 +924,10 @@ void draw_agent_carried_weapon_prealp_list(PlayerInfo *p_locplayer, ushort plage
         else
             draw_new_panel_sprite_std(cx, cy, 12);
 
-        draw_new_panel_sprite_std(x, y, weapon_sprite_index(weptype, false));
+        draw_new_panel_sprite_std(x, y, weapon_sprite_index(wtype, false));
     }
     if (ready) {
-        draw_new_panel_sprite_std(x, y, weapon_sprite_index(weptype, true));
+        draw_new_panel_sprite_std(x, y, weapon_sprite_index(wtype, true));
     }
 
     if (wep_highlight)
@@ -1254,7 +935,7 @@ void draw_agent_carried_weapon_prealp_list(PlayerInfo *p_locplayer, ushort plage
         draw_new_panel_sprite_std(cx, cy, 90);
     }
 
-    draw_fourpack_items(x, y, plagent, weptype);
+    draw_fourpack_items(x, y, plagent, wtype);
 }
 
 TbBool panel_mouse_over_weapon(short box_x, short box_y, short box_w, short box_h, int panstate, short box_no)
@@ -1284,11 +965,11 @@ TbBool panel_mouse_over_weapon(short box_x, short box_y, short box_w, short box_
  * This function is intended to loop through weapons in the same way
  * as draw_weapons_list_prealp(), but update state instead of drawing.
  */
-TbBool update_weapons_list_prealp(PlayerInfo *p_locplayer, ushort plagent, ulong weapons_carried, short current_weapon)
+TbBool update_weapons_list_prealp(PlayerIdx plyr, ushort plagent, ulong weapons_carried, short current_weapon)
 {
     struct GamePanel *p_panel;
     ushort nshown;
-    int weptype;
+    WeaponType wtype;
     int nchecked;
     ulong wepflags;
     short cx, cy;
@@ -1313,7 +994,7 @@ TbBool update_weapons_list_prealp(PlayerInfo *p_locplayer, ushort plagent, ulong
     nshown = 0;
     wepflags = weapons_carried;
     nchecked = 0;
-    for (weptype = 1; weptype < WEP_TYPES_COUNT; weptype++, wepflags >>= 1)
+    for (wtype = WEP_NULL + 1; wtype < WEP_TYPES_COUNT; wtype++, wepflags >>= 1)
     {
         if (wepflags == 0)
             break;
@@ -1330,7 +1011,9 @@ TbBool update_weapons_list_prealp(PlayerInfo *p_locplayer, ushort plagent, ulong
 
             if (wep_highlight)
             {
-                p_locplayer->PanelItem[mouser] = weptype;
+                PlayerInfo *p_player;
+                p_player = &players[plyr];
+                p_player->PanelItem[mouser] = wtype;
                 agent_with_mouse_over_weapon = plagent;
                 ret = true;
                 break;
@@ -1347,11 +1030,11 @@ TbBool update_weapons_list_prealp(PlayerInfo *p_locplayer, ushort plagent, ulong
     return ret;
 }
 
-void draw_weapons_list_prealp(PlayerInfo *p_locplayer, ushort plagent, ulong weapons_carried, short current_weapon)
+void draw_weapons_list_prealp(PlayerIdx plyr, ushort plagent, ulong weapons_carried, short current_weapon)
 {
     struct GamePanel *p_panel;
     ushort nshown;
-    ushort weptype;
+    WeaponType wtype;
     int nchecked;
     ulong wepflags;
     short cx, cy;
@@ -1374,7 +1057,7 @@ void draw_weapons_list_prealp(PlayerInfo *p_locplayer, ushort plagent, ulong wea
     nshown = 0;
     wepflags = weapons_carried;
     nchecked = 0;
-    for (weptype = 1; weptype < WEP_TYPES_COUNT; weptype++, wepflags >>= 1)
+    for (wtype = WEP_NULL + 1; wtype < WEP_TYPES_COUNT; wtype++, wepflags >>= 1)
     {
         if (wepflags == 0)
             break;
@@ -1382,7 +1065,7 @@ void draw_weapons_list_prealp(PlayerInfo *p_locplayer, ushort plagent, ulong wea
             continue;
         if (nshown >= ncarr_below)
         {
-            draw_agent_carried_weapon_prealp_list(p_locplayer, plagent, nshown, (weptype == current_weapon), weptype, cx, cy);
+            draw_agent_carried_weapon_prealp_list(plyr, plagent, nshown, (wtype == current_weapon), wtype, cx, cy);
 
             cx += game_panel_shifts[PaSh_WEP_NEXT_DISTANCE].x;
             cy += game_panel_shifts[PaSh_WEP_NEXT_DISTANCE].y;
@@ -1452,8 +1135,9 @@ TbBool panel_update_weapon_current(PlayerIdx plyr, short nagent, ubyte flags)
     return wep_highlight;
 }
 
-short draw_current_weapon_button(PlayerInfo *p_locplayer, short nagent, ubyte flags)
+short draw_current_weapon_button(PlayerIdx plyr, short nagent, ubyte flags)
 {
+    PlayerInfo *p_player;
     struct Thing *p_agent;
     struct GamePanel *p_panel;
     ushort curwep, prevwep;
@@ -1464,23 +1148,24 @@ short draw_current_weapon_button(PlayerInfo *p_locplayer, short nagent, ubyte fl
     if ((flags & PaMF_EXISTS) == 0)
         return 0;
 
-    p_agent = p_locplayer->MyAgent[nagent];
+    p_player = &players[plyr];
+    p_agent = p_player->MyAgent[nagent];
     p_panel = &game_panel[20 + nagent];
 
     cx = p_panel->pos.X;
     cy = p_panel->pos.Y;
     curwep = p_agent->U.UPerson.CurrentWeapon;
-    prevwep = p_locplayer->PrevWeapon[nagent];
+    prevwep = p_player->PrevWeapon[nagent];
 
     darkened = ((flags & (PaMF_DISABLED|PaMF_SUBORDNT)) != 0);
     if (curwep != 0) // Is ready/drawn weapon - draw lighted weapon shape
     {
-        draw_agent_current_weapon(p_locplayer, nagent, 0, darkened, true, curwep, cx, cy);
+        draw_agent_current_weapon(plyr, nagent, 0, darkened, true, curwep, cx, cy);
     }
     else if (prevwep != 0) // Weapon is carried but hidden - draw with dark weapon shape
     {
         curwep = prevwep;
-        draw_agent_current_weapon(p_locplayer, nagent, 0, darkened, false, curwep, cx, cy);
+        draw_agent_current_weapon(plyr, nagent, 0, darkened, false, curwep, cx, cy);
     }
     return curwep;
 }
@@ -1498,7 +1183,7 @@ TbBool update_agent_weapons_selection(PlayerIdx plyr, short nagent)
     ulong wepflags;
     ushort panstate;
     int cx, cy;
-    short cur_ready_wep, weptype;
+    WeaponType cur_ready_wep, wtype;
     ushort plagent;
     ushort nshown, nchecked;
     TbBool ret;
@@ -1534,7 +1219,7 @@ TbBool update_agent_weapons_selection(PlayerIdx plyr, short nagent)
     wepflags &= ~(1 << (WEP_ENERGYSHLD-1));
     nchecked = 0;
     nshown = 0;
-    for (weptype = 1; weptype < WEP_TYPES_COUNT; weptype++, wepflags >>= 1)
+    for (wtype = WEP_NULL + 1; wtype < WEP_TYPES_COUNT; wtype++, wepflags >>= 1)
     {
         TbBool wep_visible;
 
@@ -1542,7 +1227,7 @@ TbBool update_agent_weapons_selection(PlayerIdx plyr, short nagent)
             break;
         if ((wepflags & 1) == 0)
             continue;
-        wep_visible = (cur_ready_wep != weptype);
+        wep_visible = (cur_ready_wep != wtype);
 
         if (wep_visible)
         {
@@ -1554,7 +1239,7 @@ TbBool update_agent_weapons_selection(PlayerIdx plyr, short nagent)
             wep_highlight = panel_mouse_over_weapon(cx - 1, cy, w, h, panstate, nshown + 1);
 
             if (wep_highlight) {
-                p_player->PanelItem[mouser] = weptype;
+                p_player->PanelItem[mouser] = wtype;
                 agent_with_mouse_over_weapon = plagent;
                 ret = true;
                 break;
@@ -1581,7 +1266,7 @@ void draw_agent_weapons_selection(PlayerIdx plyr, short nagent)
     struct GamePanel *p_panel;
     ulong wepflags;
     int cx, cy;
-    short cur_ready_wep, weptype;
+    WeaponType cur_ready_wep, wtype;
     ushort plagent;
     ushort nshown, nchecked;
 
@@ -1605,7 +1290,7 @@ void draw_agent_weapons_selection(PlayerIdx plyr, short nagent)
     wepflags &= ~(1 << (WEP_ENERGYSHLD-1));
     nchecked = 0;
     nshown = 0;
-    for (weptype = 1; weptype < WEP_TYPES_COUNT; weptype++, wepflags >>= 1)
+    for (wtype = WEP_NULL + 1; wtype < WEP_TYPES_COUNT; wtype++, wepflags >>= 1)
     {
         TbBool wep_visible;
 
@@ -1613,11 +1298,11 @@ void draw_agent_weapons_selection(PlayerIdx plyr, short nagent)
             break;
         if ((wepflags & 1) == 0)
             continue;
-        wep_visible = (cur_ready_wep != weptype);
+        wep_visible = (cur_ready_wep != wtype);
 
         if (wep_visible)
         {
-            draw_agent_carried_weapon(p_player, plagent, nshown + 1, false, weptype, cx, cy);
+            draw_agent_carried_weapon(plyr, plagent, nshown + 1, false, wtype, cx, cy);
 
             cx += game_panel_shifts[PaSh_WEP_NEXT_DISTANCE].x;
             cy += game_panel_shifts[PaSh_WEP_NEXT_DISTANCE].y;
@@ -1665,7 +1350,7 @@ TbBool func_1caf8(ubyte *panel_wep)
     {
         ushort plagent;
         plagent = p_agent->U.UPerson.ComCur & 3;
-        ret = update_weapons_list_prealp(p_locplayer, plagent,
+        ret = update_weapons_list_prealp(local_player_no, plagent,
             p_agent->U.UPerson.WeaponsCarried, p_agent->U.UPerson.CurrentWeapon);
     }
     else
@@ -1691,7 +1376,7 @@ TbBool func_1caf8(ubyte *panel_wep)
     {
         ushort plagent;
         plagent = p_agent->U.UPerson.ComCur & 3;
-        draw_weapons_list_prealp(p_locplayer, plagent,
+        draw_weapons_list_prealp(local_player_no, plagent,
             p_agent->U.UPerson.WeaponsCarried, p_agent->U.UPerson.CurrentWeapon);
     }
     else
@@ -1701,7 +1386,7 @@ TbBool func_1caf8(ubyte *panel_wep)
 
         for (nagent = 0; nagent < playable_agents; nagent++)
         {
-            draw_current_weapon_button(p_locplayer, nagent, panel_wep[nagent]);
+            draw_current_weapon_button(local_player_no, nagent, panel_wep[nagent]);
         }
 
         panstate = p_locplayer->PanelState[mouser];
@@ -1800,6 +1485,7 @@ void draw_transparent_slant_bar(short x, short y, ushort w, ushort h)
     point4.pp.S = 0;
 
     vec_mode = 18;
+    assert(vec_tmap[2] != NULL);
     vec_map = vec_tmap[2];
     draw_trigpoly(&point1.pp, &point4.pp, &point3.pp);
     if (vec_mode == 2)
@@ -2082,12 +1768,12 @@ void update_game_panel(void)
         case PanT_AgentMedi:
             // If an agent has a medkit, use the sprite with lighted cross
             p_agent = p_locplayer->MyAgent[p_panel->ID];
-            panel_sprites_switch(panel, (p_agent->Type == TT_PERSON) && person_carries_any_medikit(p_agent));
+            panel_sprites_switch(panel, (p_agent->Type == TT_PERSON) && person_carries_any_medikit(p_agent->ThingOffset));
             break;
         case PanT_WeaponEnergy:
             // If supershield is enabled for the current agent, draw energy bar in red
             p_agent = &things[p_locplayer->DirectControl[0]];
-            panel_sprites_switch(panel, (p_agent->Type == TT_PERSON) && (p_agent->Flag & TngF_Unkn0100) != 0);
+            panel_sprites_switch(panel, (p_agent->Type == TT_PERSON) && (p_agent->Flag & TngF_PersSupShld) != 0);
             break;
         }
     }
@@ -2252,7 +1938,7 @@ void draw_new_panel_health_overlay(short panel, ushort plagent, TbBool darkened)
     }
     // Draw shield level over health
     lv = p_agent->U.UPerson.ShieldEnergy;
-    draw_health_level(x, y, w, h, lv, 0x400, colour_lookup[ColLU_WHITE], 1);
+    draw_health_level(x, y, w, h, lv, PERSON_MAX_SHIELD, colour_lookup[ColLU_WHITE], 1);
 }
 
 void draw_new_panel_mood_overlay(short panel, ushort plagent, TbBool darkened)
@@ -2328,7 +2014,7 @@ void draw_new_panel(void)
     for (panel = 0; true; panel++)
     {
         struct GamePanel *p_panel;
-        TbBool is_visible;
+        TbBool is_visible, is_blinking;
         TbBool is_disabled, is_subordnt;
 
         p_panel = &game_panel[panel];
@@ -2339,12 +2025,14 @@ void draw_new_panel(void)
         if (!panel_for_speciifc_agent(panel))
         {
             is_visible = (p_panel->Spr[0] != 0);
+            is_blinking = false;
             is_disabled = false;
             is_subordnt = false;
         }
         else
         {
             is_visible = true;
+            is_blinking = false;
             if (p_panel->ID >= playable_agents)
             {
                 is_visible = false;
@@ -2364,6 +2052,7 @@ void draw_new_panel(void)
                     wep_delay = player_agent_weapon_delay(local_player_no, p_panel->ID, weapon);
 
                     is_visible = (weapon != 0) && ((wep_delay == 0) || (gameturn & 1));
+                    is_blinking = (weapon != 0) && (wep_delay != 0);
                 }
                 else
                 {
@@ -2380,6 +2069,20 @@ void draw_new_panel(void)
                 is_disabled = (((p_agent->Flag2 & TgF2_Unkn10000000) != 0) ||
                   person_is_executing_commands(p_agent->ThingOffset));
             }
+        }
+
+        // Store data about panel state to be used by input handling
+        switch (p_panel->Type)
+        {
+        case PanT_AgentWeapon:
+            // If a panel is blinking only as visual effect, this should not affect input
+            if (is_visible || is_blinking)
+                panel_wep[p_panel->ID] |= PaMF_EXISTS;
+            if (is_disabled)
+                panel_wep[p_panel->ID] |= PaMF_DISABLED;
+            if (is_subordnt)
+                panel_wep[p_panel->ID] |= PaMF_SUBORDNT;
+            break;
         }
 
         if (!is_visible)
@@ -2518,11 +2221,7 @@ void draw_new_panel(void)
             // Medi sprite gets switched when we have medikit, so no need for update
             break;
         case PanT_AgentWeapon:
-            panel_wep[p_panel->ID] |= PaMF_EXISTS;
-            if (is_disabled)
-                panel_wep[p_panel->ID] |= PaMF_DISABLED;
-            if (is_subordnt)
-                panel_wep[p_panel->ID] |= PaMF_SUBORDNT;
+            // Weapon sprite will be drawn later based on panel_wep[] flags
             break;
         case PanT_WeaponEnergy:
             // Fill the left energy bar
@@ -2542,9 +2241,11 @@ void draw_new_panel(void)
     if (!func_1caf8(panel_wep))
     {
         if (ingame.Flags & GamF_Unkn0200) {
-            ulong md, y;
-            md = p_locplayer->UserInput[0].ControlMode & 0x1FFF;
-            if (md == 1 && pktrec_mode != PktR_PLAYBACK) {
+            uint y;
+            ushort ctlmode;
+
+            ctlmode = p_locplayer->UserInput[0].ControlMode & ~UInpCtr_AllFlagsMask;
+            if (ctlmode == UInpCtr_Mouse && !PacketRecord_IsPlayback()) {
                 y = alt_at_point(mouse_map_x, mouse_map_z);
                 func_702c0(mouse_map_x, PRCCOORD_TO_YCOORD(y), mouse_map_z, 64, 64, colour_lookup[ColLU_RED]);
             }
@@ -2553,7 +2254,7 @@ void draw_new_panel(void)
 
     ingame.Scanner.MX = engn_xc >> 7;
     ingame.Scanner.MZ = engn_zc >> 7;
-    ingame.Scanner.Angle = 2047 - ((engn_anglexz >> 5) & 0x7FF);
+    ingame.Scanner.Angle = (2*LbFPMath_PI - 1) - ((engn_anglexz >> 5) & LbFPMath_AngleMask);
     SCANNER_draw_new_transparent();
 
     draw_panel_objective_info();
@@ -2563,11 +2264,11 @@ TbBool process_panel_state_one_agent_weapon(ushort agent)
 {
     PlayerInfo *p_locplayer;
     struct Packet *p_pckt;
-    short pnitm;
+    WeaponType wtype;
 
     p_locplayer = &players[local_player_no];
     p_pckt = &packets[local_player_no];
-    pnitm = p_locplayer->PanelItem[mouser];
+    wtype = p_locplayer->PanelItem[mouser];
 
     if (lbDisplay.RightButton)
     {
@@ -2577,10 +2278,10 @@ TbBool process_panel_state_one_agent_weapon(ushort agent)
         lbDisplay.RightButton = 0;
         p_agent = p_locplayer->MyAgent[agent];
 
-        if ((p_agent->Type == TT_PERSON) && (pnitm != 0))
+        if ((p_agent->Type == TT_PERSON) && (wtype != 0))
         {
-            p_locplayer->UserInput[mouser].ControlMode |= 0x4000;
-            my_build_packet(p_pckt, PAct_DROP_HELD_WEAPON_SECR, p_agent->ThingOffset, pnitm, 0, 0);
+            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn4000;
+            my_build_packet(p_pckt, PAct_DROP_HELD_WEAPON_SECR, p_agent->ThingOffset, wtype, 0, 0);
             p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
             return true;
         }
@@ -2595,10 +2296,10 @@ TbBool process_panel_state_one_agent_weapon(ushort agent)
         {
             // Hold left, hold right, release left weapon drop
             lbDisplay.RightButton = 0;
-            if ((p_agent->Type == TT_PERSON) && (pnitm != 0))
+            if ((p_agent->Type == TT_PERSON) && (wtype != 0))
             {
-                p_locplayer->UserInput[mouser].ControlMode |= 0x4000;
-                my_build_packet(p_pckt, PAct_DROP_HELD_WEAPON_SECR, p_agent->ThingOffset, pnitm, 0, 0);
+                p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn4000;
+                my_build_packet(p_pckt, PAct_DROP_HELD_WEAPON_SECR, p_agent->ThingOffset, wtype, 0, 0);
                 p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
                 return true;
             }
@@ -2606,13 +2307,13 @@ TbBool process_panel_state_one_agent_weapon(ushort agent)
 
         // release button while in weapon selection mode
         {
-            if ((p_agent != NULL) && (pnitm != 0))
+            if ((p_agent != NULL) && (wtype != 0))
             {
-                my_build_packet(p_pckt, PAct_SELECT_SPECIFIC_WEAPON, p_agent->ThingOffset, pnitm, 0, 0);
+                my_build_packet(p_pckt, PAct_SELECT_SPECIFIC_WEAPON, p_agent->ThingOffset, wtype, WepSel_TOGGLE, 0);
                 p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
                 lbDisplay.RightButton = 0;
                 lbDisplay.LeftButton = 0;
-                p_locplayer->UserInput[mouser].ControlMode &= ~(0x4000|0x8000);
+                p_locplayer->UserInput[mouser].ControlMode &= ~(UInpCtrF_Unkn4000|UInpCtrF_Unkn8000);
                 return true;
             }
         }
@@ -2625,11 +2326,11 @@ TbBool process_panel_state_grp_agents_weapon(ushort agent)
 {
     PlayerInfo *p_locplayer;
     struct Packet *p_pckt;
-    short pnitm;
+    WeaponType wtype;
 
     p_locplayer = &players[local_player_no];
     p_pckt = &packets[local_player_no];
-    pnitm = p_locplayer->PanelItem[mouser];
+    wtype = p_locplayer->PanelItem[mouser];
 
     if (lbDisplay.LeftButton)
     {
@@ -2638,10 +2339,10 @@ TbBool process_panel_state_grp_agents_weapon(ushort agent)
 
         lbDisplay.LeftButton = 0;
         p_agent = p_locplayer->MyAgent[agent];
-        if ((p_agent->Type == TT_PERSON) && (pnitm != 0))
+        if ((p_agent->Type == TT_PERSON) && (wtype != 0))
         {
-            p_locplayer->UserInput[mouser].ControlMode |= 0x8000;
-            my_build_packet(p_pckt, PAct_DROP_HELD_WEAPON_SECR, p_agent->ThingOffset, pnitm, 0, 0);
+            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn8000;
+            my_build_packet(p_pckt, PAct_DROP_HELD_WEAPON_SECR, p_agent->ThingOffset, wtype, 0, 0);
             p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
             return true;
         }
@@ -2652,13 +2353,13 @@ TbBool process_panel_state_grp_agents_weapon(ushort agent)
 
         p_agent = p_locplayer->MyAgent[agent];
         // release button while in weapon selection mode
-        if ((p_agent->Type == TT_PERSON) && (pnitm != 0))
+        if ((p_agent->Type == TT_PERSON) && (wtype != 0))
         {
-            my_build_packet(p_pckt, PAct_SELECT_GRP_SPEC_WEAPON, p_agent->ThingOffset, pnitm, 0, 0);
+            my_build_packet(p_pckt, PAct_SELECT_GRP_SPEC_WEAPON, p_agent->ThingOffset, wtype, WepSel_TOGGLE, 0);
             p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
             lbDisplay.RightButton = 0;
             lbDisplay.LeftButton = 0;
-            p_locplayer->UserInput[mouser].ControlMode &= ~(0x4000|0x8000);
+            p_locplayer->UserInput[mouser].ControlMode &= ~(UInpCtrF_Unkn4000|UInpCtrF_Unkn8000);
             return true;
         }
         p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
@@ -2672,11 +2373,13 @@ TbBool process_panel_state_grp_agents_weapon(ushort agent)
  * @param agent Agent index whose panel is currenly under mouse.
  * @param can_control Whether the agent currently under mouse can receive control commands.
  */
-TbBool process_panel_state_one_agent_mood(ushort main_panel, ushort agent)
+ubyte process_panel_state_one_agent_mood(ushort main_panel, ushort agent)
 {
     PlayerInfo *p_locplayer;
     struct Packet *p_pckt;
+    ubyte did_inp;
 
+    did_inp = GINPUT_NONE;
     p_locplayer = &players[local_player_no];
     p_pckt = &packets[local_player_no];
 
@@ -2684,7 +2387,7 @@ TbBool process_panel_state_one_agent_mood(ushort main_panel, ushort agent)
     {
         // Left button hold mood control
         struct Thing *p_agent;
-        short dcthing;
+        ThingIdx dcthing;
         short mood;
         TbBool can_control;
 
@@ -2693,19 +2396,28 @@ TbBool process_panel_state_one_agent_mood(ushort main_panel, ushort agent)
         dcthing = p_locplayer->DirectControl[mouser];
         can_control = person_can_accept_control(dcthing);
 
-        if ((p_agent->Type == TT_PERSON) && (can_control))
+        if ((p_agent->Type == TT_PERSON) && (can_control) &&
+          (p_agent->U.UPerson.Mood != limit_mood(p_agent, mood))) {
             build_packet(p_pckt, PAct_AGENT_SET_MOOD, p_agent->ThingOffset, mood, 0, 0);
-        return true;
+            did_inp |= GINPUT_PACKET;
+            return did_inp;
+        }
     }
-    p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
-    return false;
+    else if (p_locplayer->PanelState[mouser] != PANEL_STATE_NORMAL)
+    {
+        p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
+        did_inp |= GINPUT_DIRECT;
+    }
+    return did_inp;
 }
 
 TbBool process_panel_state_grp_agents_mood(ushort main_panel, ushort agent)
 {
     PlayerInfo *p_locplayer;
     struct Packet *p_pckt;
+    ubyte did_inp;
 
+    did_inp = GINPUT_NONE;
     p_locplayer = &players[local_player_no];
     p_pckt = &packets[local_player_no];
 
@@ -2722,21 +2434,29 @@ TbBool process_panel_state_grp_agents_mood(ushort main_panel, ushort agent)
         dcthing = p_locplayer->DirectControl[mouser];
         can_control = person_can_accept_control(dcthing);
 
-        if ((p_agent->Type == TT_PERSON) && (can_control))
+        if ((p_agent->Type == TT_PERSON) && (can_control)) {
             build_packet(p_pckt, PAct_GROUP_SET_MOOD, p_agent->ThingOffset, mood, 0, 0);
-        return true;
+            did_inp |= GINPUT_PACKET;
+            return did_inp;
+        }
     }
-    p_locplayer->UserInput[mouser].ControlMode &= ~0xC000;
-    p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
+    else if (p_locplayer->PanelState[mouser] != PANEL_STATE_NORMAL)
+    {
+        p_locplayer->UserInput[mouser].ControlMode &= ~(UInpCtrF_Unkn4000|UInpCtrF_Unkn8000);
+        p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
+        did_inp |= GINPUT_DIRECT;
+    }
 
-    return false;
+    return did_inp;
 }
 
-TbBool process_panel_state(void)
+ubyte process_panel_state(void)
 {
     PlayerInfo *p_locplayer;
     ubyte pnsta;
+    ubyte did_inp;
 
+    did_inp = GINPUT_NONE;
     p_locplayer = &players[local_player_no];
     pnsta = p_locplayer->PanelState[mouser];
 
@@ -2752,23 +2472,27 @@ TbBool process_panel_state(void)
 
     if ((pnsta >= PANEL_STATE_WEP_SEL_ONE) && (pnsta < PANEL_STATE_WEP_SEL_ONE + 4))
     {
-        if (process_panel_state_one_agent_weapon((pnsta - PANEL_STATE_WEP_SEL_ONE) % 4))
-            return 1;
+        did_inp |= process_panel_state_one_agent_weapon((pnsta - PANEL_STATE_WEP_SEL_ONE) % 4);
+        if ((did_inp & GINPUT_PACKET) != 0)
+            return did_inp;
     }
     else if ((pnsta >= PANEL_STATE_WEP_SEL_GRP) && (pnsta < PANEL_STATE_WEP_SEL_GRP + 4))
     {
-        if (process_panel_state_grp_agents_weapon((pnsta - PANEL_STATE_WEP_SEL_GRP) % 4))
-            return 1;
+        did_inp |= process_panel_state_grp_agents_weapon((pnsta - PANEL_STATE_WEP_SEL_GRP) % 4);
+        if ((did_inp & GINPUT_PACKET) != 0)
+            return did_inp;
     }
     else if ((pnsta >= PANEL_STATE_MOOD_SET_ONE) && (pnsta < PANEL_STATE_MOOD_SET_ONE + 4))
     {
-        if (process_panel_state_one_agent_mood(pnsta - 5, (pnsta - PANEL_STATE_MOOD_SET_ONE) % 4))
-            return 1;
+        did_inp |= process_panel_state_one_agent_mood(pnsta - 5, (pnsta - PANEL_STATE_MOOD_SET_ONE) % 4);
+        if ((did_inp & GINPUT_PACKET) != 0)
+            return did_inp;
     }
     else if ((pnsta >= PANEL_STATE_MOOD_SET_GRP) && (pnsta < PANEL_STATE_MOOD_SET_GRP + 4))
     {
-        if (process_panel_state_grp_agents_mood(pnsta - 9, (pnsta - PANEL_STATE_MOOD_SET_GRP) % 4))
-            return 1;
+        did_inp |= process_panel_state_grp_agents_mood(pnsta - 9, (pnsta - PANEL_STATE_MOOD_SET_GRP) % 4);
+        if ((did_inp & GINPUT_PACKET) != 0)
+            return did_inp;
     }
     else if (pnsta == PANEL_STATE_SEND_MESSAGE)
     {
@@ -2782,17 +2506,20 @@ TbBool process_panel_state(void)
             if (lbShift & KMod_SHIFT)
                 i |= 0x0100;
             my_build_packet(p_pckt, PAct_CHAT_MESSAGE_KEY, i, 0, 0, 0);
-            return 1;
+            did_inp |= GINPUT_PACKET;
+            return did_inp;
         }
     }
-    return 0;
+    return did_inp;
 }
 
-TbBool check_panel_input(short panel)
+ubyte check_panel_input(short panel)
 {
     PlayerInfo *p_locplayer;
     int i;
+    ubyte did_inp;
 
+    did_inp = GINPUT_NONE;
     p_locplayer = &players[local_player_no];
 
     if (lbDisplay.LeftButton)
@@ -2813,95 +2540,96 @@ TbBool check_panel_input(short panel)
         case PanT_AgentEnergy:
             // Select controlled agent
             p_agent = p_locplayer->MyAgent[p_panel->ID];
-            if ((p_agent->Type != TT_PERSON) || ((p_agent->Flag & TngF_Destroyed) != 0) || ((p_agent->Flag2 & TgF2_KnockedOut) != 0))
-                return 0;
+            if ((p_agent->Type != TT_PERSON) || ((p_agent->Flag & TngF_Destroyed) != 0)
+              || ((p_agent->Flag2 & TgF2_KnockedOut) != 0)) {
+                break;
+            }
             if (p_locplayer->DoubleMode) {
                 byte_153198 = p_panel->ID + 1;
-            } else {
-                dcthing = p_locplayer->DirectControl[0];
-                build_packet(p_pckt, PAct_SELECT_AGENT, dcthing, p_agent->ThingOffset, 0, 0);
-                p_locplayer->UserInput[0].ControlMode |= 0x8000;
+                did_inp |= GINPUT_DIRECT;
+                break;
             }
-            return 1;
+            dcthing = p_locplayer->DirectControl[0];
+            build_packet(p_pckt, PAct_SELECT_AGENT, dcthing, p_agent->ThingOffset, 0, 0);
+            p_locplayer->UserInput[0].ControlMode |= UInpCtrF_Unkn8000;
+            did_inp |= GINPUT_PACKET;
+            return did_inp;
         case PanT_AgentMood:
             // Change mood / drugs level
             p_agent = p_locplayer->MyAgent[p_panel->ID];
-            if ((p_agent->Type == TT_PERSON) && (p_agent->State != PerSt_DEAD))
-            {
-                p_locplayer->UserInput[mouser].ControlMode |= 0x8000;
-                i = panel_mouse_move_mood_value(panel);
-                if (panel_active_based_on_target(panel))
-                    my_build_packet(p_pckt, PAct_AGENT_SET_MOOD, p_agent->ThingOffset, i, 0, 0);
-                p_locplayer->PanelState[mouser] = PANEL_STATE_MOOD_SET_ONE + p_panel->ID;
-                if (!IsSamplePlaying(0, 21, 0))
-                    play_sample_using_heap(0, 21, 127, 64, 100, -1, 1u);
-                ingame.Flags |= GamF_Unkn00100000;
-                return 1;
+            if ((p_agent->Type != TT_PERSON) || (p_agent->State == PerSt_DEAD)) {
+                break;
             }
-            break;
+            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn8000;
+            i = panel_mouse_move_mood_value(panel);
+            if (panel_active_based_on_target(panel) &&
+              (p_agent->U.UPerson.Mood != limit_mood(p_agent, i))) {
+                my_build_packet(p_pckt, PAct_AGENT_SET_MOOD, p_agent->ThingOffset, i, 0, 0);
+                did_inp |= GINPUT_PACKET;
+            }
+            p_locplayer->PanelState[mouser] = PANEL_STATE_MOOD_SET_ONE + p_panel->ID;
+            if (!IsSamplePlaying(0, 21, 0))
+                play_sample_using_heap(0, 21, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 1u);
+            ingame.Flags |= GamF_Unkn00100000;
+            if ((did_inp & GINPUT_PACKET) == 0) {
+                did_inp |= GINPUT_DIRECT;
+                break;
+            }
+            return did_inp;
         case PanT_AgentWeapon:
             // Weapon selection for single agent
             p_agent = p_locplayer->MyAgent[p_panel->ID];
-            if ((p_agent->Type == TT_PERSON) && person_can_accept_control(p_agent->ThingOffset))
-            {
-                p_locplayer->UserInput[mouser].ControlMode |= 0x8000;
-                p_locplayer->PanelState[mouser] = PANEL_STATE_WEP_SEL_ONE + p_panel->ID;
-                return 1;
+            if ((p_agent->Type != TT_PERSON) || !person_can_accept_control(p_agent->ThingOffset)) {
+                break;
             }
+            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn8000;
+            p_locplayer->PanelState[mouser] = PANEL_STATE_WEP_SEL_ONE + p_panel->ID;
+            did_inp |= GINPUT_DIRECT;
             break;
         case PanT_AgentMedi:
             // Use medikit
             p_agent = p_locplayer->MyAgent[p_panel->ID];
-            if ((p_agent->Type == TT_PERSON) && person_carries_any_medikit(p_agent))
-            {
-                my_build_packet(p_pckt, PAct_AGENT_USE_MEDIKIT, p_agent->ThingOffset, 0, 0, 0);
-                return 1;
+            if ((p_agent->Type != TT_PERSON) || !person_can_use_medikit(p_agent->ThingOffset)) {
+                break;
             }
-            break;
+            my_build_packet(p_pckt, PAct_AGENT_USE_MEDIKIT, p_agent->ThingOffset, 0, 0, 0);
+            did_inp |= GINPUT_PACKET;
+            return did_inp;
         case PanT_WeaponEnergy:
             // Enable supershield
-            if (p_locplayer->DoubleMode && byte_153198 - 1 != mouser)
+            if (p_locplayer->DoubleMode && byte_153198 - 1 != mouser) {
                 break;
-            if (p_locplayer->DoubleMode)
-                break;
+            }
             dcthing = p_locplayer->DirectControl[mouser];
-            if ((things[dcthing].Flag & TngF_Destroyed) != 0)
+            if (!person_can_toggle_supershield(dcthing)) {
                 break;
-            p_agent = p_locplayer->MyAgent[p_panel->ID];
-            if (p_agent->Type != TT_PERSON)
-                break;
-            build_packet(p_pckt, PAct_SHIELD_TOGGLE, dcthing, p_agent->ThingOffset, 0, 0);
-            p_locplayer->UserInput[mouser].ControlMode |= 0x8000;
-            return 1;
+            }
+            build_packet(p_pckt, PAct_SHIELD_TOGGLE, dcthing, 0, 0, 0);
+            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn8000;
+            did_inp |= GINPUT_PACKET;
+            return did_inp;
         case PanT_Grouping:
             if (mouse_over_infrared_slant_box(panel))
             {
                 // Toggle thermal view
-                if ((ingame.Flags & GamF_ThermalView) == 0)
-                {
-                    dcthing = p_locplayer->DirectControl[mouser];
-                    if (things[dcthing].U.UPerson.Energy > 100)
-                    {
-                        ingame.Flags |= GamF_ThermalView;
-                        play_sample_using_heap(0, 35, 127, 64, 100, 0, 1);
-                        ingame_palette_reload();
-                    }
-                }
-                else
-                {
-                    ingame.Flags &= ~GamF_ThermalView;
-                    change_brightness(0);
+                dcthing = p_locplayer->DirectControl[mouser];
+                if (player_can_toggle_thermal(local_player_no)) {
+                    build_packet(p_pckt, PAct_THERMAL_TOGGLE, dcthing, 0, 0, 0);
+                    did_inp |= GINPUT_PACKET;
+                    return did_inp;
                 }
             }
             else
             {
                 // Increase agent grouping
                 dcthing = p_locplayer->DirectControl[mouser];
-                p_locplayer->UserInput[mouser].ControlMode |= 0x8000;
+                p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn8000;
                 if (panel_active_based_on_target(panel))
                     my_build_packet(p_pckt, PAct_PROTECT_INC, dcthing, 0, 0, 0);
+                did_inp |= GINPUT_PACKET;
+                return did_inp;
             }
-            return 1;
+            break;
         default:
             break;
         }
@@ -2912,6 +2640,7 @@ TbBool check_panel_input(short panel)
         struct Packet *p_pckt;
         struct Thing *p_agent;
         struct GamePanel *p_panel;
+        ThingIdx dcthing;
 
         lbDisplay.RightButton = 0;
         p_panel = &game_panel[panel];
@@ -2922,39 +2651,44 @@ TbBool check_panel_input(short panel)
         case PanT_AgentMood:
             // Change mood / drugs level
             p_agent = p_locplayer->MyAgent[p_panel->ID];
-            if ((p_agent->Type == TT_PERSON) && (p_agent->State != PerSt_DEAD))
-            {
-                p_locplayer->UserInput[mouser].ControlMode |= 0x4000;
-                i = panel_mouse_move_mood_value(panel);
-                if (panel_active_based_on_target(panel))
-                    my_build_packet(p_pckt, PAct_GROUP_SET_MOOD, p_agent->ThingOffset, i, 0, 0);
-                p_locplayer->PanelState[mouser] = PANEL_STATE_MOOD_SET_GRP + p_panel->ID;
-                if (!IsSamplePlaying(0, 21, 0))
-                    play_sample_using_heap(0, 21, 127, 64, 100, -1, 1u);
-                ingame.Flags |= GamF_Unkn00100000;
-                return 1;
+            if ((p_agent->Type != TT_PERSON) || (p_agent->State == PerSt_DEAD)) {
+                break;
             }
-            break;
+            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn4000;
+            i = panel_mouse_move_mood_value(panel);
+            if (panel_active_based_on_target(panel)) {
+                my_build_packet(p_pckt, PAct_GROUP_SET_MOOD, p_agent->ThingOffset, i, 0, 0);
+                did_inp |= GINPUT_PACKET;
+            }
+            p_locplayer->PanelState[mouser] = PANEL_STATE_MOOD_SET_GRP + p_panel->ID;
+            if (!IsSamplePlaying(0, 21, 0))
+                play_sample_using_heap(0, 21, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 1u);
+            ingame.Flags |= GamF_Unkn00100000;
+            if ((did_inp & GINPUT_PACKET) == 0) {
+                did_inp |= GINPUT_DIRECT;
+                break;
+            }
+            return did_inp;
         case PanT_AgentWeapon:
             // Weapon selection for all grouped agent
             p_agent = p_locplayer->MyAgent[p_panel->ID];
-            if ((p_agent->Type == TT_PERSON) && person_can_accept_control(p_agent->ThingOffset))
-            {
-                p_locplayer->UserInput[mouser].ControlMode |= 0x4000;
-                p_locplayer->PanelState[mouser] = PANEL_STATE_WEP_SEL_GRP + p_panel->ID;
-                return 1;
+            if ((p_agent->Type != TT_PERSON) || !person_can_accept_control(p_agent->ThingOffset)) {
+                break;
             }
+            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn4000;
+            p_locplayer->PanelState[mouser] = PANEL_STATE_WEP_SEL_GRP + p_panel->ID;
+            did_inp |= GINPUT_DIRECT;
             break;
         case PanT_Grouping:
             // Switch grouping fully on or fully off
-            p_locplayer->UserInput[mouser].ControlMode |= 0x4000;
-            if (panel_active_based_on_target(panel))
-            {
-                short dcthing;
-                dcthing = p_locplayer->DirectControl[mouser];
-                my_build_packet(p_pckt, PAct_PROTECT_TOGGLE, dcthing, 0, 0, 0);
+            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn4000;
+            if (!panel_active_based_on_target(panel)) {
+                break;
             }
-            return 1;
+            dcthing = p_locplayer->DirectControl[mouser];
+            my_build_packet(p_pckt, PAct_PROTECT_TOGGLE, dcthing, 0, 0, 0);
+            did_inp |= GINPUT_PACKET;
+            return did_inp;
         default:
             break;
         }
@@ -2978,7 +2712,7 @@ TbBool check_panel_input(short panel)
                 p_agent = p_locplayer->MyAgent[p_panel->ID];
                 if ((p_agent->Type == TT_PERSON) && ((p_agent->Flag & TngF_Destroyed) == 0))
                 {
-                    ushort dcthing;
+                    ThingIdx dcthing;
 
                     dcthing = p_locplayer->DirectControl[mouser];
                     if ((things[dcthing].Flag & TngF_WepCharging) == 0)
@@ -2991,7 +2725,8 @@ TbBool check_panel_input(short panel)
                             engn_xc = PRCCOORD_TO_MAPCOORD(p_agent->X);
                             engn_zc = PRCCOORD_TO_MAPCOORD(p_agent->Z);
                         }
-                        return 1;
+                        did_inp |= GINPUT_PACKET;
+                        return did_inp;
                     }
                 }
             }
@@ -3000,18 +2735,21 @@ TbBool check_panel_input(short panel)
             break;
         }
     }
-    return 0;
+    return did_inp;
 }
 
-TbBool check_panel_button(void)
+ubyte check_panel_button(void)
 {
     short panel;
+    ubyte did_inp;
+
+    did_inp = GINPUT_NONE;
 
     if (lbDisplay.LeftButton && lbDisplay.RightButton)
     {
         struct Packet *p_pckt;
         PlayerInfo *p_locplayer;
-        short dcthing;
+        ThingIdx dcthing;
 
         lbDisplay.LeftButton = 0;
         lbDisplay.RightButton = 0;
@@ -3020,13 +2758,15 @@ TbBool check_panel_button(void)
         dcthing = p_locplayer->DirectControl[mouser];
         my_build_packet(p_pckt, PAct_PEEPS_SCATTER, dcthing,
             mouse_map_x, 0, mouse_map_z);
-        return 1;
+        did_inp |= GINPUT_PACKET;
+        return did_inp;
     }
 
     if (mouse_move_over_scanner())
     {
-        if (check_scanner_input())
-            return 1;
+        did_inp |= check_scanner_input();
+        if ((did_inp & GINPUT_PACKET) != 0)
+            return did_inp;
     }
 
     for (panel = GAME_PANELS_LIMIT - 1; panel >= 0; panel--)
@@ -3035,11 +2775,12 @@ TbBool check_panel_button(void)
             continue;
         if (mouse_move_over_panel(panel))
         {
-            if (check_panel_input(panel))
-                return 1;
+            did_inp |= check_panel_input(panel);
+            if ((did_inp & GINPUT_PACKET) != 0)
+                return did_inp;
         }
     }
-    return 0;
+    return did_inp;
 }
 
 /******************************************************************************/

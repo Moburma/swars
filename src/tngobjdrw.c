@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file tngobjdrw.c
  *     Draws thing objects using drawlist.
@@ -32,8 +32,10 @@
 #include "engintrns.h"
 #include "enginzoom.h"
 #include "game.h"
+#include "game_options.h"
 #include "game_speed.h"
 #include "game_sprani.h"
+#include "keyboard.h"
 #include "matrix.h"
 #include "player.h"
 #include "thing.h"
@@ -145,7 +147,7 @@ void build_person(struct Thing *p_thing)
         frame = p_thing->Frame;
         bri = 32;
     }
-    else if (p_thing->U.UPerson.AnimMode == 20)
+    else if (p_thing->U.UPerson.AnimMode == ANIM_PERS_DEAD_BODY)
     {
         ushort stframe_old, stframe_new;
 
@@ -234,8 +236,12 @@ void build_building(struct Thing *p_thing)
 {
     struct SingleObject *p_sobj;
 
-    if ((ingame.DisplayMode == DpM_ENGINEPLY) && (lbKeyOn[KC_B]))
-        return;
+    if (ingame.DisplayMode == DpM_ENGINEPLY)
+    {
+        if (is_gamekey_pressed(GKey_TRANS_OBJECTS))
+            return;
+    }
+
     if (gameturn == p_thing->U.UObject.DrawTurn)
         return;
     p_thing->U.UObject.DrawTurn = gameturn;
@@ -246,7 +252,7 @@ void build_building(struct Thing *p_thing)
         ingame.Flags |= GamF_Unkn00040000;
     }
 
-    if (p_thing->SubType == SubTT_BLD_WIND_ROTOR)
+    if (p_thing->SubType == SubTT_BLD_MOVN_ROTOR)
     {
         short tng_x, tng_y, tng_z;
         p_sobj = &game_objects[p_thing->U.UObject.Object];

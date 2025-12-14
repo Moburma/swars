@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file player.h
  *     Header file for player.c.
@@ -35,7 +35,7 @@ extern "C" {
 
 #define CRYO_PODS_MAX_COUNT 32
 #define AGENTS_SQUAD_MAX_COUNT 4
-#define MOUSER_USERS_MAX_COUNT 4
+#define LOCAL_USERS_MAX_COUNT 4
 
 struct Thing;
 
@@ -61,9 +61,9 @@ struct AgentInfo {
 };
 
 typedef struct {
-    /** Per-mouser agent input control parameters */
-    struct SpecialUserInput UserInput[MOUSER_USERS_MAX_COUNT];
-    u32 DirectControl[MOUSER_USERS_MAX_COUNT]; /* offs=0x88 */
+    /** Per-user agent input control parameters */
+    struct SpecialUserInput UserInput[LOCAL_USERS_MAX_COUNT];
+    u32 DirectControl[LOCAL_USERS_MAX_COUNT]; /* offs=0x88 */
     u32 ControlPad;
     /* Pointers to agents in the squad of this player.
      * These are guaranteed treference a valid thing (non-NULL),
@@ -72,9 +72,11 @@ typedef struct {
      * during the tactical mission, not in-menu.
      */
     struct Thing *MyAgent[AGENTS_SQUAD_MAX_COUNT];
+    /** Previously active weapon in players panel, used when switching weapons with ability to revert. */
     ubyte PrevWeapon[AGENTS_SQUAD_MAX_COUNT];  /* offs=0xAC */
-    ubyte PanelState[MOUSER_USERS_MAX_COUNT];
-    ubyte PanelItem[MOUSER_USERS_MAX_COUNT];
+    ubyte PanelState[LOCAL_USERS_MAX_COUNT];
+    /** Weapon type which is selected/highlighted on per-agent players panel. */
+    ubyte PanelItem[LOCAL_USERS_MAX_COUNT];
     ushort Dummy98; /* offs=0xB8 */
     ubyte Dummy97;
     ubyte MissionAgents;
@@ -83,13 +85,14 @@ typedef struct {
     ubyte SubState[4]; /* offs=0xC2 */
     ubyte PrevState[4];
     ubyte SubStateTimer[4];
+    /** Double mode is multiple players using the same computer (controlling individual agents). */
     ubyte DoubleMode;
     ubyte PlayerNo;
     ulong Weapons[AGENTS_SQUAD_MAX_COUNT];
     union Mod Mods[AGENTS_SQUAD_MAX_COUNT];
-    /** Per-mouser agent command param value Y */
-    short UserVY[MOUSER_USERS_MAX_COUNT];
-    short SpecialItems[MOUSER_USERS_MAX_COUNT];
+    /** Per-user controlled agent command param value Y */
+    short UserVY[LOCAL_USERS_MAX_COUNT];
+    short SpecialItems[LOCAL_USERS_MAX_COUNT];
     short GotoFace;
     ushort PanelTimer;
     short PanelX;
@@ -99,10 +102,10 @@ typedef struct {
     short TargetType;
     ubyte FourPacks[5][AGENTS_SQUAD_MAX_COUNT];
     ubyte WepDelays[AGENTS_SQUAD_MAX_COUNT][32];
-    /** Per-mouser agent command param value X */
-    short UserVX[MOUSER_USERS_MAX_COUNT];
-    /** Per-mouser agent command param value Z */
-    short UserVZ[MOUSER_USERS_MAX_COUNT];
+    /** Per-user controlled agent command param value X */
+    short UserVX[LOCAL_USERS_MAX_COUNT];
+    /** Per-user controlled agent command param value Z */
+    short UserVZ[LOCAL_USERS_MAX_COUNT];
 } PlayerInfo;
 
 
@@ -118,9 +121,12 @@ void player_update_agents_from_cryo(PlayerInfo *p_player);
 void cryo_update_agents_from_player(PlayerInfo *p_player);
 void players_sync_from_cryo(void);
 
-TbBool free_slot(ushort plagent, ubyte weapon);
-TbBool player_cryo_add_weapon_one(ushort cryo_no, ubyte weapon);
-TbBool player_cryo_remove_weapon_one(ushort cryo_no, ubyte weapon);
+/** Returns if given agent of the local players team has a free slot for a weapon.
+ */
+TbBool free_slot(ushort plagent, WeaponType wtype);
+
+TbBool player_cryo_add_weapon_one(ushort cryo_no, WeaponType wtype);
+TbBool player_cryo_remove_weapon_one(ushort cryo_no, WeaponType wtype);
 TbBool player_cryo_transfer_weapon_between_agents(ushort from_cryo_no,
   ushort to_cryo_no, ubyte weapon);
 TbBool player_cryo_add_cybmod(ushort cryo_no, ubyte cybmod);
@@ -128,14 +134,22 @@ const char *get_cryo_agent_name(ushort cryo_no);
 void remove_agent(ubyte cryo_no);
 void add_agent(ulong weapons, ushort mods);
 
+void player_mission_agents_reset(PlayerIdx plyr);
 void player_agents_init_prev_weapon(PlayerIdx plyr);
 void player_agents_add_random_epidermises(PlayerInfo *p_player);
 void player_agent_update_prev_weapon(struct Thing *p_agent);
 short player_agent_current_or_prev_weapon(PlayerIdx plyr, ushort plagent);
-TbBool player_agent_has_weapon(PlayerIdx plyr, ushort plagent, ubyte weapon);
+TbBool player_agent_has_weapon(PlayerIdx plyr, ushort plagent, WeaponType wtype);
+short player_agent_weapon_delay(PlayerIdx plyr, ushort plagent, WeaponType wtype);
+void player_agent_set_weapon_delay(PlayerIdx plyr, ushort plagent, WeaponType wtype, short delay_turns);
+void player_agents_clear_weapon_delays(PlayerIdx plyr);
+
+TbBool player_can_toggle_thermal(PlayerIdx plyr);
+void player_toggle_thermal(PlayerIdx plyr);
+void player_update_thermal(PlayerIdx plyr);
+
 TbBool player_agent_is_alive(PlayerIdx plyr, ushort plagent);
 TbBool player_agent_is_executing_commands(PlayerIdx plyr, ushort plagent);
-short player_agent_weapon_delay(PlayerIdx plyr, ushort plagent, ubyte weapon);
 ThingIdx direct_control_thing_for_player(PlayerIdx plyr);
 void set_default_player_control(void);
 void player_target_clear(PlayerIdx plyr);

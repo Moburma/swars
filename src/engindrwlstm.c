@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file engindrwlstm.c
  *     Making drawlists for the 3D engine.
@@ -34,6 +34,7 @@
 #include "engintrns.h"
 #include "game.h"
 #include "game_data.h"
+#include "game_options.h"
 #include "game_speed.h"
 #include "matrix.h"
 #include "swlog.h"
@@ -308,13 +309,13 @@ void draw_pers_e_graphic(struct Thing *p_thing, int x, int y, int z, int frame, 
         if ((p_thing->Flag2 & TgF2_InsideBuilding) != 0) {
             if ((p_thing->Flag & TngF_Destroyed) != 0)
                 return;
-            scr_depth += BUCKETS_COUNT;
+            scr_depth -= 10 * BUCKETS_COUNT;
         }
     }
     else
     {
         if ((p_thing->Flag2 & TgF2_InsideBuilding) != 0)
-            scr_depth += BUCKETS_COUNT;
+            scr_depth = -BUCKETS_COUNT;
     }
 
     p_sspr = draw_item_add_sprite(DrIT_Unkn13, BUCKET_MID + scr_depth);
@@ -1342,7 +1343,8 @@ int draw_rot_object(int offset_x, int offset_y, int offset_z, struct SingleObjec
     return bckt_max;
 }
 
-short draw_rot_object2(int offset_x, int offset_y, int offset_z, struct SingleObject *point_object, struct Thing *p_thing)
+short draw_rot_object2(int offset_x, int offset_y, int offset_z,
+  struct SingleObject *point_object, struct Thing *p_thing)
 {
     int i, bckt_max;
     int face_beg, face;
@@ -1840,12 +1842,12 @@ void build_polygon_circle_2d(int x1, int y1, int r1, int r2, int flag,
         ushort face;
 
         half_angl = angle - angle_detail;
-        cos_angl = lbSinTable[(half_angl & 0x7FF) + LbFPMath_PI/2];
-        sin_angl = lbSinTable[(half_angl & 0x7FF)];
+        cos_angl = lbSinTable[(half_angl & LbFPMath_AngleMask) + LbFPMath_PI/2];
+        sin_angl = lbSinTable[(half_angl & LbFPMath_AngleMask)];
         hlf_x = x1 + ((scrad1 * cos_angl) >> 16);
         hlf_y = y1 + ((scrad1 * sin_angl) >> 16);
-        cos_angl = lbSinTable[(angle & 0x7FF) + LbFPMath_PI/2];
-        sin_angl = lbSinTable[angle & 0x7FF];
+        cos_angl = lbSinTable[(angle & LbFPMath_AngleMask) + LbFPMath_PI/2];
+        sin_angl = lbSinTable[angle & LbFPMath_AngleMask];
         nxt_x = x1 + ((scrad1 * cos_angl) >> 16);
         nxt_y = y1 + ((scrad1 * sin_angl) >> 16);
 

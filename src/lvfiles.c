@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file lvfiles.c
  *     Routines for level and map files handling.
@@ -24,6 +24,7 @@
 #include "bfmath.h"
 #include "bfmemut.h"
 
+#include "bat.h"
 #include "triangls.h"
 #include "trpoints.h"
 #include "trstate.h"
@@ -41,6 +42,7 @@
 #include "enginsngobjs.h"
 #include "game.h"
 #include "game_data.h"
+#include "game_options.h"
 #include "game_speed.h"
 #include "game_sprani.h"
 #include "lvobjctv.h"
@@ -54,6 +56,17 @@
 #include "vehtraffic.h"
 #include "weapon.h"
 #include "swlog.h"
+/******************************************************************************/
+#pragma pack(1)
+
+struct BillboardNBreakout {
+  ubyte field_0;
+  ubyte field_1;
+  ubyte field_2;
+  ubyte field_3;
+};
+
+#pragma pack()
 /******************************************************************************/
 
 TbBool level_deep_fix = false;
@@ -93,6 +106,9 @@ struct QuickLoad quick_load_pc[] = {
 };
 
 ushort next_used_lvl_objective = 1;
+
+extern uint dword_177790;
+extern struct BillboardNBreakout map_bnb;
 
 void debug_level(const char *text, int player)
 {
@@ -147,16 +163,39 @@ void global_3d_store(int action)
     }
 }
 
+TbBool is_level_stored_thing(struct Thing *p_thing)
+{
+    switch (p_thing->Type)
+    {
+    case TT_VEHICLE:
+    case TT_PERSON:
+    case TT_UNKN35:
+       return true;
+    }
+    return false;
+}
+
+TbBool is_level_stored_sthing(struct SimpleThing *p_sthing)
+{
+    switch (p_sthing->Type)
+    {
+    case SmTT_CARRIED_ITEM:
+    case SmTT_DROPPED_ITEM:
+       return true;
+    }
+    return false;
+}
+
 ulong load_level_pc_handle(TbFileHandle lev_fh)
 {
-    ulong fmtver;
+    u32 fmtver;
     TbBool mech_initialized;
-    long limit;
+    int limit;
     int i, k, n;
 
     mech_initialized = 0;
     fmtver = 0;
-    LbFileRead(lev_fh, &fmtver, 4);
+    LbFileRead(lev_fh, &fmtver, sizeof(u32));
 
     if (fmtver >= 1)
     {
@@ -185,13 +224,27 @@ ulong load_level_pc_handle(TbFileHandle lev_fh)
                 LbFileRead(lev_fh, &s_oldthing, sizeof(s_oldthing));
                 refresh_old_thing_format(p_thing, &s_oldthing, fmtver);
             }
-            LOGNO("Thing(%hd,%hd) group %hd at (%d,%d,%d) type=%d,%d",
-              p_thing->ThingOffset, p_thing->U.UPerson.UniqueID,
-              p_thing->U.UPerson.Group,
-              PRCCOORD_TO_MAPCOORD(p_thing->X),
-              PRCCOORD_TO_MAPCOORD(p_thing->Y),
-              PRCCOORD_TO_MAPCOORD(p_thing->Z),
-              (int)p_thing->Type, (int)p_thing->SubType);
+
+            if (!is_level_stored_thing(p_thing))
+            {
+                LOGWARN("Thing(%hd,%hd) group %hd at (%d,%d,%d) type=%d,%d",
+                  p_thing->ThingOffset, p_thing->U.UPerson.UniqueID,
+                  p_thing->U.UPerson.Group,
+                  PRCCOORD_TO_MAPCOORD(p_thing->X),
+                  PRCCOORD_TO_MAPCOORD(p_thing->Y),
+                  PRCCOORD_TO_MAPCOORD(p_thing->Z),
+                  (int)p_thing->Type, (int)p_thing->SubType);
+            }
+            else
+            {
+                LOGNO("Thing(%hd,%hd) group %hd at (%d,%d,%d) type=%d,%d",
+                  p_thing->ThingOffset, p_thing->U.UPerson.UniqueID,
+                  p_thing->U.UPerson.Group,
+                  PRCCOORD_TO_MAPCOORD(p_thing->X),
+                  PRCCOORD_TO_MAPCOORD(p_thing->Y),
+                  PRCCOORD_TO_MAPCOORD(p_thing->Z),
+                  (int)p_thing->Type, (int)p_thing->SubType);
+            }
 
             if ((p_thing->Z >> 8) < 256)
                 p_thing->Z += (256 << 8);
@@ -236,6 +289,7 @@ ulong load_level_pc_handle(TbFileHandle lev_fh)
 
             if (p_thing->Type == SmTT_DROPPED_ITEM)
             {
+                // SimpleThings should not be on this list. But many level do have them.
                 p_thing->Frame = nstart_ani[p_thing->StartFrame + 1];
             }
 
@@ -337,7 +391,7 @@ ulong load_level_pc_handle(TbFileHandle lev_fh)
         LbFileRead(lev_fh, engine_mem_alloc_ptr + engine_mem_alloc_size - 32000, unkn3de_len);
     }
     LOGSYNC("Level fmtver=%lu n_command=%hu word_1531E0=%hu unkn3de_len=%hu",
-      fmtver, next_command, word_1531E0, unkn3de_len);
+      (ulong)fmtver, next_command, word_1531E0, unkn3de_len);
     if (fmtver >= 4)
     {
         ulong count;
@@ -354,6 +408,35 @@ ulong load_level_pc_handle(TbFileHandle lev_fh)
             p_thing = &sthings[thing];
             memcpy(&loc_thing, p_thing, 60);
             LbFileRead(lev_fh, p_thing, 60);
+
+            if (!is_level_stored_sthing(p_thing))
+            {
+                LOGWARN("SThing(%hd,%hd) at (%d,%d,%d) type=%d,%d",
+                  p_thing->ThingOffset, p_thing->UniqueID,
+                  PRCCOORD_TO_MAPCOORD(p_thing->X),
+                  PRCCOORD_TO_MAPCOORD(p_thing->Y),
+                  PRCCOORD_TO_MAPCOORD(p_thing->Z),
+                  (int)p_thing->Type, (int)p_thing->SubType);
+            }
+            else
+            {
+                LOGNO("SThing(%hd,%hd) at (%d,%d,%d) type=%d,%d",
+                  p_thing->ThingOffset, p_thing->UniqueID,
+                  PRCCOORD_TO_MAPCOORD(p_thing->X),
+                  PRCCOORD_TO_MAPCOORD(p_thing->Y),
+                  PRCCOORD_TO_MAPCOORD(p_thing->Z),
+                  (int)p_thing->Type, (int)p_thing->SubType);
+            }
+
+            if (fmtver <= 17)
+            {
+                if (p_thing->Type == 0)
+                {
+                    p_thing->Type = SmTT_DROPPED_ITEM;
+                    p_thing->SubType &= 3;
+                }
+            }
+
             if (p_thing->Type == SmTT_CARRIED_ITEM)
             {
                 p_thing->LinkParent = loc_thing.LinkParent;
@@ -370,12 +453,6 @@ ulong load_level_pc_handle(TbFileHandle lev_fh)
               if (thing != 0)
                   add_node_sthing(thing);
             }
-            LOGNO("Thing(%hd,%hd) at (%d,%d,%d) type=%d,%d",
-              p_thing->ThingOffset, p_thing->UniqueID,
-              PRCCOORD_TO_MAPCOORD(p_thing->X),
-              PRCCOORD_TO_MAPCOORD(p_thing->Y),
-              PRCCOORD_TO_MAPCOORD(p_thing->Z),
-              (int)p_thing->Type, (int)p_thing->SubType);
         }
     }
 
@@ -420,6 +497,117 @@ ulong load_level_pc_handle(TbFileHandle lev_fh)
 
     return fmtver;
 }
+
+void save_level_pc_handle(TbFileHandle lev_fh)
+{
+    u32 fmtver;
+    ushort count;
+    int i, k;
+
+    assert(sizeof(struct Thing) == 168);
+    assert(sizeof(struct Command) == 32);
+    assert(sizeof(struct Objective) == 32);
+    assert(sizeof(struct LevelMisc) == 22);
+
+    fmtver = 18;
+    LbFileWrite(lev_fh, &fmtver, sizeof(u32));
+
+    {// Things are partially stored in map, partially in level file
+        struct Thing *p_thing;
+        ThingIdx thing;
+
+        i = 0;
+        for (thing = things_used_head; thing > 0; thing = p_thing->LinkChild)
+        {
+            p_thing = &things[thing];
+            // Per thing code start
+            if (!is_level_stored_thing(p_thing))
+                continue;
+            i++;
+            // Per thing code end
+        }
+        count = i;
+        LbFileWrite(lev_fh, &count, 2);
+
+        i = 0;
+        LOGSYNC("Level fmtver=%lu n_things=%hd", (ulong)fmtver, count);
+        for (thing = things_used_head; thing > 0; thing = p_thing->LinkChild)
+        {
+            p_thing = &things[thing];
+            // Per thing code start
+            if (!is_level_stored_thing(p_thing))
+                continue;
+            i++;
+            LbFileWrite(lev_fh, p_thing, sizeof(struct Thing));
+            if (p_thing->Type == TT_VEHICLE)
+            {
+                k = p_thing->U.UVehicle.MatrixIndex;
+                LbFileWrite(lev_fh, &local_mats[k], 36);
+
+            }
+            // Per thing code end
+        }
+    }
+    assert(count == i);
+
+    LbFileWrite(lev_fh, &next_command, sizeof(ushort));
+    LbFileWrite(lev_fh, game_commands, sizeof(struct Command) * next_command);
+
+    LbFileWrite(lev_fh, &level_def, 44);
+
+    LbFileWrite(lev_fh, engine_mem_alloc_ptr + engine_mem_alloc_size - 1320 - 33, 1320);
+    LbFileWrite(lev_fh, war_flags, 32 * sizeof(struct WarFlag));
+
+    LbFileWrite(lev_fh, &word_1531E0, sizeof(ushort));
+    LbFileWrite(lev_fh, engine_mem_alloc_ptr + engine_mem_alloc_size - 32000, 15 * word_1531E0);
+    LbFileWrite(lev_fh, &unkn3de_len, sizeof(ushort));
+    LbFileWrite(lev_fh, engine_mem_alloc_ptr + engine_mem_alloc_size - 32000, unkn3de_len);
+
+    {// SimpleThings are partially stored in map, partially in level file
+        struct SimpleThing *p_sthing;
+        ThingIdx thing;
+
+        i = 0;
+        for (thing = sthings_used_head; thing < 0; thing = p_sthing->LinkChild)
+        {
+            p_sthing = &sthings[thing];
+            // Per thing code start
+            if (!is_level_stored_sthing(p_sthing))
+                continue;
+            i++;
+            // Per thing code end
+        }
+        count = i;
+        LbFileWrite(lev_fh, &count, 2);
+
+        i = 0;
+        LOGSYNC("Level fmtver=%lu n_sthings=%hd", (ulong)fmtver, count);
+        for (thing = sthings_used_head; thing < 0; thing = p_sthing->LinkChild)
+        {
+            p_sthing = &sthings[thing];
+            // Per thing code start
+            if (!is_level_stored_sthing(p_sthing))
+                continue;
+            i++;
+            LbFileWrite(lev_fh, p_sthing, sizeof(struct SimpleThing));
+            // Per thing code end
+        }
+    }
+    assert(count == i);
+
+    LbFileWrite(lev_fh, &game_level_unique_id, 2);
+
+    LbFileWrite(lev_fh, &next_used_lvl_objective, sizeof(ushort));
+    LbFileWrite(lev_fh, game_used_lvl_objectives, sizeof(struct Objective) * next_used_lvl_objective);
+
+    LbFileWrite(lev_fh, game_level_unkn1, 40);
+    LbFileWrite(lev_fh, game_level_unkn2, 40);
+
+    LbFileWrite(lev_fh, game_level_miscs, sizeof(struct LevelMisc) * 200);
+
+    LbFileWrite(lev_fh, &engn_anglexz, 4);
+}
+
 
 short find_group_which_looks_like_human_player(TbBool strict)
 {
@@ -595,11 +783,13 @@ void level_perform_deep_fix(void)
 #endif
 }
 
-void fix_level_indexes(short missi, ulong fmtver, ubyte reload, TbBool deep)
+void fix_level_indexes(short missi, u32 fmtver, ubyte reload, TbBool deep)
 {
     ushort objectv;
     ThingIdx thing;
 
+    LOGSYNC("Fixing mission %d fmtver %lu reload %d deep %d",
+      (int)missi, (ulong)fmtver, (int)reload, (int)deep);
     fix_thing_commands_indexes(deep);
 
     for (objectv = 1; objectv < next_used_lvl_objective; objectv++)
@@ -607,7 +797,7 @@ void fix_level_indexes(short missi, ulong fmtver, ubyte reload, TbBool deep)
         struct Objective *p_objectv;
 
         p_objectv = &game_used_lvl_objectives[objectv];
-        p_objectv->Level = (current_level - 1) % 15 + 1;
+        p_objectv->Level = LEVEL_NUM_STRAIN(current_level);
         p_objectv->Map = current_map;
         fix_single_objective(p_objectv, objectv, "UL");
     }
@@ -622,7 +812,9 @@ void fix_level_indexes(short missi, ulong fmtver, ubyte reload, TbBool deep)
 
     // Used objectives are not part of the level file, but part of
     // the mission file. If restarting level, leave these intact,
-    // as fixups were already applied on first load.
+    // as fixups were already applied on first load. Though loading
+    // a different level as part of the same mission needs to be
+    // taken into account when setting the 'reload' parameter.
     if (!reload)
     {
         fix_mission_used_objectives(missi);
@@ -650,7 +842,12 @@ int map_things_unkn_func_04(short subtype)
 TbResult level_misc_update_mgun(struct LevelMisc *p_lvmsc)
 {
     struct Thing *p_mgun;
-    short mgun;
+    s32 bkp_engn_xc, bkp_engn_yc, bkp_engn_zc;
+    ThingIdx mgun;
+
+    bkp_engn_xc = engn_xc;
+    bkp_engn_yc = engn_yc;
+    bkp_engn_zc = engn_zc;
 
     engn_xc = p_lvmsc->X;
     engn_zc = p_lvmsc->Z;
@@ -666,13 +863,18 @@ TbResult level_misc_update_mgun(struct LevelMisc *p_lvmsc)
     p_mgun->U.UMGun.CurrentWeapon = p_lvmsc->Weapon;
     LOGSYNC("Mounted gun at (%d,%d) set to %s(%d)", (int)p_lvmsc->X, (int)p_lvmsc->Z,
       weapon_codename(p_lvmsc->Weapon), (int)p_lvmsc->Weapon);
+
+    engn_xc = bkp_engn_xc;
+    engn_yc = bkp_engn_yc;
+    engn_zc = bkp_engn_zc;
+
     return Lb_SUCCESS;
 }
 
 TbResult level_misc_verify_mgun(struct LevelMisc *p_lvmsc)
 {
-    long bkp_engn_xc, bkp_engn_yc, bkp_engn_zc;
-    short mgun;
+    s32 bkp_engn_xc, bkp_engn_yc, bkp_engn_zc;
+    ThingIdx mgun;
 
     if ((p_lvmsc->Group < 0) || (p_lvmsc->Group >= PEOPLE_GROUPS_COUNT))
         return Lb_FAIL;
@@ -697,19 +899,25 @@ TbResult level_misc_verify_mgun(struct LevelMisc *p_lvmsc)
     return Lb_OK;
 }
 
-/** Removes invalid entries from level_misc[].
+/** Removes invalid entries from level_miscs[].
  */
 void level_misc_validate(void)
 {
-    int i, n, last_used;
+    int i, n, limit, last_used;
+
+    limit = get_memory_ptr_allocated_count((void **)&game_level_miscs);
+    if (limit < 0) {
+        LOGERR("No memory for \"%s\", limit %d", "level_miscs", limit);
+        return;
+    }
 
     // Get last used slot
     last_used = 0;
-    for (i = 0; i < 200; i++) //TODO get size from memory system
+    for (i = 0; i < limit; i++)
     {
         struct LevelMisc *p_lvmsc;
         p_lvmsc = &game_level_miscs[i];
-        if (p_lvmsc->Type != 0)
+        if (p_lvmsc->Type != LvMiscT_NONE)
             last_used = i;
     }
 
@@ -721,10 +929,10 @@ void level_misc_validate(void)
         p_lvmsc = &game_level_miscs[i];
         switch (p_lvmsc->Type)
         {
-        case 0: // empty entry
+        case LvMiscT_NONE: // empty entry
             ret = Lb_FAIL;
             break;
-        case 1:
+        case LvMiscT_MGUN:
             ret = level_misc_verify_mgun(p_lvmsc);
             break;
         default:
@@ -732,7 +940,8 @@ void level_misc_validate(void)
             break;
         }
         if (ret == Lb_FAIL) {
-            LOGERR("Invalid LevelMisc entry %d type %d, removed", i, (int)p_lvmsc->Type);
+            LOGERR("Invalid \"%s\" entry %d type %d, removed",
+              "level_miscs", i, (int)p_lvmsc->Type);
             for (n = i + 1; n <= last_used; n++)
                 LbMemoryCopy(&game_level_miscs[n - 1], &game_level_miscs[n], sizeof(struct LevelMisc));
             LbMemorySet(&game_level_miscs[last_used], '\0', sizeof(struct LevelMisc));
@@ -742,15 +951,21 @@ void level_misc_validate(void)
     }
 }
 
-void level_misc_update(void)
+void level_misc_update(u32 fmtver)
 {
 #if 0
     asm volatile ("call ASM_level_misc_update\n"
         :  :  : "eax" );
 #endif
-    int i;
+    int limit, i;
 
-    for (i = 0; i < 200; i++) //TODO get size from memory system
+    limit = get_memory_ptr_allocated_count((void **)&game_level_miscs);
+    if (limit < 0) {
+        LOGERR("No memory for \"%s\", limit %d", "level_miscs", limit);
+        return;
+    }
+
+    for (i = 0; i < limit; i++)
     {
         struct LevelMisc *p_lvmsc;
         TbResult ret;
@@ -758,10 +973,10 @@ void level_misc_update(void)
         p_lvmsc = &game_level_miscs[i];
         switch (p_lvmsc->Type)
         {
-        case 0: // empty entry
+        case LvMiscT_NONE: // empty entry
             ret = Lb_OK;
             break;
-        case 1:
+        case LvMiscT_MGUN:
             ret = level_misc_update_mgun(p_lvmsc);
             break;
         default:
@@ -769,9 +984,37 @@ void level_misc_update(void)
             break;
         }
         if (ret == Lb_FAIL) {
-            LOGERR("Invalid LevelMisc entry %d type %d", i, (int)p_lvmsc->Type);
+            LOGERR("Invalid \"%s\" entry %d type %d",
+              "level_miscs", i, (int)p_lvmsc->Type);
         }
     }
+}
+
+TbBool level_misc_get_starting_camera_pos(MapCoord *cor_x, MapCoord *cor_z)
+{
+    int i, limit, last_match;
+
+    limit = get_memory_ptr_allocated_count((void **)&game_level_miscs);
+
+    // Get last used slot
+    last_match = -1;
+    for (i = 0; i < limit; i++)
+    {
+        struct LevelMisc *p_lvmsc;
+        p_lvmsc = &game_level_miscs[i];
+        if (p_lvmsc->Type == LvMiscT_MGUN)
+            last_match = i;
+    }
+
+    if (last_match >= 0)
+    {
+        struct LevelMisc *p_lvmsc;
+        p_lvmsc = &game_level_miscs[last_match];
+        *cor_x = p_lvmsc->X;
+        *cor_z = p_lvmsc->Z;
+        return true;
+    }
+    return false;
 }
 
 void load_level_pc(short level, short missi, ubyte reload)
@@ -793,7 +1036,7 @@ void load_level_pc(short level, short missi, ubyte reload)
                 current_map, next_level);
         else
             sprintf(lev_fname, "%s/c%03dl%03d.d%d", game_dirs[DirPlace_Levels].directory,
-               current_map, (next_level - 1) % 15 + 1, (next_level - 1) / 15);
+               current_map, LEVEL_NUM_STRAIN(next_level), LEVEL_NUM_VARIANT(next_level));
         if (next_level > 0)
             current_level = next_level;
     }
@@ -817,7 +1060,7 @@ void load_level_pc(short level, short missi, ubyte reload)
     lev_fh = LbFileOpen(lev_fname, Lb_FILE_MODE_READ_ONLY);
     if (lev_fh != INVALID_FILE)
     {
-        ulong fmtver;
+        u32 fmtver;
         int i;
 
         word_1C8446 = 1;
@@ -845,7 +1088,7 @@ void load_level_pc(short level, short missi, ubyte reload)
         check_and_fix_thing_commands();
 
         if (fmtver >= 10)
-            level_misc_update();
+            level_misc_update(fmtver);
 
         if (level_deep_fix) {
             level_perform_deep_fix();
@@ -927,7 +1170,7 @@ void fix_map_outranged_properties(void)
 
 void load_map_dat_pc_handle(TbFileHandle fh)
 {
-    ulong fmtver;
+    u32 fmtver;
     ushort num_sthings, num_things;
     short i;
 
@@ -1117,7 +1360,7 @@ void load_map_dat_pc_handle(TbFileHandle fh)
             }
             switch (loc_thing.SubType)
             {
-            case SubTT_BLD_WIND_ROTOR:
+            case SubTT_BLD_MOVN_ROTOR:
             case SubTT_BLD_37:
                 LbFileRead(fh, &loc_mat, sizeof(struct M33));
                 new_thing_building_clone(&loc_thing, &loc_mat, shut_h);
@@ -1199,15 +1442,15 @@ void load_map_dat_pc_handle(TbFileHandle fh)
 void load_mad_pc_buffer(ubyte *mad_ptr, long rdsize)
 {
     short shut_h;
-    ulong fmtver;
+    u32 fmtver;
     short i;
 
     shut_h = 100;
-    fmtver = *(ulong *)mad_ptr;
+    fmtver = *(u32 *)mad_ptr;
     mad_ptr += 4;
 
     if (fmtver != 1) {
-        LOGWARN("Unexpected MAD version %lu", fmtver);
+        LOGWARN("Unexpected MAD version %lu", (ulong)fmtver);
     }
 
     // Set amounts of quick_load array items
@@ -1321,7 +1564,7 @@ void load_mad_pc_buffer(ubyte *mad_ptr, long rdsize)
         }
         switch (p_clthing->SubType)
         {
-        case SubTT_BLD_WIND_ROTOR:
+        case SubTT_BLD_MOVN_ROTOR:
         case SubTT_BLD_37:
             new_thing_building_clone(p_clthing, (struct M33 *)mad_ptr, shut_h);
             mad_ptr += sizeof(struct M33);
@@ -1380,17 +1623,21 @@ void prepare_map_dat_to_play(void)
 
 TbResult load_map_mad(ushort mapno)
 {
-    char mad_fname[52];
+    char mad_fname[DISKPATH_SIZE];
+    PathInfo *pinfo;
     long fsize;
 
     next_local_mat = 1;
 
-    sprintf(mad_fname, "%s/map%03d.mad", "maps", mapno);
+    pinfo = &game_dirs[DirPlace_Maps];
+    snprintf(mad_fname, DISKPATH_SIZE-1, "%s/map%03d.mad", pinfo->directory, mapno);
     fsize = LbFileLoadAt(mad_fname, scratch_malloc_mem);
     if (fsize == Lb_FAIL)
         return Lb_FAIL;
 
     load_mad_pc_buffer(scratch_malloc_mem, fsize);
+
+    fix_map_outranged_properties();
 
     update_map_thing_and_traffic_refs();
     unkn_lights_processing();
@@ -1399,10 +1646,53 @@ TbResult load_map_mad(ushort mapno)
     return Lb_SUCCESS;
 }
 
-void load_map_bnb(int a1)
+void load_map_bnb(ushort mapno)
 {
+#if 0
     asm volatile ("call ASM_load_map_bnb\n"
-        : : "a" (a1));
+        : : "a" (mapno));
+#endif
+    char locstr[DISKPATH_SIZE];
+    PathInfo *pinfo;
+    TbFileHandle fh;
+    ubyte Amin, Amax;
+    ubyte Bmin, Bmax;
+
+    fh = INVALID_FILE;
+    pinfo = &game_dirs[DirPlace_Maps];
+    snprintf(locstr, DISKPATH_SIZE-1, "%s/map%03d.b&b", pinfo->directory, mapno);
+    if (LbFileExists(locstr))
+        fh = LbFileOpen(locstr, Lb_FILE_MODE_READ_ONLY);
+
+    if (fh == INVALID_FILE)
+    {
+        LOGSYNC("Using defaults in place of '%s' file", locstr);
+        map_bnb.field_0 = 0;
+        map_bnb.field_1 = 0;
+        map_bnb.field_2 = 0;
+        map_bnb.field_3 = 0;
+        dword_177790 = 0;
+    }
+    else
+    {
+        LbFileRead(fh, &map_bnb, 4);
+        LbFileClose(fh);
+        dword_177790 = 2;
+    }
+    Amin = map_bnb.field_0;
+    if (map_bnb.field_0 >= map_bnb.field_2)
+        Amin = map_bnb.field_2;
+    Bmin = map_bnb.field_1;
+    if (map_bnb.field_1 >= map_bnb.field_3)
+        Bmin = map_bnb.field_3;
+    Amax = map_bnb.field_0;
+    if (map_bnb.field_0 <= map_bnb.field_2)
+        Amax = map_bnb.field_2;
+    Bmax = map_bnb.field_1;
+    if (map_bnb.field_1 <= map_bnb.field_3)
+        Bmax = map_bnb.field_3;
+
+    BAT_unknsub_20(Amin, Bmin, Amax, Bmax, vec_tmap[4] + 0xA040);
 }
 
 TbResult load_mad_pc(ushort mapno)

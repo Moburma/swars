@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file bat.c
  *     Routines implementing Breakout minigame.
@@ -23,12 +23,17 @@
 #include "bfkeybd.h"
 #include "bfmemut.h"
 #include "bfscreen.h"
+#include "ssampply.h"
 
+#include "bigmap.h"
 #include "display.h"
 #include "game.h"
+#include "game_options.h"
+#include "keyboard.h"
 #include "player.h"
 #include "sound.h"
 #include "swlog.h"
+#include "thing.h"
 /******************************************************************************/
 
 #pragma pack(1)
@@ -92,6 +97,10 @@ enum BATStates {
 
 #pragma pack()
 
+extern int bat_unknvalA_min;
+extern int bat_unknvalB_min;
+extern int bat_unknvalA_max;
+extern int bat_unknvalB_max;
 extern int BAT_data_1e26e8;
 extern int BAT_game_won_timer;
 extern int BAT_level_intro_timer;
@@ -251,7 +260,7 @@ static void BAT_input_paddle(void)
  */
 static void BAT_input_level(void)
 {
-      if (lbKeyOn[KC_N] && lbShift == KMod_SHIFT)
+      if (is_key_pressed(KC_N, KMod_SHIFT))
       {
           BAT_bricks_remain = 0;
           BAT_num_lives++;
@@ -388,11 +397,53 @@ static void BAT_create_starting_ball(void)
 
 int BAT_unknsub_27(void)
 {
+#if 0
     int ret;
     asm volatile (
       "call ASM_BAT_unknsub_27\n"
         : "=r" (ret) : );
     return ret;
+#endif
+    int tile_x, tile_z;
+
+    for (tile_x = bat_unknvalA_min; tile_x <= bat_unknvalA_max; tile_x++)
+    {
+        for (tile_z = bat_unknvalB_min; tile_z <= bat_unknvalB_max; tile_z++)
+        {
+            struct MyMapElement *p_mapel;
+            short thing;
+
+            p_mapel = &game_my_big_map[MAP_TILE_WIDTH * tile_z + tile_x];
+            thing = p_mapel->Child;
+
+            while (thing != 0)
+            {
+                if (thing <= 0)
+                {
+                    struct SimpleThing *p_sthing;
+                    p_sthing = &sthings[thing];
+                    thing = p_sthing->Next;
+                }
+                else
+                {
+                    struct Thing *p_thing;
+                    p_thing = &things[thing];
+                    thing = p_thing->Next;
+
+                    if ((p_thing->Type == TT_PERSON)
+                      && ((p_thing->Flag & TngF_PlayerAgent) != 0)
+                      && ((p_thing->Flag & TngF_Destroyed) == 0)
+                      && (p_thing->U.UPerson.CurrentWeapon == WEP_PERSUADRTRN))
+                    {
+                        ingame.Flags |= GamF_BillboardBAT;
+                        return 1;
+                    }
+                }
+            }
+        }
+    }
+    ingame.Flags &= ~GamF_BillboardBAT;
+    return 0;
 }
 
 void BAT_unknsub_21(void)
@@ -477,7 +528,7 @@ void BAT_play(void)
         {
             BAT_state = BATSt_BallLost;
             BAT_ball_lost_timer = 80;
-            play_sample_using_heap(0, 73, 127, 64, 100, 0, 3u);
+            play_sample_using_heap(0, 73, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3u);
         }
         BAT_input_level();
         if (BAT_bricks_remain == 0)
@@ -496,7 +547,7 @@ void BAT_play(void)
             }
             BAT_bricks_clear();
             BAT_levelno++;
-            play_sample_using_heap(0, 70, 127, 64, 100, 0, 3u);
+            play_sample_using_heap(0, 70, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3u);
         }
         break;
 
@@ -562,7 +613,7 @@ void BAT_play(void)
           BAT_bricks_clear();
           BAT_reset_free_balls();
           BAT_start_new_game();
-          ingame.UserFlags |= 0x01;
+          ingame.UserFlags |= UsrF_WonBAT;
       }
       break;
 
@@ -578,6 +629,14 @@ void BAT_play(void)
         BAT_reset_free_bonuses();
     }
 #endif
+}
+
+void BAT_unknsub_20(int a1, int a2, int a3, int a4, ubyte *p_screen)
+{
+    asm volatile (
+      "push %4\n"
+      "call ASM_BAT_unknsub_20\n"
+        : : "a" (a1), "d" (a2), "b" (a3), "c" (a4), "g" (p_screen));
 }
 
 /******************************************************************************/

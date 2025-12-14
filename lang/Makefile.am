@@ -40,19 +40,19 @@ langalleng_DATA = $(langalleng_DATFILES_C) $(langalleng_WADFILES_S) $(langalleng
 
 $(langalleng_DATFILES_C): $(langalleng_POFILES_C)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTDAT) -t "$(word 2,$(langall_eu_ETBLS))" -d $@ -c $+
+	$(TEXTDAT) -t "$(word 1,$(langall_eu_ETBLS))" -d $@ -c $+
 
 $(langalleng_WADFILES_S): $(langalleng_POFILES_S)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langalleng_WADFILES_Z): $(langalleng_POFILES_Z)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langalleng_WADFILES_P): $(langalleng_POFILES_P)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 langallfre_DATFILES_C = \
     fre/guitext.dat
@@ -89,19 +89,19 @@ langallfre_DATA = $(langallfre_DATFILES_C) $(langallfre_WADFILES_S) $(langallfre
 
 $(langallfre_DATFILES_C): $(langallfre_POFILES_C)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTDAT) -t "$(word 2,$(langall_eu_ETBLS))" -d $@ -c $+
+	$(TEXTDAT) -t "$(word 1,$(langall_eu_ETBLS))" -d $@ -c $+
 
 $(langallfre_WADFILES_S): $(langallfre_POFILES_S)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langallfre_WADFILES_Z): $(langallfre_POFILES_Z)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langallfre_WADFILES_P): $(langallfre_POFILES_P)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 langallger_DATFILES_C = \
     ger/guitext.dat
@@ -138,19 +138,19 @@ langallger_DATA = $(langallger_DATFILES_C) $(langallger_WADFILES_S) $(langallger
 
 $(langallger_DATFILES_C): $(langallger_POFILES_C)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTDAT) -t "$(word 2,$(langall_eu_ETBLS))" -d $@ -c $+
+	$(TEXTDAT) -t "$(word 1,$(langall_eu_ETBLS))" -d $@ -c $+
 
 $(langallger_WADFILES_S): $(langallger_POFILES_S)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langallger_WADFILES_Z): $(langallger_POFILES_Z)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langallger_WADFILES_P): $(langallger_POFILES_P)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 langallita_DATFILES_C = \
     ita/guitext.dat
@@ -187,19 +187,68 @@ langallita_DATA = $(langallita_DATFILES_C) $(langallita_WADFILES_S) $(langallita
 
 $(langallita_DATFILES_C): $(langallita_POFILES_C)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTDAT) -t "$(word 2,$(langall_eu_ETBLS))" -d $@ -c $+
+	$(TEXTDAT) -t "$(word 1,$(langall_eu_ETBLS))" -d $@ -c $+
 
 $(langallita_WADFILES_S): $(langallita_POFILES_S)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langallita_WADFILES_Z): $(langallita_POFILES_Z)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langallita_WADFILES_P): $(langallita_POFILES_P)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
+
+langallpol_DATFILES_C = \
+    pol/guitext.dat
+
+langallpol_WADFILES_S = \
+    pol/alltext-s.wad \
+    pol/alltext-s.idx
+
+langallpol_WADFILES_Z = \
+    pol/alltext-z.wad \
+    pol/alltext-z.idx
+
+langallpol_WADFILES_P = \
+    pol/alltext-p.wad \
+    pol/alltext-p.idx
+
+langallpol_POFILES_C = \
+    guitext_comm_pol.po
+
+langallpol_POFILES_S = \
+	alltext_syndct_pol.po \
+	alltext_comm_pol.po
+
+langallpol_POFILES_Z = \
+	alltext_church_pol.po \
+	alltext_comm_pol.po
+
+langallpol_POFILES_P = \
+	alltext_punks_pol.po \
+	alltext_comm_pol.po
+
+langallpoldir = $(prefix)/$(PACKAGE)/language/pol
+langallpol_DATA = $(langallpol_DATFILES_C) $(langallpol_WADFILES_S) $(langallpol_WADFILES_Z) $(langallpol_WADFILES_P)
+
+$(langallpol_DATFILES_C): $(langallpol_POFILES_C)
+	$(MKDIR_P) "$(@D)"
+	$(TEXTDAT) -t "$(word 1,$(langall_eu_ETBLS))" -d $@ -c $+
+
+$(langallpol_WADFILES_S): $(langallpol_POFILES_S)
+	$(MKDIR_P) "$(@D)"
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
+
+$(langallpol_WADFILES_Z): $(langallpol_POFILES_Z)
+	$(MKDIR_P) "$(@D)"
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
+
+$(langallpol_WADFILES_P): $(langallpol_POFILES_P)
+	$(MKDIR_P) "$(@D)"
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 langallspa_DATFILES_C = \
     spa/guitext.dat
@@ -240,15 +289,15 @@ $(langallspa_DATFILES_C): $(langallspa_POFILES_C)
 
 $(langallspa_WADFILES_S): $(langallspa_POFILES_S)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langallspa_WADFILES_Z): $(langallspa_POFILES_Z)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langallspa_WADFILES_P): $(langallspa_POFILES_P)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 langallswe_DATFILES_C = \
     swe/guitext.dat
@@ -289,20 +338,21 @@ $(langallswe_DATFILES_C): $(langallswe_POFILES_C)
 
 $(langallswe_WADFILES_S): $(langallswe_POFILES_S)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langallswe_WADFILES_Z): $(langallswe_POFILES_Z)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 $(langallswe_WADFILES_P): $(langallswe_POFILES_P)
 	$(MKDIR_P) "$(@D)"
-	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 2,$(langall_eu_ETBLS))" -w $@ -c $+
+	$(TEXTWAD) -t "$(word 1,$(langall_eu_ETBLS))" -m "$(word 1,$(langall_eu_ETBLS))" -w $@ -c $+
 
 EXTRA_DIST = \
 	langallfre \
 	langallger \
 	langallita \
+	langallpol \
 	langallspa \
 	langallswe \
 	langalleng

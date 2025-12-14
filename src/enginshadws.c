@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file enginshadws.c
  *     Shadows preparation and drawing required by the 3D engine.
@@ -18,6 +18,7 @@
 /******************************************************************************/
 #include "enginshadws.h"
 
+#include <assert.h>
 #include <string.h>
 #include "bfmath.h"
 
@@ -31,6 +32,7 @@
 #include "enginsngtxtr.h"
 #include "game.h"
 #include "game_data.h"
+#include "game_options.h"
 #include "game_sprani.h"
 #include "matrix.h"
 #include "thing.h"
@@ -130,13 +132,14 @@ void draw_person_shadow(ushort face)
 
     p_thing = game_sort_sprites[face].PThing;
     vec_mode = 10;
+    assert(vec_tmap[ingame.LastTmap] != NULL);
     vec_map = vec_tmap[ingame.LastTmap];
 
     fr = p_thing->Frame - nstart_ani[p_thing->StartFrame + 1 + p_thing->U.UObject.Angle];
     anmode = p_thing->U.UPerson.AnimMode;
-    if ((anmode == 2) || (anmode == 15) || (anmode == 7))
+    if ((anmode == ANIM_PERS_WEPHEAVY_IDLE) || (anmode == ANIM_PERS_WEPHEAVY_Unkn15) || (anmode == ANIM_PERS_WEPHEAVY_Unkn07))
         shpak = 12;
-    else if ((anmode == 1) || (anmode == 14) || (anmode == 6))
+    else if ((anmode == ANIM_PERS_WEPLIGHT_IDLE) || (anmode == ANIM_PERS_Unkn14) || (anmode == ANIM_PERS_Unkn06))
         shpak = byte_154F2C[2 * p_thing->SubType + 1];
     else
         shpak = byte_154F2C[2 * p_thing->SubType + 0];
@@ -281,7 +284,7 @@ void draw_vehicle_shadow(ushort veh, ushort sort)
 
     p_face4 = &game_special_object_faces4[face];
     p_face4->Flags = 10;
-    p_face4->GFlags = 1;
+    p_face4->GFlags = 0x01;
     p_face4->ExCol = 16;
     p_face4->PointNo[1] = pt + 1;
     p_face4->PointNo[2] = pt + 3;

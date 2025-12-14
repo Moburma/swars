@@ -1,8 +1,8 @@
 # *****************************************************************************
-#  Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+#  Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 # *****************************************************************************
 #   @file alltext_church_eng.pot
-#      Menu text for SW Port translation file
+#      Menu text for SyndWarsFX translation file
 #  @par Purpose:
 #      Contains translation of the national text in the game.
 #  @par Comment:
@@ -18,8 +18,8 @@
 # *****************************************************************************
 msgid ""
 msgstr ""
-"Project-Id-Version: Menu text for SW Port\n"
-"Report-Msgid-Bugs-To: https://github.com/swfans/swars/issues\n"
+"Project-Id-Version: Menu text for SyndWarsFX\n"
+"Report-Msgid-Bugs-To: https://github.com/swfans/syndwarsfx/issues\n"
 "POT-Creation-Date: 2023-09-05 11:30+0200\n"
 "PO-Revision-Date: 2023-09-02 12:00+0100\n"
 "Last-Translator: Mefistotelis <mefistotelis@gmail.com>\n"
@@ -838,6 +838,7 @@ msgctxt "mission brief tactical information"
 msgid "Satellite alert: EuroCorp agent type identkeys detected, tracks unstable"
 msgstr ""
 
+#. This mission name is a reference to one of previous games developed by Bullfrog.
 #: mission.title:44
 msgctxt "mission title"
 msgid "Powermonger"
@@ -1796,7 +1797,7 @@ msgstr ""
 
 #: mission.brief.mail24.map6.level3:2
 msgctxt "mission brief tactical information"
-msgid "The compound holding Brother Ix"
+msgid "The compound holding Brother IX"
 msgstr ""
 
 #: mission.brief.mail24.map6.level3:3

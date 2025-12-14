@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file vehicle.h
  *     Header file for vehicle.c.
@@ -185,6 +185,7 @@ struct VehStateConfig
 void init_mech(void);
 void mech_unkn_func_02(void);
 void mech_unkn_func_09(ThingIdx thing);
+void init_mech_explode(struct Thing *p_vehicle);
 
 TbBool vehicle_is_destroyed(ThingIdx thing);
 
@@ -207,6 +208,9 @@ void preprogress_trains_turns(ulong nturns);
 
 const char *vehicle_type_name(ushort vtype);
 void snprint_vehicle_state(char *buf, ulong buflen, struct Thing *p_thing);
+
+int vehicle_hit_by_bullet(struct Thing *p_vehicle, short hp,
+  int vx, int vy, int vz, struct Thing *p_attacker, ushort type);
 
 /******************************************************************************/
 #ifdef __cplusplus

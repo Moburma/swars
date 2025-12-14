@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file game_bstype.h
  *     Basic data types declaration.
@@ -44,6 +44,10 @@ typedef short ThingIdx;
  */
 typedef ubyte PlayerIdx;
 
+/** Type which stores type of a weapon.
+ */
+typedef ubyte WeaponType;
+
 /** Coordinate on the screen surface.
  * The type shall allow safety store values beyond (below/above) real screen
  * coordinates, up to another screen size. This means it needs to allow to
@@ -51,6 +55,17 @@ typedef ubyte PlayerIdx;
  * same for height.
  */
 typedef short ScrCoord;
+
+/** Type which stores index of a Game Key binding.
+ */
+typedef ushort GameKey;
+
+/** Type which stores coordinate on the ingame map.
+ *
+ * Can be separated into a tile and position within.
+ * Position within a tile is scaled 0..255.
+ */
+typedef short MapCoord;
 
 /******************************************************************************/
 #ifdef __cplusplus

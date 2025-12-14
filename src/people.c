@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file people.c
  *     Routines implementing people.
@@ -25,25 +25,30 @@
 #include "bfutility.h"
 #include "ssampply.h"
 
-#include "pepgroup.h"
+#include "bmbang.h"
 #include "bigmap.h"
 #include "building.h"
 #include "command.h"
 #include "display.h"
 #include "drawtext.h"
 #include "enginsngobjs.h"
+#include "enginsngtxtr.h"
 #include "engintrns.h"
 #include "febrief.h"
 #include "game.h"
 #include "game_data.h"
+#include "game_options.h"
 #include "game_speed.h"
 #include "game_sprani.h"
+#include "lvdraw3d.h"
 #include "lvobjctv.h"
 #include "misstat.h"
+#include "pepgroup.h"
 #include "player.h"
 #include "scandraw.h"
 #include "sound.h"
 #include "thing.h"
+#include "thing_fire.h"
 #include "thing_search.h"
 #include "tngcolisn.h"
 #include "vehicle.h"
@@ -70,7 +75,7 @@ struct PeepStat peep_type_stats[] = {
     {   0,    0,    0,    0,   0, 0,   0, 0, 0, 0},
 };
 
-ushort people_frames[SubTT_PERS_COUNT][22] = {
+ushort people_frames[SubTT_PERS_COUNT][ANIM_PERS_TOTAL_COUNT] = {
   {   1,   33,   33,    1,   40,   40,   33,   33,   33,   33,   73,   65,    9,   41,   25,   25,   57, 1010, 1018,   17, 1200,   49,},
   {   1,   33,   33,    1,   40,   40,   33,   33,   33,   33,   73,   65,    9,   41,   25,   25,   57, 1010, 1018,   17, 1200,   49,},
   { 113,  113,  113,   81,  113,  113,  113,  113,  113,  113,  153,  145,   89,  121,  105,  105,  137, 1010, 1018,   97, 1212,  129,},
@@ -194,17 +199,15 @@ const ubyte follow_dist[4][4] = {
   { 3, 6, 9, 0 },
 };
 
-const struct Direction angle_direction[] = {
-    {   0,  256},
-    { 181,  181},
-    { 256,    0},
-    { 181, -181},
-    {   0, -256},
-    {-181, -181},
-    {-256,    0},
-    {-181,  181},
+ubyte sfx_man_shot[] = {
+  11, 26, 41, 42, 43, 11, 26, 41,
+};
+ubyte sfx_woman_shot[] = {
+  12, 27,
 };
 
+extern ushort female_peep;
+extern sbyte byte_154F6C[8];
 extern short word_1AA38E;
 extern short word_1AA390;
 extern short word_1AA392;
@@ -575,8 +578,14 @@ TbBool person_carries_weapon(struct Thing *p_person, ubyte weapon)
     return weapons_has_weapon(p_person->U.UPerson.WeaponsCarried, weapon);
 }
 
-TbBool person_carries_any_medikit(struct Thing *p_person)
+TbBool person_carries_any_medikit(ThingIdx person)
 {
+    struct Thing *p_person;
+
+    if (person <= 0)
+        return false;
+
+    p_person = &things[person];
     return person_carries_weapon(p_person, WEP_MEDI2) || person_carries_weapon(p_person, WEP_MEDI1);
 }
 
@@ -584,6 +593,13 @@ TbBool person_can_accept_control(ThingIdx person)
 {
     return !person_is_dead_or_dying(person)
       && !thing_is_destroyed(person);
+}
+
+TbBool person_can_use_medikit(ThingIdx person)
+{
+    if (!person_carries_any_medikit(person))
+        return false;
+    return true;
 }
 
 void person_give_best_mods(struct Thing *p_person)
@@ -666,6 +682,17 @@ TbBool person_is_persuaded_by_player(ThingIdx thing, ushort plyr)
 
     p_person = &things[p_thing->Owner];
     return (p_person->U.UPerson.Group == plygroup);
+}
+
+ubyte person_get_selected_weapon(ThingIdx thing)
+{
+    struct Thing *p_thing;
+
+    if (thing <= 0)
+        return WEP_NULL;
+
+    p_thing = &things[thing];
+    return p_thing->U.UPerson.CurrentWeapon;
 }
 
 short calc_person_speed(struct Thing *p_person)
@@ -767,7 +794,7 @@ void person_start_executing_commands(struct Thing *p_person)
     ingame.Flags |= GamF_Unkn0100;
 }
 
-short person_slot_as_player_agent(struct Thing *p_person, ushort plyr)
+short person_slot_as_player_agent(struct Thing *p_person, PlayerIdx plyr)
 {
     PlayerInfo *p_player;
     struct Thing *p_agent;
@@ -786,7 +813,7 @@ short person_slot_as_player_agent(struct Thing *p_person, ushort plyr)
     return -1;
 }
 
-TbBool person_is_player_agent_in_slot(struct Thing *p_person, ushort plyr, short plagent)
+TbBool person_is_player_agent_in_slot(struct Thing *p_person, PlayerIdx plyr, short plagent)
 {
     PlayerInfo *p_player;
     struct Thing *p_agent;
@@ -795,6 +822,57 @@ TbBool person_is_player_agent_in_slot(struct Thing *p_person, ushort plyr, short
     p_agent = p_player->MyAgent[0];
 
     return (p_person->ThingOffset == p_agent->ThingOffset);
+}
+
+TbBool person_has_slot_in_any_player_dcontrol(ThingIdx person)
+{
+    struct Thing *p_person;
+
+    if (person <= 0)
+        return false;
+
+    if (person_is_executing_commands(person))
+        return false;
+
+    p_person = &things[person];
+
+    return ((p_person->Flag & TngF_PlayerAgent) != 0);
+}
+
+short person_get_dcontrol_player(ThingIdx person)
+{
+    struct Thing *p_person;
+
+    if (!person_has_slot_in_any_player_dcontrol(person))
+        return -1;
+
+    p_person = &things[person];
+
+    return (p_person->U.UPerson.ComCur >> 2);
+}
+
+short person_slot_in_player_dcontrol(ThingIdx person, PlayerIdx plyr)
+{
+    struct Thing *p_person;
+    PlayerIdx pers_plyr;
+
+    if (!person_has_slot_in_any_player_dcontrol(person)) {
+        return -1;
+    }
+
+    p_person = &things[person];
+
+    pers_plyr = p_person->U.UPerson.ComCur >> 2;
+    if (pers_plyr != plyr) {
+        return -1;
+    }
+
+    return (p_person->U.UPerson.ComCur & 3);
+}
+
+ubyte person_sex(struct Thing *p_person)
+{
+    return (((1 << p_person->SubType) & female_peep) != 0) ? PERSON_FEMALE : PERSON_MALE;
 }
 
 void set_peep_comcur(struct Thing *p_person)
@@ -836,8 +914,9 @@ void person_resurrect(struct Thing *p_person)
     p_person->Flag &= ~TngF_Destroyed;
     p_person->Flag &= ~TngF_Unkn02000000;
     p_person->State = PerSt_WAIT;
+    remove_path(p_person);
     p_person->Health = p_person->U.UPerson.MaxHealth * 3 / 4;
-    set_person_anim_mode(p_person, 1);
+    set_person_anim_mode(p_person, ANIM_PERS_WEPLIGHT_IDLE);
 }
 
 void person_set_persuade_power__to_allow_all(struct Thing *p_person)
@@ -889,6 +968,16 @@ void set_person_stats_type(struct Thing *p_person, ushort stype)
     p_person->Speed = calc_person_speed(p_person);
 }
 
+/** Set a person frame with single-angle sprite.
+ * Person frames are a bit different from other things, even the
+ * single-angle ones, because StartFrame in incremented when used as frame index.
+ */
+void set_person_frame_noangle(struct Thing *p_person, ushort anim_start)
+{
+    p_person->StartFrame = anim_start - 1;
+    p_person->Frame = nstart_ani[p_person->StartFrame + 1];
+}
+
 void reset_person_frame(struct Thing *p_person)
 {
     ushort person_anim;
@@ -924,7 +1013,8 @@ void change_player_angle(struct Thing *p_person, ushort angle)
         return;
 
     p_person->U.UPerson.Angle = angle;
-    person_anim = people_frames[p_person->SubType][p_person->U.UPerson.AnimMode] - 1;
+    person_anim = people_frames[p_person->SubType][p_person->U.UPerson.AnimMode];
+
     // TODO why are we not updating p_person->StartFrame here?
     sframe = person_anim - 1;
     p_person->Frame = nstart_ani[sframe + 1 + p_person->U.UPerson.Angle];
@@ -943,14 +1033,14 @@ void init_person_thing(struct Thing *p_person)
 
     if ((p_person->Flag & TngF_Destroyed) != 0)
     {
-        p_person->U.UPerson.AnimMode = 20;
+        p_person->U.UPerson.AnimMode = ANIM_PERS_DEAD_BODY;
         p_person->State = PerSt_DEAD;
         p_person->U.UPerson.FrameId.Version[3] = 1;
         p_person->U.UPerson.FrameId.Version[4] = 0;
     }
     else
     {
-        switch_person_anim_mode(p_person, 0);
+        switch_person_anim_mode(p_person, ANIM_PERS_IDLE);
     }
 }
 
@@ -999,8 +1089,21 @@ void remove_path(struct Thing *p_thing)
 
 void set_person_animmode_walk(struct Thing *p_person)
 {
+#if 0
     asm volatile ("call ASM_set_person_animmode_walk\n"
         : : "a" (p_person));
+#endif
+    if (p_person->State == PerSt_PERSON_BURNING)
+        return;
+    if ((p_person->Flag & TngF_Destroyed) != 0)
+        return;
+
+    p_person->U.UPerson.AnimMode = gun_out_anim(p_person, 0);
+    reset_person_frame(p_person);
+    p_person->Timer1 = 48;
+    p_person->StartTimer1 = 48;
+    p_person->Flag2 &= ~(0x80000000|TngF_Persuaded);
+    p_person->Speed = calc_person_speed(p_person);
 }
 
 int can_i_see_thing(struct Thing *p_me, struct Thing *p_him, int max_dist, ushort flags)
@@ -1050,7 +1153,7 @@ void set_person_persuaded(struct Thing *p_person, struct Thing *p_attacker, usho
     if (p_person->State == PerSt_DEAD)
         return;
 
-    play_dist_sample(p_person, 20, 127, 64, 100, 0, 3);
+    play_dist_sample(p_person, 20, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
     remove_path(p_person);
 
     p_attacker->U.UPerson.Energy -= energy;
@@ -1082,8 +1185,7 @@ void set_person_persuaded(struct Thing *p_person, struct Thing *p_attacker, usho
     }
     if ((p_person->Flag2 & TgF2_KnockedOut) == 0)
     {
-          p_person->StartFrame = 1059;
-          p_person->Frame = nstart_ani[p_person->StartFrame + 1];
+          set_person_frame_noangle(p_person, 1060);
     }
     p_person->Timer1 = 48;
     p_person->StartTimer1 = 48;
@@ -1183,7 +1285,7 @@ struct Thing *new_sim_person(int x, int y, int z, ubyte subtype)
     ry = alt_at_point(x, z);
     p_person->Speed = 512;
     p_person->U.UPerson.Angle = (rnd >> 1) % 8;
-    p_person->U.UPerson.AnimMode = 0;
+    p_person->U.UPerson.AnimMode = ANIM_PERS_IDLE;
     p_person->StartTimer1 = 48;
     p_person->Timer1 = 48;
     p_person->Y = ry;
@@ -1230,7 +1332,7 @@ struct Thing *new_sim_person(int x, int y, int z, ubyte subtype)
     p_person->SubType = ptype;
     p_person->U.UPerson.Group = ptype + 4;
     p_person->U.UPerson.EffectiveGroup = p_person->U.UPerson.Group;
-    p_person->U.UPerson.AnimMode = (p_person->U.UPerson.CurrentWeapon != WEP_NULL) ? 1 : 0;
+    p_person->U.UPerson.AnimMode = (p_person->U.UPerson.CurrentWeapon != WEP_NULL) ? ANIM_PERS_WEPLIGHT_IDLE : ANIM_PERS_IDLE;
     reset_person_frame(p_person);
     init_person_thing(p_person);
     p_person->U.UPerson.WeaponsCarried = 0;
@@ -1270,6 +1372,55 @@ void process_stamina(struct Thing *p_person)
 {
     asm volatile ("call ASM_process_stamina\n"
         : : "a" (p_person));
+}
+
+void process_shield(struct Thing *p_person)
+{
+#if 0
+    asm volatile (
+      "call ASM_process_shield\n"
+        : : "a" (p_person));
+#endif
+    struct PeepStat *p_pestat;
+
+    if (p_person->U.UPerson.ShieldEnergy < -300)
+        p_person->U.UPerson.ShieldEnergy = -300;
+
+    if (p_person->U.UPerson.ShieldGlowTimer > 0)
+        p_person->U.UPerson.ShieldGlowTimer--;
+
+    p_pestat = &peep_type_stats[p_person->SubType];
+
+    if ((p_person->Flag & TngF_Unkn00200000) != 0)
+    {
+        p_person->U.UPerson.ShieldEnergy -= 16;
+        if (p_person->U.UPerson.ShieldEnergy <= 0)
+            p_person->Flag &= ~TngF_Unkn00200000;
+    }
+    else
+    {
+        p_person->U.UPerson.ShieldEnergy += 8;
+        if (p_person->U.UPerson.ShieldEnergy > p_pestat->MaxShield)
+            p_person->U.UPerson.ShieldEnergy = p_pestat->MaxShield;
+    }
+
+    if ((p_person->Flag & TngF_PersSupShld) != 0)
+    {
+        short delta, en_drain;
+
+        delta = p_pestat->MaxShield - p_person->U.UPerson.ShieldEnergy;
+        if (delta > 0)
+        {
+            en_drain = delta / PERSON_ENERGY_TO_SHIELD_MUL;
+            if (en_drain > p_person->U.UPerson.Energy) {
+                delta = PERSON_ENERGY_TO_SHIELD_MUL * p_person->U.UPerson.Energy;
+                p_person->Flag &= ~TngF_PersSupShld;
+            }
+            en_drain = delta / PERSON_ENERGY_TO_SHIELD_MUL;
+            p_person->U.UPerson.ShieldEnergy += delta;
+            p_person->U.UPerson.Energy -= en_drain;
+        }
+    }
 }
 
 ubyte conditional_command_state_true(ushort cmd, struct Thing *p_me, ubyte from)
@@ -1543,15 +1694,6 @@ void build_navigate_path_to_face_xz(struct Thing *p_thing, short face, int x, in
         : : "a" (p_thing), "d" (face), "b" (x), "c" (z));
 }
 
-ubyte on_mapwho(struct Thing *p_thing)
-{
-    ubyte ret;
-    asm volatile (
-      "call ASM_on_mapwho\n"
-        : "=r" (ret) : "a" (p_thing));
-    return ret;
-}
-
 void check_weapon(struct Thing *p_person, int range)
 {
     asm volatile ("call ASM_check_weapon\n"
@@ -1578,19 +1720,30 @@ ushort person_command_until_check_condition(struct Thing *p_person, ushort cond_
 {
     struct Command *p_cmd;
     ushort cmd;
-    TbBool until_met;
+    TbBool until_met, has_more_conditions;
 
     p_cmd = &game_commands[cond_cmd];
     cmd = p_cmd->Next;
     until_met = false;
+    has_more_conditions = ((p_cmd->Flags & PCmdF_RunUntil) != 0);
 
     while (1)
     {
         if (cmd == 0)
             break;
         p_cmd = &game_commands[cmd];
-        if ((p_cmd->Flags & PCmdF_IsUntil) == 0)
-            break;
+        if ((p_cmd->Flags & PCmdF_RunUntil) == 0)
+            has_more_conditions = false;
+        if (!has_more_conditions) {
+            if ((p_cmd->Flags & PCmdF_IsUntil) == 0)
+                break;
+            // After RunUntil commands and then IsUntil command, this loop should be broken
+            // If it is not, then something is wrong with flags of the commands.
+            if ((p_cmd->Flags & PCmdF_RunUntil) != 0) {
+                LOGWARN("Person %s %d command %d has broken chain of UNTIL commands at %d",
+                  person_type_name(p_person->SubType), (int)p_person->ThingOffset, cond_cmd, cmd);
+            }
+        }
         if (conditional_command_state_true(cmd, p_person, 3)) {
             if (gameturn <= 1) {
                 LOGWARN("Person %s %d command %d end condition %d met just at start of the game",
@@ -1616,25 +1769,36 @@ ushort person_command_until_check_condition(struct Thing *p_person, ushort cond_
     return cmd;
 }
 
-/** Gives the next command beyond conditions.
+/** For given command, return the next command beyond any "until" conditions.
  *
- * @return Gives index of next command beyond "until" consitions, regardless
+ * @return Gives index of next command beyond "until" conditions, regardless
  *   whether any of the conditions is met or not.
  */
 ushort person_command_until_skip_condition(struct Thing *p_person, ushort cond_cmd)
 {
     struct Command *p_cmd;
     ushort cmd;
+    TbBool has_more_conditions;
 
-    cmd = cond_cmd;
+    p_cmd = &game_commands[cond_cmd];
+    cmd = p_cmd->Next;
+    has_more_conditions = ((p_cmd->Flags & PCmdF_RunUntil) != 0);
 
     while (1)
     {
         if (cmd == 0)
             break;
         p_cmd = &game_commands[cmd];
-        if ((p_cmd->Flags & PCmdF_IsUntil) == 0)
-            break;
+        if ((p_cmd->Flags & PCmdF_RunUntil) == 0)
+            has_more_conditions = false;
+        if (!has_more_conditions) {
+            if ((p_cmd->Flags & PCmdF_IsUntil) == 0)
+                break;
+            if ((p_cmd->Flags & PCmdF_RunUntil) != 0) {
+                LOGWARN("Person %s %d command %d has broken chain of UNTIL commands at %d",
+                  person_type_name(p_person->SubType), (int)p_person->ThingOffset, cond_cmd, cmd);
+            }
+        }
         cmd = p_cmd->Next;
     }
 
@@ -1645,15 +1809,13 @@ ushort person_command_until_skip_condition(struct Thing *p_person, ushort cond_c
  */
 void person_command_select_next(struct Thing *p_person)
 {
-    struct Command *p_cmd;
     ushort cmd;
 
     cmd = p_person->U.UPerson.ComCur;
     if (cmd == 0)
         return;
 
-    p_cmd = &game_commands[cmd];
-    p_person->U.UPerson.ComCur = person_command_until_skip_condition(p_person, p_cmd->Next);
+    p_person->U.UPerson.ComCur = person_command_until_skip_condition(p_person, cmd);
 }
 
 /** Discards a command at top of the person stack.
@@ -1661,15 +1823,13 @@ void person_command_select_next(struct Thing *p_person)
  */
 void person_command_skip_at_start(struct Thing *p_person)
 {
-    struct Command *p_cmd;
     ushort cmd;
 
     cmd = p_person->U.UPerson.ComHead;
     if (cmd == 0)
         return;
 
-    p_cmd = &game_commands[cmd];
-    p_person->U.UPerson.ComHead = person_command_until_skip_condition(p_person, p_cmd->Next);
+    p_person->U.UPerson.ComHead = person_command_until_skip_condition(p_person, cmd);
 }
 
 /** Jump to specific command on a person.
@@ -2334,11 +2494,11 @@ StateChRes person_cmd_play_sample(struct Thing *p_person, short smptbl_id,
 {
     if (revert)
     {
-        play_sample_using_heap(0, smptbl_id, 127, 64, 100, 0, 1);
+        play_sample_using_heap(0, smptbl_id, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
     }
     else
     {
-        play_dist_sample(p_person, smptbl_id, 127, 64, 100, 0, 1);
+        play_dist_sample(p_person, smptbl_id, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1);
     }
     p_person->State = PerSt_NONE;
     return StCh_ACCEPTED;
@@ -2766,17 +2926,6 @@ void person_init_command(struct Thing *p_person, ushort from)
             break;
         }
 
-        // Skip any detached "until" conditions for which we do not have a command
-        nxcmd = person_command_until_skip_condition(p_person, cmd);
-        if (nxcmd != cmd) {
-            // Currently this log would be too verbose - we switch states
-            // without skipping the follwing `until` in some places.
-            LOGNO("Person %s %d state %d.%d command %d is detached 'until'",
-              person_type_name(p_person->SubType), (int)p_person->ThingOffset,
-              p_person->State, p_person->SubState, cmd);
-        }
-        cmd = nxcmd;
-
         if (cmd == 0)
         {
             if ((p_person->Flag2 & TgF2_Unkn0800) != 0)
@@ -2898,34 +3047,360 @@ void process_random_speech(struct Thing *p_person, ubyte a2)
     switch (p_person->SubType)
     {
     case SubTT_PERS_MERCENARY:
-        play_dist_speech(p_person, 57 + (rndval % 3), 127, 64, 100, 0, 3);
+        play_dist_speech(p_person, 57 + (rndval % 3), FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
         break;
     case SubTT_PERS_POLICE:
-        play_dist_speech(p_person, 50 + (rndval & 3), 127, 64, 100, 0, 3);
+        play_dist_speech(p_person, 50 + (rndval & 3), FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
         break;
     case SubTT_PERS_SCIENTIST:
-        play_dist_speech(p_person, 60 + (rndval % 2), 127, 64, 100, 0, 3);
+        play_dist_speech(p_person, 60 + (rndval % 2), FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
         break;
     }
 }
 
-int person_hit_by_bullet(struct Thing *p_person, short hp,
-  int vx, int vy, int vz, struct Thing *p_attacker, int type)
+void set_interrupt_target(struct Thing *p_person, struct Thing *p_target)
 {
+    asm volatile ("call ASM_set_interrupt_target\n"
+        : : "a" (p_person), "d" (p_target));
+    return;
+}
+
+void set_person_dead(struct Thing *p_person, ushort anim_mode)
+{
+#if 1
+    asm volatile ("call ASM_set_person_dead\n"
+        : : "a" (p_person), "d" (anim_mode));
+    return;
+#endif
+}
+
+uint find_and_alert_guardian(struct Thing *p_person, struct Thing *p_attacker)
+{
+    uint ret;
+    asm volatile (
+      "call ASM_find_and_alert_guardian\n"
+        : "=r" (ret) : "a" (p_person), "d" (p_attacker));
+    return ret;
+}
+
+void init_recoil(struct Thing *p_person, short vx, short vy, short vz, ushort type)
+{
+    asm volatile (
+      "push %4\n"
+      "call ASM_init_recoil\n"
+        :  : "a" (p_person), "d" (vx), "b" (vy), "c" (vz), "g" (type));
+}
+
+void person_update_kill_stats(struct Thing *p_attacker, struct Thing *p_victim)
+{
+    if (p_attacker == NULL)
+        return;
+
+    if (in_network_game)
+    {
+        if ((p_victim->Flag & TngF_PlayerAgent) != 0)
+        {
+          struct Thing *p_realowner;
+          PlayerIdx attack_plyr;
+
+          p_realowner = effective_owner_of_thing(p_attacker);
+
+          if ((p_realowner != NULL) && ((p_realowner->Flag & TngF_PlayerAgent) != 0))
+          {
+              attack_plyr = p_realowner->U.UPerson.ComCur >> 2;
+              killed_mp_agent_add_to_stats(p_victim, attack_plyr);
+          }
+        }
+    }
+    else
+    {
+        if (p_attacker->U.UObject.EffectiveGroup == ingame.MyGroup) {
+            killed_person_add_to_stats(p_victim, open_brief);
+        }
+    }
+}
+
+/** Set a person into dying state.
+ *
+ * @param p_person The person which will start dying.
+ * @param hp Amount of Hit Points subtracted from health by the final blow.
+ * @param type Type of damage which caused the death.
+ */
+void person_start_dying(struct Thing *p_person, int hp, ushort type)
+{
+    switch (type)
+    {
+    case DMG_ELLASER:
+    case DMG_BEAM:
+    case DMG_LASER:
+    case DMG_ELSTRAND:
+        set_person_dead(p_person, ANIM_PERS_Unkn12);
+        break;
+    default:
+    case DMG_UNKN5:
+    case DMG_MINIGUN:
+    case DMG_UNKN9:
+        set_person_dead(p_person, ANIM_PERS_LAY_DOWN);
+        break;
+    case DMG_RAP:
+    case DMG_LONGRANGE:
+        set_person_dead(p_person, ANIM_PERS_Unkn10);
+        break;
+    }
+}
+
+TbBool persons_have_truce(struct Thing *p_person1, struct Thing *p_person2)
+{
+    ubyte pers1grp, pers2grp;
+
+    if (p_person1 == NULL) {
+        return false;
+    }
+
+    if (p_person2 == NULL) {
+        return false;
+    }
+
+    pers1grp = p_person1->U.UPerson.EffectiveGroup;
+    pers2grp = p_person2->U.UPerson.EffectiveGroup & 0x7F;
+
+    return thing_group_have_truce(pers1grp, pers2grp);
+}
+
+void persons_set_groups_kill_on_sight(struct Thing *p_attacker, struct Thing *p_victim)
+{
+    ubyte attack_grp, victim_grp;
+
+    if ((p_attacker == NULL) || ((p_attacker->Flag & TngF_PlayerAgent) == 0)) {
+        return;
+    }
+
+    if ((p_victim == NULL) || (p_victim != p_attacker->PTarget)) {
+        return;
+    }
+
+    attack_grp = p_attacker->U.UPerson.EffectiveGroup;
+    victim_grp = p_victim->U.UPerson.EffectiveGroup & 0x7F;
+
+    if (p_victim->SubType == SubTT_PERS_BRIEFCASE_M || p_victim->SubType == SubTT_PERS_WHITE_BRUN_F ||
+      p_victim->SubType == SubTT_PERS_WHIT_BLOND_F || p_victim->SubType == SubTT_PERS_LETH_JACKT_M) {
+        return;
+    }
+    thing_group_set_kill_on_sight(attack_grp, victim_grp, true);
+}
+
+int mods_affect_hit_points(struct Thing *p_thing, ushort type, int hp)
+{
+    switch (type)
+    {
+    case DMG_UZI:
+    case DMG_MINIGUN:
+    case DMG_LONGRANGE:
+        if (cybmod_skin_level(&p_thing->U.UPerson.UMod) == 1)
+            hp >>= 1;
+        break;
+    case DMG_ELLASER:
+    case DMG_BEAM:
+    case DMG_LASER:
+    case DMG_ELSTRAND:
+        if (cybmod_skin_level(&p_thing->U.UPerson.UMod) == 3)
+            hp >>= 1;
+        break;
+    case DMG_UNKN5:
+    case DMG_RAP:
+        break;
+    case DMG_UNKN9:
+        if (cybmod_skin_level(&p_thing->U.UPerson.UMod) == 1)
+            hp = 3 * (hp >> 2);
+        break;
+    default:
+        break;
+    }
+    return hp;
+}
+
+int dead_person_hit_by_bullet(struct Thing *p_thing, short hp,
+  int vx, int vy, int vz, struct Thing *p_attacker, ushort type)
+{
+    if (p_thing->U.UPerson.AnimMode == ANIM_PERS_DEAD_BODY)
+    {
+        if (type == DMG_RAP)
+        {
+            p_thing->Timer1 = 16;
+            p_thing->StartTimer1 = 16;
+            p_thing->SubState = 26;
+            p_thing->U.UPerson.FrameId.Version[4] = 0;
+            p_thing->U.UPerson.FrameId.Version[3] = 0;
+            p_thing->U.UPerson.AnimMode = ANIM_PERS_Unkn10;
+            reset_person_frame(p_thing);
+            return 1;
+        }
+        if (type == DMG_UZI || type == DMG_MINIGUN || type == DMG_LONGRANGE || type == DMG_UNKN9)
+        {
+            p_thing->Frame = frame[p_thing->Frame].Next;
+            return 1;
+        }
+        p_thing->Timer1 = 16;
+        p_thing->StartTimer1 = 16;
+        p_thing->SubState = 26;
+        p_thing->U.UPerson.FrameId.Version[4] = 0;
+        p_thing->U.UPerson.FrameId.Version[3] = 0;
+        p_thing->U.UPerson.AnimMode = ANIM_PERS_Unkn12;
+        set_person_frame_noangle(p_thing, 1067);
+        play_dist_sample(p_thing, 57, FULL_VOL, EQUL_PAN, NORM_PTCH, 0, 3);
+    }
+    return 1;
+}
+
+int person_hit_by_bullet(struct Thing *p_thing, short hp,
+  int vx, int vy, int vz, struct Thing *p_attacker, ushort type)
+{
+#if 0
     int ret;
     asm volatile (
       "push %7\n"
       "push %6\n"
       "push %5\n"
       "call ASM_person_hit_by_bullet\n"
-        : "=r" (ret) : "a" (p_person), "d" (hp), "b" (vx), "c" (vy), "g" (vz), "g" (p_attacker), "g" (type));
+        : "=r" (ret) : "a" (p_thing), "d" (hp), "b" (vx), "c" (vy), "g" (vz), "g" (p_attacker), "g" (type));
     return ret;
+#endif
+    short hp1;
+    int energy_decr;
+
+    hp1 = hp;
+
+    if ((p_thing->Flag & TngF_Unkn40000000) != 0)
+        return 1;
+
+    switch (p_thing->Type)
+    {
+    case TT_PERSON:
+        if (p_thing->State == PerSt_PERSON_BURNING)
+            return 1;
+        if ((p_thing->Flag & TngF_InVehicle) != 0)
+        {
+            p_thing = &things[p_thing->U.UPerson.Vehicle];
+            if (p_thing->Type != TT_VEHICLE)
+                return 0;
+        }
+        if (p_thing->State == PerSt_DEAD)
+        {
+            return dead_person_hit_by_bullet(p_thing, hp, vx, vy, vz, p_attacker, type);
+        }
+        if ((p_thing->Flag & TngF_Destroyed) != 0)
+            return 1;
+        if ((p_thing->Flag & TngF_Unkn40000000) != 0)
+            return 1;
+        break;
+    default:
+        break;
+    }
+
+    switch (p_thing->Type)
+    {
+    case SmTT_STATIC:
+        return static_hit_by_bullet((struct SimpleThing *)p_thing,
+          hp, vx, vy, vz, p_attacker, type);
+    case TT_VEHICLE:
+        return vehicle_hit_by_bullet(p_thing, hp, vx, vy, vz, p_attacker, type);
+    case TT_PERSON:
+          if (persons_have_truce(p_attacker, p_thing)) {
+              return 1;
+          }
+          persons_set_groups_kill_on_sight(p_attacker, p_thing);
+          hp1 = mods_affect_hit_points(p_thing, type, hp);
+
+          if ((p_attacker != NULL) && (type != DMG_ELSTRAND) && ((p_thing->Flag & TngF_Unkn1000) == 0)
+            && ((p_thing->Flag & TngF_Destroyed) == 0) && ((p_attacker->Flag2 & TgF2_ExistsOffMap) == 0)
+            && ((p_thing->Flag2 & TgF2_KnockedOut) == 0))
+          {
+              set_interrupt_target(p_thing, p_attacker);
+          }
+          if ((p_thing->Flag & TngF_Destroyed) != 0) {
+              return 1;
+          }
+          if ((p_attacker != NULL) && (type != DMG_ELSTRAND)
+            && !thing_group_have_truce(p_attacker->U.UPerson.EffectiveGroup, p_thing->U.UPerson.EffectiveGroup & 0x7F)
+            && (((p_attacker->Flag & TngF_Unkn1000) != 0) || ((p_thing == p_attacker->PTarget) && (p_attacker->Flag2 & TgF2_ExistsOffMap) == 0)))
+          {
+              ubyte attack_grp, victim_grp;
+              victim_grp = p_thing->U.UPerson.EffectiveGroup;
+              attack_grp = p_attacker->U.UPerson.EffectiveGroup;
+              if ( victim_grp <= 0x63u && attack_grp <= 0x63u && victim_grp != attack_grp )
+              {
+                if ((p_thing->Flag & TngF_Persuaded) == 0)
+                    thing_group_set_kill_on_sight(victim_grp, attack_grp, true);
+                if (((p_thing->Flag & TngF_Persuaded) == 0) && war_flags[victim_grp].Guardians[0])
+                    find_and_alert_guardian(p_thing, p_attacker);
+              }
+          }
+          energy_decr = 0;
+          if ((p_thing->Flag & TngF_Unkn00200000) != 0)
+          {
+              p_thing->U.UPerson.ShieldEnergy -= hp1;
+              p_thing->U.UPerson.ShieldGlowTimer = 4;
+              if (p_thing->U.UPerson.ShieldEnergy >= 0)
+              {
+                  if (p_thing->U.UPerson.ShieldEnergy > PERSON_MAX_SHIELD)
+                      p_thing->U.UPerson.ShieldEnergy = PERSON_MAX_SHIELD;
+                  return 0;
+              }
+              p_thing->Health += p_thing->U.UPerson.ShieldEnergy;
+              energy_decr = -p_thing->U.UPerson.ShieldEnergy;
+          }
+          else
+          {
+              if (p_thing->U.UPerson.RecoilTimer <= 1)
+              {
+                  ushort smpl_no;
+
+                  switch (person_sex(p_thing))
+                  {
+                  case PERSON_FEMALE:
+                      smpl_no = sfx_woman_shot[(gameturn + p_thing->ThingOffset) & 1];
+                      break;
+                  case PERSON_MALE:
+                  default:
+                      smpl_no = sfx_man_shot[(gameturn + p_thing->ThingOffset) & 7];
+                      break;
+                  }
+                  play_dist_sample(p_thing, smpl_no, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2);
+              }
+              p_thing->Health -= hp1;
+              p_thing->U.UPerson.ShieldEnergy -= hp1;
+          }
+
+        if (p_thing->Health <= 0)
+        {
+            int prev_health;
+            prev_health = p_thing->Health + hp1 + energy_decr;
+            person_start_dying(p_thing, hp1 + energy_decr, type);
+            person_update_kill_stats(p_attacker, p_thing);
+            return prev_health;
+        }
+
+        if ((p_thing->Flag2 & TgF2_KnockedOut) == 0)
+        {
+            init_recoil(p_thing, vx, vy, vz, type);
+            return 0;
+        }
+        break;
+    case TT_BUILDING:
+        return building_hit_by_bullet(p_thing, hp, vx, vy, vz, p_attacker, type);
+    case TT_MINE:
+        return mine_hit_by_bullet(p_thing, hp, vx, vy, vz, p_attacker, type);
+        break;
+    default:
+        break;
+    }
+    return 0;
 }
 
 TbBool person_use_medikit(struct Thing *p_person, PlayerIdx plyr)
 {
     if (plyr == local_player_no)
-        play_sample_using_heap(0, 2, 127, 64, 100, 0, 3u);
+        play_sample_using_heap(0, 2, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3u);
     p_person->Health = p_person->U.UPerson.MaxHealth;
     if (person_carries_weapon(p_person, WEP_MEDI1)) {
         person_weapons_remove_one(p_person, WEP_MEDI1);
@@ -3055,22 +3530,43 @@ void person_enter_vehicle(struct Thing *p_person, struct Thing *p_vehicle)
 
 void person_go_sleep(struct Thing *p_person)
 {
-#if 1
+#if 0
     asm volatile ("call ASM_person_go_sleep\n"
         : : "a" (p_person));
     return;
 #endif
-}
+    if (p_person->State == PerSt_PERSON_BURNING) {
+        return;
+    }
+    if (((p_person->Flag & TngF_Destroyed) != 0) ||
+      (p_person->State == PerSt_DIEING)) {
+        return;
+    }
+    if ((p_person->Flag2 & TgF2_KnockedOut) != 0)
+    {
+        p_person->U.UPerson.BumpCount = 150;
+    }
+    else
+    {
+        ubyte PrevAnimMode;
+        p_person->Flag |= 0x0001;
 
-ubyte get_my_texture_bits(short tex)
-{
-#if 1
-    ubyte ret;
-    asm volatile (
-      "call ASM_get_my_texture_bits\n"
-        : "=r" (ret) : "a" (tex));
-    return ret;
-#endif
+        PrevAnimMode = p_person->U.UPerson.AnimMode;
+        if (PrevAnimMode != ANIM_PERS_PUSH_BACK)
+            p_person->U.UPerson.OldAnimMode = PrevAnimMode;
+        p_person->U.UPerson.AnimMode = ANIM_PERS_LAY_DOWN;
+         // make sure to draw without blood
+        p_person->U.UPerson.FrameId.Version[4] = 0;
+        p_person->U.UPerson.FrameId.Version[3] = 0;
+        reset_person_frame(p_person);
+
+        p_person->U.UPerson.RecoilTimer = 0;
+        p_person->Timer1 = 48;
+        p_person->StartTimer1 = 48;
+        p_person->U.UPerson.BumpCount = 150;
+        p_person->Flag &= ~(TngF_Unkn0800|TngF_WepRecoil);
+        p_person->Flag2 |= TgF2_KnockedOut;
+    }
 }
 
 ubyte vector_in_way(struct Thing *p_thing, int dx, int dz)
@@ -3092,15 +3588,6 @@ ushort check_col_collision(int x, int y, int z)
       "call ASM_check_col_collision\n"
         : "=r" (ret) : "a" (x), "d" (y), "b" (z));
     return ret;
-#endif
-}
-
-void set_person_dead(struct Thing *p_person, ushort anim_mode)
-{
-#if 1
-    asm volatile ("call ASM_set_person_dead\n"
-        : : "a" (p_person), "d" (anim_mode));
-    return;
 #endif
 }
 
@@ -3149,24 +3636,27 @@ TbBool check_ground_unkn01(struct Thing *p_person, short sh_x, short sh_z)
 {
     struct MyMapElement *p_mapel;
     ushort tflags;
+    MapCoord cor_x, cor_z;
     short tile_x, tile_z;
     ushort txtr;
     TbBool tile_blocking;
 
-    tile_z = (p_person->Z + (sh_z << 8)) >> 16;
-    tile_x = (p_person->X + (sh_x << 8)) >> 16;
+    cor_x = PRCCOORD_TO_MAPCOORD(p_person->X) + sh_x;
+    cor_z = PRCCOORD_TO_MAPCOORD(p_person->Z) + sh_z;
+    tile_x = MAPCOORD_TO_TILE(cor_x);
+    tile_z = MAPCOORD_TO_TILE(cor_z);
 
     tile_blocking = compute_map_tile_is_blocking_walk(tile_x, tile_z);
 
-    p_mapel = &game_my_big_map[MAP_TILE_WIDTH * tile_z + tile_x];
-
-    txtr = p_mapel->Texture & 0x3FFF;
+    txtr = floor_texture_at_point(cor_x, cor_z);
     tflags = ((get_my_texture_bits(txtr) & 0xC0) >> 6) & 0x02;
 
     if ((tile_x < 0) || (tile_x >= MAP_TILE_WIDTH) || (tile_z < 0) || (tile_z >= MAP_TILE_HEIGHT))
     {
       return true;
     }
+
+    p_mapel = &game_my_big_map[MAP_TILE_WIDTH * tile_z + tile_x];
 
     if (tile_blocking)
         tflags |= 0x04;
@@ -3342,13 +3832,13 @@ ubyte person_leave_vehicle(struct Thing *p_person, struct Thing *p_vehicle)
           // SP stats are updated inside set_person_dead(), but MP stats not? maybe add a wrapper to include both?
           if (in_network_game)
               stats_mp_add_person_kills_person(p_vehicle->OldTarget, p_person->ThingOffset);
-          set_person_dead(p_person, 10);
+          set_person_dead(p_person, ANIM_PERS_Unkn10);
           return 0;
         }
         p_person->Health -= 800;
         if (p_person->Health <= 0)
         {
-            set_person_dead(p_person, 10);
+            set_person_dead(p_person, ANIM_PERS_Unkn10);
             return 0;
         }
         if ((p_person->Flag & TngF_PlayerAgent) == 0)
@@ -3682,12 +4172,93 @@ void person_init_plant_mine(struct Thing *p_person, short x, short y, short z, i
         : : "a" (p_person), "d" (x), "b" (y), "c" (z), "g" (face));
 }
 
-int thing_select_specific_weapon(struct Thing *p_person, ushort weapon, uint flag)
+ubyte thing_select_specific_weapon(struct Thing *p_person, WeaponType wtype, ubyte flag)
 {
+#if 0
     int ret;
     asm volatile ("call ASM_thing_select_specific_weapon\n"
-        : "=r" (ret) : "a" (p_person), "d" (weapon), "b" (flag));
+        : "=r" (ret) : "a" (p_person), "d" (wtype), "b" (flag));
     return ret;
+#endif
+    ubyte animode;
+
+    if ((p_person->Flag & TngF_Destroyed) != 0)
+        return WepSel_SKIP;
+    if (wtype == WEP_AIRSTRIKE && current_map == 65) // map065 The Moon
+    {
+        play_dist_sample(p_person, 129, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
+        p_person->U.UPerson.CurrentWeapon = WEP_NULL;
+        return WepSel_SKIP;
+    }
+
+    if ((p_person->Flag2 & TgF2_Unkn0001) != 0)
+        finalise_razor_wire(p_person);
+    stop_looped_weapon_sample(p_person, p_person->U.UPerson.CurrentWeapon);
+
+    if (flag == WepSel_SKIP)
+        return WepSel_SKIP;
+    if (!person_carries_weapon(p_person, wtype))
+        return WepSel_SKIP;
+
+#if 0 // Disabled by community consensus - medikit should not be auto-consumed when selected
+    if (wtype == WEP_MEDI1)
+    {
+        if ((p_person->Flag & TngF_PlayerAgent) != 0) {
+            PlayerIdx plyr;
+
+            plyr = p_person->U.UPerson.ComCur >> 2;
+            if (plyr == local_player_no)
+                play_sample_using_heap(0, 2, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
+        }
+
+        p_person->Health = p_person->U.UPerson.MaxHealth;
+        person_weapons_remove_one(p_person, wtype);
+        return WepSel_HIDE;
+    }
+#endif
+
+    if (((p_person->U.UPerson.CurrentWeapon == wtype) || (flag == WepSel_HIDE)) && (flag != WepSel_SELECT))
+    {
+        if ((p_person->Flag & TngF_PlayerAgent) != 0 &&
+          (p_person->Flag2 & TgF2_Unkn0800) == 0 &&
+          p_person->U.UPerson.CurrentWeapon != WEP_NULL) {
+            player_agent_update_prev_weapon(p_person);
+        }
+        p_person->U.UPerson.CurrentWeapon = WEP_NULL;
+
+        animode = ANIM_PERS_IDLE;
+    }
+    else
+    {
+        p_person->U.UPerson.CurrentWeapon = wtype;
+
+        animode = gun_out_anim(p_person, 0);
+    }
+    switch_person_anim_mode(p_person, animode);
+    p_person->Speed = calc_person_speed(p_person);
+
+    return (p_person->U.UPerson.CurrentWeapon != WEP_NULL) ? WepSel_SELECT : WepSel_HIDE;
+}
+
+ubyte thing_select_best_weapon_for_range(struct Thing *p_person, int range)
+{
+    choose_best_weapon_for_range(p_person, range);
+    p_person->U.UPerson.AnimMode = gun_out_anim(p_person, 0);
+    reset_person_frame(p_person);
+    p_person->Speed = calc_person_speed(p_person);
+
+    return (p_person->U.UPerson.CurrentWeapon != WEP_NULL) ? WepSel_SELECT : WepSel_HIDE;
+}
+
+ubyte thing_deselect_weapon(struct Thing *p_person)
+{
+    player_agent_update_prev_weapon(p_person);
+    p_person->U.UPerson.CurrentWeapon = WEP_NULL;
+    p_person->U.UPerson.AnimMode = gun_out_anim(p_person, 0);
+    reset_person_frame(p_person);
+    p_person->Speed = calc_person_speed(p_person);
+
+    return WepSel_HIDE;
 }
 
 void person_go_enter_vehicle_fast(struct Thing *p_person, struct Thing *p_vehicle, ushort plyr)
@@ -3704,11 +4275,87 @@ void person_go_enter_vehicle(struct Thing *p_person, struct Thing *p_vehicle)
         : : "a" (p_person), "d" (p_vehicle));
 }
 
-void person_shield_toggle(struct Thing *p_person, PlayerIdx plyr)
+TbBool person_has_supershield_active(ThingIdx person)
 {
-    asm volatile (
-      "call ASM_person_shield_toggle\n"
-        : : "a" (p_person), "d" (plyr));
+    struct Thing *p_person;
+
+    if (person <= 0)
+        return false;
+
+    p_person = &things[person];
+
+    if (p_person->Type != TT_PERSON)
+        return false;
+
+    return ((p_person->Flag & TngF_PersSupShld) != 0);
+}
+
+TbBool person_can_toggle_supershield(ThingIdx person)
+{
+    if (person_is_executing_commands(person))
+        return false;
+    // Restrict only enabling supershield; for disabling, it can be done almost always
+    if (!person_has_supershield_active(person))
+    {
+        short plyr; // stores PlayerIdx or -1
+
+        if (thing_is_destroyed(person))
+            return false;
+        plyr = person_get_dcontrol_player(person);
+        if (plyr >= 0)
+        {
+            PlayerInfo *p_player;
+
+            p_player = &players[plyr];
+            //TODO not sure why cannot enable supershield in DoubleMode; verify, maybe remove.
+            if (p_player->DoubleMode != 0)
+                return false;
+        }
+    }
+    return true;
+}
+
+void person_supershield_toggle(struct Thing *p_person)
+{
+    if ((p_person->Flag & TngF_PersSupShld) != 0)
+    {
+        p_person->Flag &= ~(TngF_Unkn00200000|TngF_PersSupShld);
+    }
+    else
+    {
+        short plagent;
+        p_person->Flag |= (TngF_Unkn00200000|TngF_PersSupShld);
+        plagent = person_slot_in_player_dcontrol(p_person->ThingOffset, local_player_no);
+        if (plagent >= 0)
+            play_sample_using_heap(0, 96, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
+    }
+}
+
+TbBool person_can_sustain_thermal(ThingIdx person)
+{
+    struct Thing *p_person;
+
+    p_person = &things[person];
+
+    if (p_person->U.UPerson.Energy <= 100)
+        return false;
+
+    return true;
+}
+
+TbBool person_update_thermal(ThingIdx person)
+{
+    struct Thing *p_person;
+
+    p_person = &things[person];
+
+    p_person->U.UPerson.Energy -= 3;
+
+    if (p_person->U.UPerson.Energy <= 0) {
+        return false;
+    }
+
+    return true;
 }
 
 void make_peeps_scatter(struct Thing *p_person, int x, int z)
@@ -3843,14 +4490,48 @@ void person_go_plant_mine(struct Thing *p_person)
     person_goto_point(p_person);
     if (p_person->State == PerSt_NONE)
     {
-        person_init_drop(p_person, p_person->U.UPerson.CurrentWeapon);
+        WeaponType wtype;
+
+        wtype = p_person->U.UPerson.CurrentWeapon;
+        if (weapon_is_for_planting(wtype)) {
+            person_init_drop(p_person, wtype);
+        } else {
+            LOGWARN("Weapon %s is not desgined for planting",
+              weapon_codename(wtype));
+        }
     }
 }
 
 void process_knocked_out(struct Thing *p_person)
 {
+#if 0
     asm volatile ("call ASM_process_knocked_out\n"
         : : "a" (p_person));
+#endif
+    ushort nxframe;
+
+    p_person->Timer1 -= fifties_per_gameturn;
+    if (p_person->Timer1 < 0)
+    {
+        nxframe = frame[p_person->Frame].Next;
+        if ((frame[nxframe].Flags & 0x01) != 0) {
+            p_person->Timer1 = 0;
+        } else {
+            p_person->Timer1 = p_person->StartTimer1;
+            p_person->Frame = nxframe;
+        }
+    }
+
+    p_person->U.UPerson.BumpCount--;
+    if (p_person->U.UPerson.BumpCount == 0)
+    {
+        p_person->U.UPerson.AnimMode = p_person->U.UPerson.OldAnimMode;
+        reset_person_frame(p_person);
+
+        p_person->Flag2 &= ~TgF2_KnockedOut;
+        p_person->Timer1 = 48;
+        p_person->Flag &= ~TngF_Unkn01000000;
+    }
 }
 
 void process_tasered_person(struct Thing *p_person)
@@ -3928,15 +4609,15 @@ void person_wait(struct Thing *p_person)
         p_person->Flag2 &= ~TgF2_Unkn00080000;
         p_person->Speed = calc_person_speed(p_person);
     }
-    if ((p_person->U.UPerson.AnimMode != 21) && (p_person->U.UPerson.CurrentWeapon == 0))
+    if ((p_person->U.UPerson.AnimMode != ANIM_PERS_Unkn21) && (p_person->U.UPerson.CurrentWeapon == WEP_NULL))
     {
-        p_person->U.UPerson.AnimMode = 21;
+        p_person->U.UPerson.AnimMode = ANIM_PERS_Unkn21;
         reset_person_frame(p_person);
     }
     p_person->Flag &= ~TngF_Unkn0001;
     if (((p_person->Flag & TngF_WepCharging) != 0) || (p_person->U.UPerson.WeaponTurn != 0))
     {
-        if (p_person->U.UPerson.AnimMode == 14 || p_person->U.UPerson.AnimMode == 15)
+        if (p_person->U.UPerson.AnimMode == ANIM_PERS_Unkn14 || p_person->U.UPerson.AnimMode == ANIM_PERS_WEPHEAVY_Unkn15)
         {
             p_person->Timer1 -= fifties_per_gameturn;
             if (p_person->Timer1 < 0) {
@@ -4017,12 +4698,6 @@ void person_get_item(struct Thing *p_person)
 void person_run_away(struct Thing *p_person)
 {
     asm volatile ("call ASM_person_run_away\n"
-        : : "a" (p_person));
-}
-
-void person_burning(struct Thing *p_person)
-{
-    asm volatile ("call ASM_person_burning\n"
         : : "a" (p_person));
 }
 
@@ -4223,7 +4898,7 @@ void person_destroy_building(struct Thing *p_person)
         }
         else
         {
-            p_person->Flag &= ~(TngF_Unkn00200000|TngF_Unkn0800|TngF_Unkn0100);
+            p_person->Flag &= ~(TngF_Unkn00200000|TngF_Unkn0800|TngF_PersSupShld);
             p_person->Flag |= TngF_Unkn0800;
             if ((p_person->Flag & TngF_InVehicle) != 0) {
                 struct Thing *p_vehicle;
@@ -4479,10 +5154,10 @@ short person_move(struct Thing *p_person)
         process_random_speech(p_person, 0);
     }
     if ((p_person->SubType == SubTT_PERS_MECH_SPIDER) && !IsSamplePlaying(p_person->ThingOffset, 79, 0)) {
-        play_dist_sample(p_person, 0x4Fu, 0x7Fu, 0x40u, 100, -1, 3);
+        play_dist_sample(p_person, 79, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 3);
     }
-    if (p_person->U.UPerson.AnimMode == 21) {
-        p_person->U.UPerson.AnimMode = 0;
+    if (p_person->U.UPerson.AnimMode == ANIM_PERS_Unkn21) {
+        p_person->U.UPerson.AnimMode = ANIM_PERS_IDLE;
         reset_person_frame(p_person);
     }
     if ((p_person->Flag & (TngF_InVehicle|TngF_Unkn4000)) != 0) {
@@ -4513,7 +5188,7 @@ short person_move(struct Thing *p_person)
     }
     speed_x = (p_person->Speed * p_person->VX) >> 4;
     speed_z = (p_person->Speed * p_person->VZ) >> 4;
-    p_person->Flag2 &= ~TngF_Unkn0100;
+    p_person->Flag2 &= ~TgF2_Unkn0100;
     y = p_person->Y;
 
     retry = 2;
@@ -4564,10 +5239,10 @@ short person_move(struct Thing *p_person)
             p_cmd = &game_commands[p_person->U.UPerson.Within];
             if (!check_person_within(p_cmd, PRCCOORD_TO_MAPCOORD(speed_x + x),
               PRCCOORD_TO_MAPCOORD(speed_z + z))) {
-                p_person->Flag2 |= TngF_Unkn0080;
+                p_person->Flag2 |= TgF2_Unkn0080;
                 return 1;
             }
-            p_person->Flag2 &= ~TngF_Unkn0080;
+            p_person->Flag2 &= ~TgF2_Unkn0080;
         }
 
         tile_x = MAPCOORD_TO_TILE(PRCCOORD_TO_MAPCOORD(p_person->X));
@@ -4783,6 +5458,82 @@ void process_avoid_group(struct Thing *p_person)
         rnd = LbRandomAnyShort();
         p_person->U.UPerson.Timer2 = p_person->U.UPerson.StartTimer2 + ((rnd & 0xF) >> 1);
         set_angle_to_avoid_group(p_person);
+    }
+}
+
+void person_burning(struct Thing *p_person)
+{
+#if 0
+    asm volatile ("call ASM_person_burning\n"
+        : : "a" (p_person));
+    return;
+#endif
+    p_person->U.UPerson.Brightness = 32;
+    apply_super_quick_light(p_person->X >> 8, p_person->Z >> 8, 16 + (LbRandomAnyShort() & 0xF));
+
+    if (((gameturn + p_person->ThingOffset) & 0xF) == 0)
+    {
+        ushort smpl_no;
+
+        switch (person_sex(p_person))
+        {
+        case PERSON_FEMALE:
+            smpl_no = 2;
+            break;
+        case PERSON_MALE:
+        default:
+            smpl_no = 1;
+            break;
+        }
+        play_dist_speech(p_person, smpl_no, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2);
+    }
+
+    if (p_person->U.UPerson.RecoilTimer > 95)
+        p_person->U.UPerson.RecoilTimer = 94;
+    if ((p_person->Flag & TngF_PlayerAgent) != 0)
+        p_person->U.UPerson.RecoilTimer--;
+    else
+        p_person->U.UPerson.RecoilTimer -= byte_154F6C[LbRandomAnyShort() & 3];
+
+    if (p_person->U.UPerson.RecoilTimer != 0)
+    {
+        process_weapon_wind_down(p_person);
+
+        p_person->VX = angle_direction[p_person->U.UPerson.Angle].DiX;
+        p_person->VZ = angle_direction[p_person->U.UPerson.Angle].DiY;
+
+        if (person_move(p_person))
+            p_person->U.UPerson.Timer2 = -1;
+
+        if ((p_person->Flag & TngF_Destroyed) == 0)
+        {
+            p_person->Timer1 -= fifties_per_gameturn;
+            if (p_person->Timer1 < 0)
+            {
+                p_person->Timer1 = p_person->StartTimer1;
+                p_person->Frame = frame[p_person->Frame].Next;
+            }
+
+            p_person->U.UPerson.Timer2--;
+            if (p_person->U.UPerson.Timer2 < 0)
+            {
+                ushort angle;
+
+                p_person->U.UPerson.Timer2 = (LbRandomAnyShort() & 7) + p_person->U.UPerson.StartTimer2;
+                angle = p_person->U.UPerson.Angle;
+                if ((p_person->U.UPerson.Timer2 & 1) != 0)
+                    angle++;
+                else
+                    angle--;
+                angle = (angle + 8) & 7;
+                change_player_angle(p_person,angle);
+            }
+        }
+    }
+    else
+    {
+        stop_sample_using_heap(p_person->ThingOffset, 29);
+        set_person_dead(p_person, ANIM_PERS_DEAD_ASH);
     }
 }
 

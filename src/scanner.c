@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file scanner.c
  *     Ingame scanner (minimap/radar) support.
@@ -30,6 +30,7 @@
 #include "thing.h"
 #include "thing_search.h"
 #include "game.h"
+#include "game_options.h"
 #include "game_speed.h"
 #include "lvobjctv.h"
 #include "scandraw.h"

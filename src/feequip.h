@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file feequip.h
  *     Header file for feequip.c.
@@ -73,10 +73,21 @@ void init_weapon_anim(ubyte weapon);
 void display_box_content_state_switch(void);
 
 void init_equip_screen_boxes(void);
+
+/** Reset players part of equip screen state.
+ *
+ * Resets all parts of equip screen which are set by the player
+ * or related to players game progress.
+ */
+void reset_equip_screen_player_state(void);
+
 void reset_equip_screen_boxes_flags(void);
 void set_flag01_equip_screen_boxes(void);
 
 void init_equip_screen_shapes(void);
+
+TbBool dragged_weapon_can_drop_on_research(void);
+void dragged_weapon_drop_on_research(void);
 
 /******************************************************************************/
 #ifdef __cplusplus

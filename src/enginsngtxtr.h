@@ -1,5 +1,5 @@
 /******************************************************************************/
-// Syndicate Wars Port, source port of the classic strategy game from Bullfrog.
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
 /******************************************************************************/
 /** @file enginsngtxtr.h
  *     Header file for enginsngtxtr.c.
@@ -60,7 +60,10 @@ struct AnimTmap { // sizeof=54
     ushort TMap[10];
     ubyte Delay[10];
     ushort Flags;
-    ubyte field_22[19];
+    ubyte field_22;
+    ubyte field_23;
+    ushort field_24;
+    ubyte field_26[15];
     ubyte field_35;
 };
 
@@ -80,14 +83,16 @@ extern ushort tnext_floor_texture;
 /** Maps content of old SingleFloorTexture struct to the current one.
  */
 void refresh_old_floor_texture_format(struct SingleFloorTexture *p_fltextr,
-  struct SingleFloorTexture *p_oldfltextr, ulong fmtver);
+  struct SingleFloorTexture *p_oldfltextr, u32 fmtver);
+
+ubyte get_my_texture_bits(short tex);
 
 void animate_textures(void);
 
 /** Maps content of old SingleTexture struct to the current one.
  */
 void refresh_old_face_texture_format(struct SingleTexture *p_fctextr,
-  struct SingleTexture *p_oldfctextr, ulong fmtver);
+  struct SingleTexture *p_oldfctextr, u32 fmtver);
 /******************************************************************************/
 #ifdef __cplusplus
 }

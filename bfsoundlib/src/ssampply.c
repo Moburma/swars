@@ -175,7 +175,9 @@ struct SampleInfo *PlaySampleFromAddress(long source_id, short smp_id,
     if (StereoSound)
         AIL_set_sample_pan(p_smpinf->SampleHandle, pan);
     AIL_set_sample_loop_count(p_smpinf->SampleHandle, loop_count + 1);
+
     AIL_start_sample(p_smpinf->SampleHandle);
+
     p_smpinf->SourceID = source_id;
     p_smpinf->SampleNumber = smp_id;
     p_smpinf->SampleVolume = volume;
@@ -300,6 +302,32 @@ void StopAllSamples(void)
         p_smpinf->FadeStopFlag = 0;
     }
     StopSampleQueueList();
+}
+
+void PauseAllSamples(void)
+{
+    struct SampleInfo *p_smpinf;
+
+    if (!SoundInstalled || !SoundAble || !SoundActive)
+        return;
+
+    for (p_smpinf = sample_id; p_smpinf <= end_sample_id; p_smpinf++)
+    {
+        AIL_stop_sample(p_smpinf->SampleHandle);
+    }
+}
+
+void ResumeAllSamples(void)
+{
+    struct SampleInfo *p_smpinf;
+
+    if (!SoundInstalled || !SoundAble || !SoundActive)
+        return;
+
+    for (p_smpinf = sample_id; p_smpinf <= end_sample_id; p_smpinf++)
+    {
+        AIL_resume_sample(p_smpinf->SampleHandle);
+    }
 }
 
 /******************************************************************************/
