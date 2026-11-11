@@ -25,6 +25,8 @@
 
 #include "cybmod.h"
 #include "display.h"
+#include "fecryo.h"
+#include "feequip.h"
 #include "femain.h"
 #include "game_data.h"
 #include "game_options.h"
@@ -34,6 +36,7 @@
 #include "guigraph.h"
 #include "guitext.h"
 #include "keyboard.h"
+#include "mydraw.h"
 #include "purpldrw.h"
 #include "player.h"
 #include "weapon.h"
@@ -41,24 +44,26 @@
 #include "swlog.h"
 #include "util.h"
 /******************************************************************************/
-extern struct ScreenTextBox research_unkn21_box;
-extern struct ScreenButton research_submit_button;
-extern struct ScreenButton unkn12_WEAPONS_MODS_button;
-extern struct ScreenTextBox research_progress_button;
-extern struct ScreenBox research_graph_box;
-extern struct ScreenButton research_list_buttons[2];
+struct ScreenTextBox research_unkn21_box = {0};
+struct ScreenButton research_submit_button = {0};
+struct ScreenButton unkn12_WEAPONS_MODS_button = {0};
+struct ScreenTextBox research_progress_button = {0};
+struct ScreenBox research_graph_box = {0};
+struct ScreenButton research_list_buttons[2] = {0};
 
-extern ubyte research_completed;// = 0;
-extern ubyte research_on_weapons;// = true;
-extern ubyte research_unkn_var_01;
-extern sbyte research_selected_wep; // = -1;
-extern sbyte research_selected_mod; // = -1;
-extern ubyte byte_1551E4[5];
+ubyte research_completed = 0;
+ubyte research_on_weapons = true;
+ubyte research_selected_wep = 0;
+ubyte research_selected_mod = 0;
 
-ubyte ac_do_research_submit(ubyte click);
-ubyte ac_do_research_suspend(ubyte click);
-ubyte ac_do_unkn12_WEAPONS_MODS(ubyte click);
-ubyte ac_show_unkn21_box(struct ScreenTextBox *box);
+u32 new_weapons_researched;
+u32 new_mods_researched;
+ubyte scientists_lost;
+
+/******************************************************************************/
+
+ubyte do_research_submit(ubyte click);
+ubyte do_research_suspend(ubyte click);
 
 TbBool research_weapon_daily_progress(void)
 {
@@ -90,10 +95,6 @@ TbBool research_cybmod_daily_progress(void)
  */
 void research_allow_weapons_in_cryo(void)
 {
-#if 0
-    asm volatile ("call ASM_research_allow_weapons_in_cryo\n"
-        :  :  : "eax" );
-#endif
     short plagent;
     WeaponType wtype;
 
@@ -134,12 +135,12 @@ void switch_research_screen_boxes_weapons_mods(void)
         if (research.CurrentWeapon == -1)
         {
             text = gui_strings[417];
-            research_submit_button.CallBackFn = ac_do_research_submit;
+            research_submit_button.CallBackFn = do_research_submit;
         }
         else
         {
             text = gui_strings[418];
-            research_submit_button.CallBackFn = ac_do_research_suspend;
+            research_submit_button.CallBackFn = do_research_suspend;
         }
     }
     else
@@ -148,12 +149,12 @@ void switch_research_screen_boxes_weapons_mods(void)
         if (research.CurrentMod == -1)
         {
             text = gui_strings[417];
-            research_submit_button.CallBackFn = ac_do_research_submit;
+            research_submit_button.CallBackFn = do_research_submit;
         }
         else
         {
             text = gui_strings[418];
-            research_submit_button.CallBackFn = ac_do_research_suspend;
+            research_submit_button.CallBackFn = do_research_suspend;
         }
     }
     research_submit_button.Text = text;
@@ -162,18 +163,12 @@ void switch_research_screen_boxes_weapons_mods(void)
 
 ubyte do_research_submit(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_research_submit\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     if (research_on_weapons)
     {
-        if (research_selected_wep != -1)
+        if (research_selected_wep != 0)
         {
-            research.CurrentWeapon = research_selected_wep;
-            research_selected_wep = -1;
+            research.CurrentWeapon = research_selected_wep - 1;
+            research_selected_wep = 0;
             research_curr_wep_date = global_date;
             research_curr_wep_date.Minute = global_date.Minute - 1;
 
@@ -182,10 +177,10 @@ ubyte do_research_submit(ubyte click)
         }
     }
     {
-        if (research_selected_mod != -1)
+        if (research_selected_mod != 0)
         {
-            research.CurrentMod = research_selected_mod;
-            research_selected_mod = -1;
+            research.CurrentMod = research_selected_mod - 1;
+            research_selected_mod = 0;
             research_curr_mod_date = global_date;
             research_curr_mod_date.Minute = global_date.Minute - 1;
 
@@ -198,12 +193,6 @@ ubyte do_research_submit(ubyte click)
 
 ubyte do_research_suspend(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_research_suspend\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     if (research_on_weapons)
     {
         research.CurrentWeapon = -1;
@@ -212,34 +201,22 @@ ubyte do_research_suspend(ubyte click)
     {
         research.CurrentMod = -1;
     }
-    research_submit_button.CallBackFn = ac_do_research_submit;
+    research_submit_button.CallBackFn = do_research_submit;
     research_submit_button.Text = gui_strings[417];
     return 0;
 }
 
 ubyte do_unkn12_WEAPONS_MODS(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_unkn12_WEAPONS_MODS\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     research_on_weapons = (research_on_weapons == 0);
-    research_selected_mod = -1;
-    research_selected_wep = -1;
+    research_selected_mod = 0;
+    research_selected_wep = 0;
     switch_research_screen_boxes_weapons_mods();
     return 1;
 }
 
 ubyte show_unkn21_box(struct ScreenTextBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_show_unkn21_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     char locstr[32];
     const char *text;
     short scr_x, scr_y;
@@ -285,7 +262,7 @@ ubyte show_unkn21_box(struct ScreenTextBox *p_box)
     }
 
     scr_y = 3;
-    tx_height = font_height('A');
+    tx_height = my_char_height('A');
     line = p_box->TextTopLine;
     ln_height = tx_height + 4;
     while (line < 32)
@@ -303,18 +280,18 @@ ubyte show_unkn21_box(struct ScreenTextBox *p_box)
                   if (lbDisplay.LeftButton)
                   {
                       lbDisplay.LeftButton = 0;
-                      research_selected_wep = line;
-                      if (research.CurrentWeapon == line) {
+                      research_selected_wep = line + 1;
+                      if (research.CurrentWeapon == research_selected_wep - 1) {
                           text = gui_strings[418];
-                          research_submit_button.CallBackFn = ac_do_research_suspend;
+                          research_submit_button.CallBackFn = do_research_suspend;
                       } else {
-                          research_submit_button.CallBackFn = ac_do_research_submit;
+                          research_submit_button.CallBackFn = do_research_submit;
                           text = gui_strings[417];
                       }
                       research_submit_button.Text = text;
                   }
               }
-              if (research_selected_wep == line)
+              if (research_selected_wep == line + 1)
               {
                   lbDisplay.DrawFlags |= Lb_TEXT_ONE_COLOR;
                   lbDisplay.DrawColour = 87;
@@ -324,10 +301,7 @@ ubyte show_unkn21_box(struct ScreenTextBox *p_box)
                   lbDisplay.DrawFlags = 0;
               }
               lbDisplay.DrawFlags |= 0x8000;
-              if (background_type == 1)
-                  text = gui_strings[30 + line];
-              else
-                  text = gui_strings[0 + line];
+              text = weapon_full_name(line + 1);
               draw_text_purple_list2(3, scr_y, text, 0);
               lbDisplay.DrawFlags = 0;
               scr_y += ln_height;
@@ -335,29 +309,30 @@ ubyte show_unkn21_box(struct ScreenTextBox *p_box)
         }
         else if (is_research_cymod_allowed(line + 1))
         {
-            short mtype, mlev;
+            ushort mtype;
 
+            mtype = line + 1;
             if (mouse_down_over_box_coords(text_window_x1, text_window_y1 + scr_y - 2,
               text_window_x2, text_window_y1 + tx_height + scr_y + 2))
             {
                 if (lbDisplay.LeftButton)
                 {
                     lbDisplay.LeftButton = 0;
-                    research_selected_mod = line;
-                    if (research.CurrentMod == line)
+                    research_selected_mod = mtype;
+                    if (research.CurrentMod + 1 == research_selected_mod)
                     {
                         text = gui_strings[418];
-                        research_submit_button.CallBackFn = ac_do_research_suspend;
+                        research_submit_button.CallBackFn = do_research_suspend;
                     }
                     else
                     {
                         text = gui_strings[417];
-                        research_submit_button.CallBackFn = ac_do_research_submit;
+                        research_submit_button.CallBackFn = do_research_submit;
                     }
                     research_submit_button.Text = text;
                 }
             }
-            if (research_selected_mod == line)
+            if (research_selected_mod == mtype)
             {
                 lbDisplay.DrawFlags |= 0x0040;
                 lbDisplay.DrawColour = 87;
@@ -367,24 +342,12 @@ ubyte show_unkn21_box(struct ScreenTextBox *p_box)
                 lbDisplay.DrawFlags = 0;
             }
 
-            if (line == 15) {
-                mtype = 4;
-                mlev = line - 11;
-            } else {
-                mtype = line / 3;
-                mlev = line % 3 + 1;
-            }
-            text = gui_strings[70 + byte_1551E4[mtype]];
+            text = fe_gtext_cybmod_group_type_name(mtype);
             draw_text_purple_list2(3, scr_y + 1, text, 0);
 
             lbDisplay.DrawFlags |= 0x0080;
-            if ((1 << line < 4096) || (1 << line > 0x8000)) {
-                sprintf(locstr, "%s %d", gui_strings[76], (int)mlev);
-            } else {
-                sprintf(locstr, "%s %d", gui_strings[75], (int)mlev);
-            }
-            text = loctext_to_gtext(locstr);
             lbDisplay.DrawFlags |= 0x8000;
+            text = fe_gtext_cybmod_level(mtype);
             draw_text_purple_list2(-1, scr_y + 1, text, 0);
             lbDisplay.DrawFlags = 0;
             scr_y += tx_height + p_box->LineSpacing;
@@ -399,10 +362,7 @@ ubyte show_unkn21_box(struct ScreenTextBox *p_box)
     {
         if (research.CurrentWeapon != -1)
         {
-            if (background_type == 1)
-                text = gui_strings[30 + research.CurrentWeapon];
-            else
-                text = gui_strings[0 + research.CurrentWeapon];
+            text = weapon_full_name(research.CurrentWeapon + 1);
             draw_text_purple_list2(4, 25, text, 0);
         }
     }
@@ -410,20 +370,10 @@ ubyte show_unkn21_box(struct ScreenTextBox *p_box)
     {
         if (research.CurrentMod != -1)
         {
-            short mtype, mlev;
+            ushort mtype;
 
-            if (research.CurrentMod == 15) {
-                mtype = 4;
-                mlev = research.CurrentMod - 11;
-            } else {
-                mtype = research.CurrentMod / 3;
-                mlev = research.CurrentMod % 3 + 1;
-            }
-            text = gui_strings[70 + byte_1551E4[mtype]];
-            if ( 1 << research.CurrentMod < 4096 || 1 << research.CurrentMod > 0x8000 )
-                sprintf(locstr, "%s %s %d", text, gui_strings[76], mlev);
-            else
-                sprintf(locstr, "%s %s %d", text, gui_strings[75], mlev);
+            mtype = research.CurrentMod + 1;
+            snprint_cybmod_type_long_name(locstr, sizeof(locstr), mtype);
             text = loctext_to_gtext(locstr);
             draw_text_purple_list2(4, 25, text, 0);
         }
@@ -510,20 +460,13 @@ ubyte show_unkn21_box(struct ScreenTextBox *p_box)
     {
         struct ScreenButton *p_btn;
         p_btn = &research_list_buttons[i];
-        //p_btn->DrawFn(p_btn); -- incompatible calling convention
-        asm volatile ("call *%1\n"
-            :  : "a" (p_btn), "g" (p_btn->DrawFn));
+        p_btn->DrawFn(p_btn);
     }
     return 0;
 }
 
 void draw_unkn20_subfunc_01(int x, int y, char *text, ubyte a4)
 {
-#if 0
-    asm volatile (
-      "call ASM_draw_unkn20_subfunc_01\n"
-        : : "a" (x), "d" (y), "b" (text), "c" (a4));
-#endif
     int i;
     short scr_x, scr_y;
 
@@ -545,8 +488,7 @@ void draw_unkn20_subfunc_01(int x, int y, char *text, ubyte a4)
             ch = text[i++];
             if (ch == '\0')
               return;
-            if (lbFontPtr != small_med_font || language_3str[0] != 'e')
-            {
+            if (my_font_prefer_upper_case(lbFontPtr)) {
                 ch = fontchrtoupper(ch);
             }
             w = LbSprFontCharWidth(lbFontPtr, ch);
@@ -581,16 +523,12 @@ void draw_unkn20_subfunc_01(int x, int y, char *text, ubyte a4)
             dy = 0;
         }
         draw_sprite_purple_list(scr_x - dx, scr_y - dy, LbFontCharSprite(lbFontPtr, ch));
-        scr_y += a4 + font_height(ch);
+        scr_y += a4 + my_char_height(ch);
     }
 }
 
 void show_research_screen(void)
 {
-#if 0
-    asm volatile ("call ASM_show_research_screen\n"
-        :  :  : "eax" );
-#endif
     int i;
     ubyte drawn;
 
@@ -627,19 +565,13 @@ void show_research_screen(void)
         drawn = draw_heading_box();
     }
     if (drawn) {
-        //drawn = research_progress_button.DrawFn(&research_progress_button); -- incompatible calling convention
-        asm volatile ("call *%2\n"
-            : "=r" (drawn) : "a" (&research_progress_button), "g" (research_progress_button.DrawFn));
+        drawn = research_progress_button.DrawFn(&research_progress_button);
     }
     if (drawn) {
-        //drawn = research_graph_box.DrawFn(&research_graph_box); -- incompatible calling convention
-        asm volatile ("call *%2\n"
-            : "=r" (drawn) : "a" (&research_graph_box), "g" (research_graph_box.DrawFn));
+        drawn = research_graph_box.DrawFn(&research_graph_box);
     }
     if (drawn) {
-        //drawn = research_unkn21_box.DrawFn(&research_unkn21_box); -- incompatible calling convention
-        asm volatile ("call *%2\n"
-            : "=r" (drawn) : "a" (&research_unkn21_box), "g" (research_unkn21_box.DrawFn));
+        drawn = research_unkn21_box.DrawFn(&research_unkn21_box);
     }
 
     if ((ingame.UserFlags & UsrF_Cheats) != 0)
@@ -804,16 +736,16 @@ void init_research_screen_boxes(void)
         val++;
     }
 
-    unkn12_WEAPONS_MODS_button.CallBackFn = ac_do_unkn12_WEAPONS_MODS;
+    unkn12_WEAPONS_MODS_button.CallBackFn = do_unkn12_WEAPONS_MODS;
     unkn12_WEAPONS_MODS_button.Text = gui_strings[451];
 
-    research_unkn21_box.DrawTextFn = ac_show_unkn21_box;
+    research_unkn21_box.DrawTextFn = show_unkn21_box;
     research_unkn21_box.Buttons[0] = &research_submit_button;
     research_unkn21_box.Buttons[1] = &unkn12_WEAPONS_MODS_button;
     research_unkn21_box.Flags |= GBxFlg_RadioBtn|GBxFlg_IsMouseOver;
     research_submit_button.Text = gui_strings[417];
-    research_submit_button.CallBackFn = ac_do_research_submit;
-    research_progress_button.DrawTextFn = ac_show_title_box;
+    research_submit_button.CallBackFn = do_research_submit;
+    research_progress_button.DrawTextFn = show_title_box;
     research_progress_button.Text = gui_strings[449];
 
     research_graph_box.SpecialDrawFn = show_research_graph;
@@ -878,8 +810,8 @@ void init_research_screen_boxes(void)
 void reset_research_screen_player_state(void)
 {
     research_on_weapons = 1;
-    research_selected_mod = -1;
-    research_selected_wep = -1;
+    research_selected_mod = 0;
+    research_selected_wep = 0;
     switch_research_screen_boxes_weapons_mods();
 }
 

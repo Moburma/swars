@@ -37,10 +37,13 @@ struct ScreenBoxBase;
 
 #pragma pack()
 /******************************************************************************/
-// TODO for this variable the first weapon is 0 instead of 1
-// to be fixed to define variables in the same way everywhere
-extern sbyte selected_weapon;
+/** Weapon selected in the equipment screen, 0 for none.
+ */
+extern ubyte selected_weapon;
+extern sbyte selected_agent;
 extern ubyte display_box_content;
+extern ubyte mo_weapon;
+extern ubyte refresh_equip_list;
 
 ubyte show_equipment_screen(void);
 
@@ -50,6 +53,8 @@ void equip_update_for_selected_weapon(void);
 
 void draw_text_property_bk(struct ScreenBoxBase *box, const char *text);
 void draw_text_property_lv(struct ScreenBoxBase *box, const char *text);
+
+void weapon_flic_data_to_screen(void);
 
 /** Draw a background part of a bar of rectangles.
  */
@@ -64,6 +69,8 @@ void draw_agent_panel_shape(struct ScreenShape *shape, ushort spridx, ubyte gbst
 
 void update_equip_cost_text(void);
 void update_cybmod_cost_text(void);
+
+ubyte do_equip_offer_buy(ubyte click);
 
 void switch_shared_equip_screen_buttons_to_equip(void);
 void switch_equip_offer_to_buy(void);

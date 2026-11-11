@@ -25,15 +25,17 @@
 #include "bfsprite.h"
 #include "bftext.h"
 #include "poly.h"
-#include "bflib_joyst.h"
+#include "bfjoyst.h"
 #include "ssampply.h"
 
 #include "display.h"
+#include "femain.h"
 #include "game.h"
 #include "game_sprts.h"
 #include "guiboxes.h"
 #include "guitext.h"
 #include "keyboard.h"
+#include "mydraw.h"
 #include "purpldrwlst.h"
 #include "sound.h"
 #include "swlog.h"
@@ -47,246 +49,263 @@ enum ScrollBarBoxes {
     ScrlBB_BoxesCount,
 };
 
+#define FLASHY_DRAW_REACH_TURNS 24
+#define FLASHY_DRAW_OUTLN_TURNS 48
+
 // TODO avoid referring to a specific box
 extern struct ScreenTextBox brief_netscan_box;
 extern struct ScreenTextBox world_city_info_box;
 extern struct ScreenTextBox equip_display_box;
 extern struct ScreenTextBox cryo_cybmod_list_box;
 extern struct ScreenTextBox controls_list_box;
-extern struct ScreenButton alert_OK_button;
 
-extern long dword_1DC5FC;
-extern long dword_1DC600;
-extern long dword_1DC624;
-extern long dword_1DC628;
+s32 purple_box_x1, purple_box_y1;
+s32 purple_box_x2, purple_box_y2;
 
-extern long purple_box_x1;
-extern long purple_box_y1;
-extern long purple_box_x2;
-extern long purple_box_y2;
+extern s32 dword_1DC50C, dword_1DC510;
+extern s32 dword_1DC534, dword_1DC538;
+
+static TbBool button_input_suppressed_by_modal_box(struct ScreenButton *p_btn)
+{
+    if (show_alert && button_is_modal_alert(p_btn))
+        return true;
+    return false;
+}
 
 void draw_line_purple_list(int x1, int y1, int x2, int y2, int colour)
 {
-#if 0
-    asm volatile (
-      "push %4\n"
-      "call ASM_draw_line_purple_list\n"
-        : : "a" (x1), "d" (y1), "b" (x2), "c" (y2), "g" (colour));
-    return;
-#endif
-    struct PurpleDrawItem *pditem;
+    struct PurpleDrawItem *p_pditem;
 
-    pditem = &purple_draw_list[purple_draw_index];
+    p_pditem = &purple_draw_list[purple_draw_index];
     purple_draw_index++;
 
-    pditem->U.Line.X1 = lbDisplay.GraphicsWindowX + x1;
-    pditem->U.Line.Y1 = lbDisplay.GraphicsWindowY + y1;
-    pditem->U.Line.X2 = lbDisplay.GraphicsWindowX + x2;
-    pditem->U.Line.Y2 = lbDisplay.GraphicsWindowY + y2;
-    pditem->U.Line.Colour = colour;
-    pditem->Flags = lbDisplay.DrawFlags;
+    p_pditem->U.Line.X1 = lbDisplay.GraphicsWindowX + x1;
+    p_pditem->U.Line.Y1 = lbDisplay.GraphicsWindowY + y1;
+    p_pditem->U.Line.X2 = lbDisplay.GraphicsWindowX + x2;
+    p_pditem->U.Line.Y2 = lbDisplay.GraphicsWindowY + y2;
+    p_pditem->U.Line.Colour = colour;
+    p_pditem->Flags = lbDisplay.DrawFlags;
 
     if ((x1 == x2) || (y1 == y2))
-        pditem->Type = PuDT_HVLINE;
+        p_pditem->Type = PuDT_HVLINE;
     else
-        pditem->Type = PuDT_LINE;
+        p_pditem->Type = PuDT_LINE;
 }
 
-void draw_box_purple_list(int x, int y, ulong width, ulong height, int colour)
+void draw_box_purple_list(int x, int y, uint width, uint height, TbPixel colour)
 {
-#if 0
-    asm volatile (
-      "push %4\n"
-      "call ASM_draw_box_purple_list\n"
-        : : "a" (x), "d" (y), "b" (width), "c" (height), "g" (colour));
-    return;
-#endif
-    struct PurpleDrawItem *pditem;
+    struct PurpleDrawItem *p_pditem;
 
-    pditem = &purple_draw_list[purple_draw_index];
+    p_pditem = &purple_draw_list[purple_draw_index];
     purple_draw_index++;
 
-    pditem->U.Box.X = lbDisplay.GraphicsWindowX + x;
-    pditem->U.Box.Y = lbDisplay.GraphicsWindowY + y;
-    pditem->U.Box.Width = width;
-    pditem->U.Box.Colour = colour;
-    pditem->U.Box.Height = height;
-    pditem->Flags = lbDisplay.DrawFlags;
-    pditem->Type = PuDT_BOX;
+    p_pditem->U.Box.X = lbDisplay.GraphicsWindowX + x;
+    p_pditem->U.Box.Y = lbDisplay.GraphicsWindowY + y;
+    p_pditem->U.Box.Width = width;
+    p_pditem->U.Box.Colour = colour;
+    p_pditem->U.Box.Height = height;
+    p_pditem->Flags = lbDisplay.DrawFlags;
+    p_pditem->Type = PuDT_BOX;
 }
 
 void draw_text_purple_list2(int x, int y, const char *text, ushort line)
 {
-#if 0
-    asm volatile (
-      "call ASM_draw_text_purple_list2\n"
-        : : "a" (x), "d" (y), "b" (text), "c" (line));
-    return;
-#endif
-    struct PurpleDrawItem *pditem;
+    struct PurpleDrawItem *p_pditem;
 
-    pditem = &purple_draw_list[purple_draw_index];
+    p_pditem = &purple_draw_list[purple_draw_index];
     purple_draw_index++;
 
-    pditem->U.Text.X = x;
-    pditem->U.Text.Y = y;
-    pditem->U.Text.WindowX = text_window_x1;
-    pditem->U.Text.WindowY = text_window_y1;
-    pditem->U.Text.Width = text_window_x2 - text_window_x1 + 1;
-    pditem->U.Text.Height = text_window_y2 - text_window_y1 + 1;
-    pditem->U.Text.Text = text;
-    pditem->U.Text.Line = line;
-    pditem->U.Text.Colour = lbDisplay.DrawColour;
-    pditem->U.Text.Font = lbFontPtr;
-    pditem->Flags = lbDisplay.DrawFlags;
-    pditem->Type = PuDT_TEXT;
+    p_pditem->U.Text.X = x;
+    p_pditem->U.Text.Y = y;
+    p_pditem->U.Text.WindowX = text_window_x1;
+    p_pditem->U.Text.WindowY = text_window_y1;
+    p_pditem->U.Text.Width = text_window_x2 - text_window_x1 + 1;
+    p_pditem->U.Text.Height = text_window_y2 - text_window_y1 + 1;
+    p_pditem->U.Text.Text = text;
+    p_pditem->U.Text.Line = line;
+    p_pditem->U.Text.Colour = lbDisplay.DrawColour;
+    p_pditem->U.Text.Font = lbFontPtr;
+    p_pditem->Flags = lbDisplay.DrawFlags;
+    p_pditem->Type = PuDT_TEXT;
 }
 
 void draw_sprite_purple_list(int x, int y, const struct TbSprite *p_sprite)
 {
-#if 0
-    asm volatile (
-      "call ASM_draw_sprite_purple_list\n"
-        : : "a" (x), "d" (y), "b" (p_sprite));
-#endif
-    struct PurpleDrawItem *pditem;
+    struct PurpleDrawItem *p_pditem;
 
-    pditem = &purple_draw_list[purple_draw_index];
+    p_pditem = &purple_draw_list[purple_draw_index];
     purple_draw_index++;
 
-    pditem->U.Sprite.Sprite = p_sprite;
-    pditem->U.Sprite.Colour = lbDisplay.DrawColour;
-    pditem->Flags = lbDisplay.DrawFlags;
-    pditem->U.Sprite.X = lbDisplay.GraphicsWindowX + x;
-    pditem->U.Sprite.Y = lbDisplay.GraphicsWindowY + y;
-    pditem->Type = PuDT_SPRITE;
+    p_pditem->U.Sprite.Sprite = p_sprite;
+    p_pditem->U.Sprite.Colour = lbDisplay.DrawColour;
+    p_pditem->Flags = lbDisplay.DrawFlags;
+    p_pditem->U.Sprite.X = lbDisplay.GraphicsWindowX + x;
+    p_pditem->U.Sprite.Y = lbDisplay.GraphicsWindowY + y;
+    p_pditem->Type = PuDT_SPRITE;
 }
 
-void draw_trig_purple_list(long x2, long y2, long x3, long y3)
+void draw_trig_purple_list(int x2, int y2, int x3, int y3)
 {
-    asm volatile (
-      "call ASM_draw_trig_purple_list\n"
-        : : "a" (x2), "d" (y2), "b" (x3), "c" (y3));
+    struct PurpleDrawItem *p_pditem;
+
+    p_pditem = &purple_draw_list[purple_draw_index];
+    purple_draw_index++;
+
+    p_pditem->U.Line.Colour = vec_colour;
+    p_pditem->Flags = lbDisplay.DrawFlags;
+    p_pditem->U.Line.X1 = lbDisplay.GraphicsWindowX + x2;
+    p_pditem->U.Line.Y1 = lbDisplay.GraphicsWindowY + y2;
+    p_pditem->U.Line.X2 = lbDisplay.GraphicsWindowX + x3;
+    p_pditem->U.Line.Y2 = lbDisplay.GraphicsWindowY + y3;
+    p_pditem->Type = PuDT_HOLORAY;
 }
 
-void copy_box_purple_list(long x, long y, ulong width, ulong height)
+void copy_box_purple_list(int x, int y, uint width, uint height)
 {
-    asm volatile (
-      "call ASM_copy_box_purple_list\n"
-        : : "a" (x), "d" (y), "b" (width), "c" (height));
+    struct PurpleDrawItem *p_pditem;
+
+    p_pditem = &purple_draw_list[purple_draw_index];
+    purple_draw_index++;
+
+    p_pditem->U.Box.Colour = 0;
+    p_pditem->Flags = lbDisplay.DrawFlags;
+    p_pditem->U.Box.X = lbDisplay.GraphicsWindowX + x;
+    p_pditem->U.Box.Y = lbDisplay.GraphicsWindowY + y;
+    p_pditem->U.Box.Width = width;
+    p_pditem->U.Box.Height = height;
+    p_pditem->Type = PuDT_COPYBOX;
 }
 
 void draw_hotspot_purple_list(int x, int y)
 {
-    asm volatile (
-      "call ASM_draw_hotspot_purple_list\n"
-        : : "a" (x), "d" (y));
+    struct PurpleDrawItem *p_pditem;
+
+    p_pditem = &purple_draw_list[purple_draw_index];
+    purple_draw_index++;
+
+    p_pditem->U.Hotspot.X = lbDisplay.GraphicsWindowX + x;
+    p_pditem->U.Hotspot.Y = lbDisplay.GraphicsWindowY + y;
+    p_pditem->Type = PuDT_HOTSPOT;
 }
 
-ubyte flashy_draw_purple_shape(struct ScreenShape *p_shape)
+/** Draw flashy projector effect, part before vectors reach target point.
+ *
+ * We draw every shape using two brush vectors; this function draws both.
+ * DrawFlags are ignored because this function does not actually draw the
+ * target interface item; but the value is unaffected by this function.
+ */
+void flashy_draw_projector_reaching_target_coords(int scr1_x, int scr1_y,
+  int scr2_x, int scr2_y, short advance, short tot_len, TbPixel colour)
 {
-    ubyte ret;
-    asm volatile ("call ASM_flashy_draw_purple_shape\n"
-        : "=r" (ret) : "a" (p_shape));
-    return ret;
-}
+    short reach1_x, reach1_y;
+    short reach2_x, reach2_y;
+    ushort bkp_drwflags;
 
-void flashy_draw_projector_reaching_target_coords(short box_x, short box_y, short box_w, short box_h, short advance, TbPixel colour)
-{
-    struct TbSprite *p_spr;
-    ushort spr;
-    short scr_x1, scr_y2;
-    short scr_x2, scr_y1;
-
-    spr = 11 + (colour != 0xF7);
-
-    scr_x1 = proj_origin.X + (advance * (box_x - proj_origin.X)) / 24;
-    scr_y1 = proj_origin.Y + (advance * (box_y - proj_origin.Y)) / 24;
-    scr_x2 = proj_origin.X + (advance * (box_x + box_w - proj_origin.X)) / 24;
-    scr_y2 = proj_origin.Y + (advance * (box_y + box_h - proj_origin.Y)) / 24;
+    bkp_drwflags = lbDisplay.DrawFlags;
+    reach1_x = proj_origin.X + (advance * (scr1_x - proj_origin.X)) / tot_len;
+    reach1_y = proj_origin.Y + (advance * (scr1_y - proj_origin.Y)) / tot_len;
+    reach2_x = proj_origin.X + (advance * (scr2_x - proj_origin.X)) / tot_len;
+    reach2_y = proj_origin.Y + (advance * (scr2_y - proj_origin.Y)) / tot_len;
 
     lbDisplay.DrawFlags = Lb_SPRITE_TRANSPAR4;
-    draw_line_purple_list(proj_origin.X, proj_origin.Y, scr_x1, scr_y1, colour);
-    draw_line_purple_list(proj_origin.X, proj_origin.Y, scr_x2, scr_y2, colour);
-    lbDisplay.DrawFlags = 0;
-
-    p_spr = &fe_mouseptr_sprites[spr];
-    draw_sprite_purple_list(scr_x1 - 1, scr_y1 - 1, p_spr);
-    draw_sprite_purple_list(scr_x2 - 1, scr_y2 - 1, p_spr);
-}
-
-void flashy_draw_projector_horizontal_lines(short box_x, short box_y, short box_w, short box_h, short advance, short advance_p, short delta_p, TbPixel colour)
-{
-    struct TbSprite *p_spr;
-    ushort spr;
-    short scr_x1, scr_x2;
-    short prog_x;
-
-    spr = 11 + (colour != 0xF7);
-    vec_colour = colour;
-
-    prog_x = box_x + advance_p;
-    purple_box_x1 = prog_x;
-    purple_box_y1 = box_y;
-    purple_box_x2 = purple_box_x1 - 15;
-    scr_x1 = box_x;
-    if (purple_box_x2 < scr_x1)
-        purple_box_x2 = scr_x1;
-    purple_box_y2 = box_y;
-
-    draw_trig_purple_list(purple_box_x1, purple_box_y1, purple_box_x2, purple_box_y2);
-    draw_line_purple_list(scr_x1, purple_box_y2, purple_box_x1, purple_box_y1, colour);
-
-    purple_box_x1 = box_x + box_w - advance;
-    purple_box_y1 = box_y + box_h;
-    purple_box_x2 = purple_box_x1 + 15;
-    scr_x2 = box_x + box_w;
-    if (purple_box_x2 > scr_x2)
-      purple_box_x2 = scr_x2;
-    purple_box_y2 = box_y + box_h;
-
-    draw_trig_purple_list(purple_box_x1, purple_box_y1, purple_box_x2, purple_box_y2);
-    draw_line_purple_list(purple_box_x1, purple_box_y1, scr_x2, purple_box_y2, colour);
+    draw_line_purple_list(proj_origin.X, proj_origin.Y, reach1_x, reach1_y, colour);
+    draw_line_purple_list(proj_origin.X, proj_origin.Y, reach2_x, reach2_y, colour);
 
     lbDisplay.DrawFlags = 0;
-    p_spr = &fe_mouseptr_sprites[spr];
-    draw_sprite_purple_list(prog_x - 1, box_y - 1, p_spr);
-    draw_sprite_purple_list(purple_box_x1 - 1, box_y + box_h - 1, p_spr);
+    {
+        struct TbSprite *p_spr;
+        ushort spr;
+
+        spr = 11 + (colour != 247);
+
+        p_spr = &fe_mouseptr_sprites[spr];
+        draw_sprite_purple_list(reach1_x - 1, reach1_y - 1, p_spr);
+        draw_sprite_purple_list(reach2_x - 1, reach2_y - 1, p_spr);
+    }
+    lbDisplay.DrawFlags = bkp_drwflags;
 }
 
-void flashy_draw_projector_vertical_lines(short box_x, short box_y, short box_w, short box_h, short advance, short advance_p, short delta_p, TbPixel colour)
+void flashy_draw_projector_reaching_target_box_coords(int box_x, int box_y,
+  int box_w, int box_h, short advance, TbPixel colour)
 {
-    struct TbSprite *p_spr;
-    ushort spr;
-    short scr_y1, scr_y2;
-    short prog_y;
+    flashy_draw_projector_reaching_target_coords(box_x, box_y,
+      box_x + box_w, box_y + box_h, advance, FLASHY_DRAW_REACH_TURNS, colour);
+}
 
-    spr = 11 + (colour != 0xF7);
-    vec_colour = colour;
+/** Draw flashy projector effect, a single line being drawn.
+ *
+ * DrawFlags are only honored for target interface line; brush vectors
+ * are drawn ignoring DrawFlags, as they are not target interface items.
+ */
+void flashy_draw_projector_outline_partial_line(int scr1_x, int scr1_y,
+  int scr2_x, int scr2_y, short advance, short tot_len, TbPixel colour)
+{
+    int progr_x, progr_y;
+    int scr3_x, scr3_y;
+    ushort bkp_drwflags;
 
-    prog_y = box_y + delta_p + advance_p;
-    purple_box_x1 = box_x + box_w;
-    purple_box_y1 = prog_y;
-    purple_box_x2 = purple_box_x1;
-    scr_y1 = box_y + delta_p;
-    purple_box_y2 = prog_y - 15;
-    if (purple_box_y2 < scr_y1)
-      purple_box_y2 = scr_y1;
+    bkp_drwflags = lbDisplay.DrawFlags;
+    progr_x = advance * (scr2_x - scr1_x) / tot_len;
+    progr_y = advance * (scr2_y - scr1_y) / tot_len;
+    scr3_x = scr1_x + progr_x;
+    scr3_y = scr1_y + progr_y;
 
-    draw_trig_purple_list(purple_box_x1, purple_box_y1, purple_box_x2, purple_box_y2);
-    draw_line_purple_list(purple_box_x2, scr_y1, purple_box_x1, purple_box_y1, colour);
+    // Draw part of the final result line
+    if (progr_x != 0 || progr_y != 0)
+    {
+        int aftim1_x, aftim1_y;
+        int aftim2_x, aftim2_y;
 
-    purple_box_x1 = box_x;
-    purple_box_y1 = box_y + box_h - advance;
-    purple_box_x2 = purple_box_x1;
-    purple_box_y2 = purple_box_y1 + 15;
-    scr_y2 = box_y + box_h;
-    if (purple_box_y2 > scr_y2)
-      purple_box_y2 = scr_y2;
+        aftim1_x = scr3_x;
+        aftim1_y = scr3_y;
+        if (progr_x <= 0)
+            aftim2_x = min(aftim1_x + 15, scr1_x);
+        else
+            aftim2_x = max(aftim1_x - 15, scr1_x);
+        if (progr_y <= 0)
+            aftim2_y = min(aftim1_y + 15, scr1_y);
+        else
+            aftim2_y = max(aftim1_y - 15, scr1_y);
 
-    draw_trig_purple_list(purple_box_x1, purple_box_y1, purple_box_x2, purple_box_y2);
-    draw_line_purple_list(purple_box_x1, purple_box_y1, purple_box_x2, scr_y2, colour);
+        vec_colour = colour;
+        draw_trig_purple_list(aftim1_x, aftim1_y, aftim2_x, aftim2_y);
+        draw_line_purple_list(scr1_x, scr1_y,
+          scr3_x, scr3_y, colour);
+    }
+    // Draw the temporary projector line and dot
+    {
+        struct TbSprite *p_spr;
+        ushort spr;
 
+        spr = 11 + (colour != 247);
+
+        lbDisplay.DrawFlags = Lb_SPRITE_TRANSPAR4;
+        draw_line_purple_list(proj_origin.X, proj_origin.Y,
+          scr3_x, scr3_y, colour);
+
+        lbDisplay.DrawFlags = 0;
+        p_spr = &fe_mouseptr_sprites[spr];
+        draw_sprite_purple_list(scr3_x - 1, scr3_y - 1, p_spr);
+    }
+    lbDisplay.DrawFlags = bkp_drwflags;
+}
+
+void flashy_draw_projector_box_horizontal_lines(short box_x, short box_y,
+  short box_w, short box_h, short advance, short delta_p, TbPixel colour)
+{
+    flashy_draw_projector_outline_partial_line(box_x, box_y,
+      box_x + box_w - delta_p, box_y,
+      advance, FLASHY_DRAW_OUTLN_TURNS/2, colour);
+
+    flashy_draw_projector_outline_partial_line(box_x + box_w, box_y + box_h,
+      box_x, box_y + box_h,
+      advance, FLASHY_DRAW_OUTLN_TURNS/2, colour);
+}
+
+void flashy_draw_projector_box_vertical_lines(short box_x, short box_y,
+  short box_w, short box_h, short advance, short delta_p, TbPixel colour)
+{
+    // when vertical lines are drawn, horizonal are already there
     draw_line_purple_list(box_x, box_y + box_h, box_x + box_w, box_y + box_h, colour);
     if (delta_p != 0) {
         draw_line_purple_list(box_x, box_y, box_x + box_w - delta_p, box_y, colour);
@@ -295,20 +314,107 @@ void flashy_draw_projector_vertical_lines(short box_x, short box_y, short box_w,
         draw_line_purple_list(box_x, box_y, box_x + box_w, box_y, colour);
     }
 
-    lbDisplay.DrawFlags = 0;
-    p_spr = &fe_mouseptr_sprites[spr];
-    draw_sprite_purple_list(purple_box_x1 - 1, purple_box_y1 - 1, p_spr);
-    draw_sprite_purple_list(box_x + box_w - 1, prog_y - 1, p_spr);
+    flashy_draw_projector_outline_partial_line(box_x + box_w, box_y + delta_p,
+      box_x + box_w, box_y + box_h,
+      advance, FLASHY_DRAW_OUTLN_TURNS/2, colour);
+
+    flashy_draw_projector_outline_partial_line(box_x, box_y + box_h,
+      box_x, box_y,
+      advance, FLASHY_DRAW_OUTLN_TURNS/2, colour);
+}
+
+ubyte flashy_draw_purple_shape(struct ScreenShape *p_shape)
+{
+    short i;
+    ubyte pt1, pt2;
+
+    pt1 = 0;
+    pt2 = p_shape->PtLen >> 1;
+
+    if ((p_shape->Flags & 0x02) != 0) {
+        p_shape->Timer = -1;
+        p_shape->Flags &= ~(0x80|0x02|0x01);
+    }
+    if ((p_shape->Flags & 0x01) != 0) {
+        p_shape->Timer = 0;
+        p_shape->Flags &= ~0x01;
+    }
+
+    // Handle sound
+    if (p_shape->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS)
+    {
+        if (p_shape->Timer > FLASHY_DRAW_REACH_TURNS)
+        {
+            if (!IsSamplePlaying(0, 4, 0))
+                play_sample_using_heap(0, 110, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1u);
+        }
+    }
+
+    // Draw lines from projector origin reaching target shape
+    if (p_shape->Timer <= FLASHY_DRAW_REACH_TURNS)
+    {
+        short advance;
+
+        advance = p_shape->Timer;
+        flashy_draw_projector_reaching_target_coords(p_shape->PtX[pt1], p_shape->PtY[pt1],
+          p_shape->PtX[pt2], p_shape->PtY[pt2], advance, FLASHY_DRAW_REACH_TURNS, p_shape->Colour);
+        p_shape->Timer += p_shape->DrawSpeed;
+        return 0;
+    }
+    // Draw shape progressively appearing
+    if (p_shape->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS)
+    {
+        int pnts_advance, frct_advance, frct_between_pts;
+        ushort n;
+
+        //TODO instead of dividing by points, we should divide by length - how many fractional
+        //draws each line has should be determined from its length
+        frct_between_pts = FLASHY_DRAW_OUTLN_TURNS / pt2;
+        pnts_advance = (p_shape->Timer - FLASHY_DRAW_REACH_TURNS) / frct_between_pts;
+        frct_advance = (p_shape->Timer - FLASHY_DRAW_REACH_TURNS) % frct_between_pts;
+        vec_colour = p_shape->Colour;
+
+        for (i = 0; i < pnts_advance; i++)
+        {
+            n = pt1 + i;
+            draw_line_purple_list(p_shape->PtX[n+0], p_shape->PtY[n+0],
+              p_shape->PtX[n+1], p_shape->PtY[n+1], p_shape->Colour);
+            n = pt2 + i;
+            draw_line_purple_list(p_shape->PtX[n+0], p_shape->PtY[n+0],
+              p_shape->PtX[n+1], p_shape->PtY[n+1], p_shape->Colour);
+        }
+
+        n = pt1 + pnts_advance;
+        flashy_draw_projector_outline_partial_line(p_shape->PtX[n+0], p_shape->PtY[n+0],
+          p_shape->PtX[n+1], p_shape->PtY[n+1], frct_advance, frct_between_pts, p_shape->Colour);
+
+        n = pt2 + pnts_advance;
+        flashy_draw_projector_outline_partial_line(p_shape->PtX[n+0], p_shape->PtY[n+0],
+          p_shape->PtX[n+1], p_shape->PtY[n+1], frct_advance, frct_between_pts, p_shape->Colour);
+
+        p_shape->Timer += p_shape->DrawSpeed;
+        if (p_shape->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS)
+            return 2;
+        else
+            return 3;
+    }
+
+    for (i = 0; i < pt2 - pt1; i++)
+    {
+        ushort n;
+
+        n = pt1 + i;
+        draw_line_purple_list(p_shape->PtX[n+0], p_shape->PtY[n+0],
+          p_shape->PtX[n+1], p_shape->PtY[n+1], p_shape->Colour);
+        n = pt2 + i;
+        draw_line_purple_list(p_shape->PtX[n+0], p_shape->PtY[n+0],
+          p_shape->PtX[n+1], p_shape->PtY[n+1], p_shape->Colour);
+    }
+    return 3;
 }
 
 ubyte flashy_draw_purple_box(struct ScreenBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_flashy_draw_purple_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     short box_w, box_h;
 
     box_w = p_box->Width - 1;
@@ -329,9 +435,9 @@ ubyte flashy_draw_purple_box(struct ScreenBox *p_box)
     }
 
     // Handle sound
-    if (p_box->Timer <= 72)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS)
     {
-        if (p_box->Timer > 24)
+        if (p_box->Timer > FLASHY_DRAW_REACH_TURNS)
         {
             if (!IsSamplePlaying(0, 4, 0))
                 play_sample_using_heap(0, 110, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1u);
@@ -339,34 +445,37 @@ ubyte flashy_draw_purple_box(struct ScreenBox *p_box)
     }
 
     // Draw lines from projector origin reaching target rectangle
-    if (p_box->Timer <= 24)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS)
     {
         short advance;
 
         advance = p_box->Timer;
-        flashy_draw_projector_reaching_target_coords(p_box->X, p_box->Y, box_w, box_h, advance, p_box->Colour);
+        flashy_draw_projector_reaching_target_box_coords(p_box->X, p_box->Y,
+          box_w, box_h, advance, p_box->Colour);
         p_box->Timer += p_box->DrawSpeed;
         return 0;
     }
 
     // Draw horizontal lines
-    if (p_box->Timer <= 48)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS/2)
     {
         short advance;
 
-        advance = ((p_box->Timer - 24) * box_w) / 24;
-        flashy_draw_projector_horizontal_lines(p_box->X, p_box->Y, box_w, box_h, advance, advance, 0, p_box->Colour);
+        advance = p_box->Timer - FLASHY_DRAW_REACH_TURNS;
+        flashy_draw_projector_box_horizontal_lines(p_box->X, p_box->Y,
+          box_w, box_h, advance, 0, p_box->Colour);
         p_box->Timer += p_box->DrawSpeed;
         return 0;
     }
 
     // Draw vertical lines
-    if (p_box->Timer <= 72)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS)
     {
         short advance;
 
-        advance = ((p_box->Timer - 48) * box_h) / 24;
-        flashy_draw_projector_vertical_lines(p_box->X, p_box->Y, box_w, box_h, advance, advance, 0, p_box->Colour);
+        advance = p_box->Timer - FLASHY_DRAW_REACH_TURNS - FLASHY_DRAW_OUTLN_TURNS/2;
+        flashy_draw_projector_box_vertical_lines(p_box->X, p_box->Y,
+          box_w, box_h, advance, 0, p_box->Colour);
         p_box->Timer += p_box->DrawSpeed;
         return 2;
     }
@@ -410,7 +519,8 @@ void my_set_text_window_for_text_box(struct ScreenTextBox *p_box)
     else
         scr_scroll_h = p_box->ScrollWindowHeight + 23;
 
-    my_set_text_window(p_box->X + 4, p_box->ScrollWindowOffset + p_box->Y + 4, p_box->Width - 8 - scr_scroll_w, scr_scroll_h);
+    my_set_text_window(p_box->X + 4, p_box->Y + p_box->ScrollWindowOffset + 4,
+      p_box->Width - 8 - scr_scroll_w, scr_scroll_h);
 }
 
 /** Get amount of lines within currently set text window.
@@ -431,23 +541,13 @@ short get_text_box_lines_visible(struct ScreenTextBox *p_box)
 
     lbFontPtr = p_box->Font;
     if (p_box->LineHeight == 0)
-        p_box->LineHeight = p_box->LineSpacing + font_height('A');
+        p_box->LineHeight = p_box->LineSpacing + my_char_height('A');
 
     return get_text_box_window_lines_visible(p_box);
 }
 
 TbBool flashy_draw_text(int x, int y, const char *text, ubyte speed, int top_line, short *textpos, int cyan_flag)
 {
-#if 0
-    TbBool ret;
-    asm volatile (
-      "push %7\n"
-      "push %6\n"
-      "push %5\n"
-      "call ASM_flashy_draw_text\n"
-        : "=r" (ret) : "a" (x), "d" (y), "b" (text), "c" (speed), "g" (top_line), "g" (textpos), "g" (cyan_flag));
-    return ret;
-#endif
     char *gtext;
     int text_tot_len, chunk_end;
     int i, pos;
@@ -536,9 +636,7 @@ ubyte flashy_draw_purple_text_box_text(struct ScreenTextBox *p_box)
     if (p_box->DrawTextFn != NULL)
     {
         ubyte drawn;
-        //drawn = p_box->DrawTextFn(p_box); -- incompatible calling convention
-        asm volatile ("call *%2\n"
-          : "=r" (drawn) : "a" (p_box), "g" (p_box->DrawTextFn));
+        drawn = p_box->DrawTextFn(p_box);
         text_drawn = text_drawn && drawn;
     }
     else if (p_box->Text != NULL)
@@ -563,6 +661,7 @@ ubyte flashy_draw_purple_text_box_children(struct ScreenTextBox *p_box)
     ushort i;
     ubyte all_drawn;
 
+    all_drawn = 1;
     lbDisplay.DrawFlags = 0;
     for (i = 0; i < 2; i++)
     {
@@ -572,17 +671,13 @@ ubyte flashy_draw_purple_text_box_children(struct ScreenTextBox *p_box)
         p_button = p_box->Buttons[i];
         if (p_button != NULL) {
             ubyte drawn;
-            //p_button->DrawFn(p_button); -- incompatible calling convention
-            asm volatile ("call *%2\n"
-                : "=r" (drawn) : "a" (p_button), "g" (p_button->DrawFn));
+            drawn = p_button->DrawFn(p_button);
             all_drawn = all_drawn && drawn;
         }
         p_info = p_box->Infos[i];
         if (p_info != NULL) {
             ubyte drawn;
-            //p_info->DrawFn(p_info); -- incompatible calling convention
-            asm volatile ("call *%2\n"
-                : "=r" (drawn) : "a" (p_info), "g" (p_info->DrawFn));
+            drawn = p_info->DrawFn(p_info);
             all_drawn = all_drawn && drawn;
         }
     }
@@ -776,23 +871,19 @@ void input_purple_text_box_wth_scroll(struct ScreenTextBox *p_box, struct Screen
 
 ubyte flashy_draw_purple_text_box(struct ScreenTextBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_flashy_draw_purple_text_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     short box_w, box_h;
     short lines_visible;
-    TbBool text_remains_dynamic; /**< text drawing callback never sets GBxFlg_TextCopied (maybe make this into a box flag?) */
+    // text drawing callback never sets GBxFlg_TextCopied (maybe make this into a box flag?)
+    TbBool text_remains_dynamic;
 
-    text_remains_dynamic = (p_box == &world_city_info_box) || (p_box == &equip_display_box) || (p_box == &cryo_cybmod_list_box);
+    text_remains_dynamic = (p_box == &world_city_info_box) ||
+      (p_box == &equip_display_box) || (p_box == &cryo_cybmod_list_box);
     my_set_text_window_for_text_box(p_box);
 
     lbFontPtr = p_box->Font;
     byte_197160 = p_box->LineSpacing;
     if (p_box->LineHeight == 0)
-        p_box->LineHeight = byte_197160 + font_height('A');
+        p_box->LineHeight = byte_197160 + my_char_height('A');
 
     lines_visible = get_text_box_window_lines_visible(p_box);
 
@@ -852,9 +943,9 @@ ubyte flashy_draw_purple_text_box(struct ScreenTextBox *p_box)
     }
 
     // Handle sound
-    if (p_box->Timer <= 72)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS)
     {
-        if (p_box->Timer > 24)
+        if (p_box->Timer > FLASHY_DRAW_REACH_TURNS)
         {
             if (!IsSamplePlaying(0, 4, 0))
                 play_sample_using_heap(0, 110, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 1u);
@@ -862,34 +953,37 @@ ubyte flashy_draw_purple_text_box(struct ScreenTextBox *p_box)
     }
 
     // Draw lines from projector origin reaching target rectangle
-    if (p_box->Timer <= 24)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS)
     {
         short advance;
 
         advance = p_box->Timer;
-        flashy_draw_projector_reaching_target_coords(p_box->X, p_box->Y, box_w, box_h, advance, p_box->Colour1);
+        flashy_draw_projector_reaching_target_box_coords(p_box->X, p_box->Y,
+          box_w, box_h, advance, p_box->Colour1);
         p_box->Timer += p_box->DrawSpeed;
         return 0;
     }
 
     // Draw horizontal lines
-    if (p_box->Timer <= 48)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS/2)
     {
         short advance;
 
-        advance = ((p_box->Timer - 24) * box_w) / 24;
-        flashy_draw_projector_horizontal_lines(p_box->X, p_box->Y, box_w, box_h, advance, advance, 0, p_box->Colour1);
+        advance = p_box->Timer - FLASHY_DRAW_REACH_TURNS;
+        flashy_draw_projector_box_horizontal_lines(p_box->X, p_box->Y,
+          box_w, box_h, advance, 0, p_box->Colour1);
         p_box->Timer += p_box->DrawSpeed;
         return 0;
     }
 
     // Draw vertical lines
-    if (p_box->Timer <= 72)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS)
     {
         short advance;
 
-        advance = ((p_box->Timer - 48) * box_h) / 24;
-        flashy_draw_projector_vertical_lines(p_box->X, p_box->Y, box_w, box_h, advance, advance, 0, p_box->Colour1);
+        advance = p_box->Timer - FLASHY_DRAW_REACH_TURNS - FLASHY_DRAW_OUTLN_TURNS/2;
+        flashy_draw_projector_box_vertical_lines(p_box->X, p_box->Y,
+          box_w, box_h, advance, 0, p_box->Colour1);
         p_box->Timer += p_box->DrawSpeed;
         return 2;
     }
@@ -908,7 +1002,8 @@ ubyte flashy_draw_purple_text_box(struct ScreenTextBox *p_box)
             p_box->Lines = my_count_lines(p_box->Text);
         }
         p_box->ScrollBarSize = p_box->ScrollWindowHeight * lines_visible / p_box->Lines;
-        if ((p_box->ScrollBarSize < p_box->ScrollWindowHeight) || ((p_box->Flags & GBxFlg_IsMouseOver) != 0))
+        if ((p_box->ScrollBarSize < p_box->ScrollWindowHeight) ||
+          ((p_box->Flags & GBxFlg_IsMouseOver) != 0))
         {
             if (p_box->ScrollBarSize >= p_box->ScrollWindowHeight)
                 p_box->ScrollBarSize = p_box->ScrollWindowHeight;
@@ -1042,12 +1137,6 @@ ubyte flashy_draw_purple_text_box(struct ScreenTextBox *p_box)
 
 ubyte flashy_draw_purple_info_box(struct ScreenInfoBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_flashy_draw_purple_info_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     short box_w, box_h;
 
     box_w = p_box->Width - 1;
@@ -1066,9 +1155,9 @@ ubyte flashy_draw_purple_info_box(struct ScreenInfoBox *p_box)
     }
 
     // Handle sound
-    if (p_box->Timer <= 72)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS)
     {
-        if (p_box->Timer > 24)
+        if (p_box->Timer > FLASHY_DRAW_REACH_TURNS)
         {
             // Projector drawing sound
             if (!IsSamplePlaying(0, 4, 0))
@@ -1077,34 +1166,37 @@ ubyte flashy_draw_purple_info_box(struct ScreenInfoBox *p_box)
     }
 
     // Draw lines from projector origin reaching target rectangle
-    if (p_box->Timer <= 24)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS)
     {
         short advance;
 
         advance = p_box->Timer;
-        flashy_draw_projector_reaching_target_coords(p_box->X, p_box->Y, box_w, box_h, advance, p_box->Colour);
+        flashy_draw_projector_reaching_target_box_coords(p_box->X, p_box->Y,
+          box_w, box_h, advance, p_box->Colour);
         p_box->Timer += p_box->DrawSpeed;
         return 0;
     }
 
     // Draw horizontal lines
-    if (p_box->Timer <= 48)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS/2)
     {
         short advance;
 
-        advance = ((p_box->Timer - 24) * box_w) / 24;
-        flashy_draw_projector_horizontal_lines(p_box->X, p_box->Y, box_w, box_h, advance, advance, 0, p_box->Colour);
+        advance = p_box->Timer - FLASHY_DRAW_REACH_TURNS;
+        flashy_draw_projector_box_horizontal_lines(p_box->X, p_box->Y,
+          box_w, box_h, advance, 0, p_box->Colour);
         p_box->Timer += p_box->DrawSpeed;
         return 0;
     }
 
     // Draw vertical lines
-    if (p_box->Timer <= 72)
+    if (p_box->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS)
     {
         short advance;
 
-        advance = ((p_box->Timer - 48) * box_h) / 24;
-        flashy_draw_projector_vertical_lines(p_box->X, p_box->Y, box_w, box_h, advance, advance, 0, p_box->Colour);
+        advance = p_box->Timer - FLASHY_DRAW_REACH_TURNS - FLASHY_DRAW_OUTLN_TURNS/2;
+        flashy_draw_projector_box_vertical_lines(p_box->X, p_box->Y,
+          box_w, box_h, advance, 0, p_box->Colour);
         p_box->Timer += p_box->DrawSpeed;
         return 2;
     }
@@ -1129,22 +1221,13 @@ ubyte flashy_draw_purple_info_box(struct ScreenInfoBox *p_box)
         }
     }
     if (p_box->DrawTextFn != NULL) {
-            ubyte drawn;
-            //p_box->DrawTextFn(p_box); -- incompatible calling convention
-            asm volatile ("call *%2\n"
-                : "=r" (drawn) : "a" (p_box), "g" (p_box->DrawTextFn));
+        p_box->DrawTextFn(p_box);
     }
     return 3;
 }
 
 ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_flashy_draw_purple_button\n"
-        : "=r" (ret) : "a" (p_btn));
-    return ret;
-#else
     short box_w, box_h;
     TbKeyCode akey;
     TbBool mouse_over, event_from_key;
@@ -1171,9 +1254,9 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
     }
 
     // Handle sound
-    if (p_btn->Timer <= 72)
+    if (p_btn->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS)
     {
-        if (p_btn->Timer > 24)
+        if (p_btn->Timer > FLASHY_DRAW_REACH_TURNS)
         {
             // Projector drawing sound
             if (!IsSamplePlaying(0, 4, 0))
@@ -1182,12 +1265,13 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
     }
 
     // Draw lines from projector origin reaching target rectangle
-    if (p_btn->Timer <= 24)
+    if (p_btn->Timer <= FLASHY_DRAW_REACH_TURNS)
     {
         short advance;
 
         advance = p_btn->Timer;
-        flashy_draw_projector_reaching_target_coords(p_btn->X, p_btn->Y, box_w, box_h, advance, p_btn->Colour);
+        flashy_draw_projector_reaching_target_box_coords(p_btn->X, p_btn->Y,
+          box_w, box_h, advance, p_btn->Colour);
         p_btn->Timer += p_btn->DrawSpeed;
         return 0;
     }
@@ -1196,33 +1280,33 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
         lbDisplay.DrawFlags = Lb_SPRITE_TRANSPAR4;
 
     // Draw horizontal lines
-    if (p_btn->Timer <= 48)
+    if (p_btn->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS/2)
     {
-        short advance, advance_p, delta_p;
+        short advance, delta_p;
 
         if ((p_btn->Flags & GBxFlg_Unkn0010) != 0)
             delta_p = 5;
         else
             delta_p = 0;
-        advance = ((p_btn->Timer - 24) * (box_w)) / 24;
-        advance_p = ((p_btn->Timer - 24) * (box_w - delta_p)) / 24;
-        flashy_draw_projector_horizontal_lines(p_btn->X, p_btn->Y, box_w, box_h, advance, advance_p, delta_p, p_btn->Colour);
+        advance = p_btn->Timer - FLASHY_DRAW_REACH_TURNS;
+        flashy_draw_projector_box_horizontal_lines(p_btn->X, p_btn->Y,
+          box_w, box_h, advance, delta_p, p_btn->Colour);
         p_btn->Timer += p_btn->DrawSpeed;
         return 0;
     }
 
     // Draw vertical lines
-    if (p_btn->Timer <= 72)
+    if (p_btn->Timer <= FLASHY_DRAW_REACH_TURNS + FLASHY_DRAW_OUTLN_TURNS)
     {
-        short advance, advance_p, delta_p;
+        short advance, delta_p;
 
         if ((p_btn->Flags & GBxFlg_Unkn0010) != 0)
             delta_p = 5;
         else
             delta_p = 0;
-        advance = ((p_btn->Timer - 48) * (box_h)) / 24;
-        advance_p = ((p_btn->Timer - 48) * (box_h - delta_p)) / 24;
-        flashy_draw_projector_vertical_lines(p_btn->X, p_btn->Y, box_w, box_h, advance, advance_p, delta_p, p_btn->Colour);
+        advance = p_btn->Timer - FLASHY_DRAW_REACH_TURNS - FLASHY_DRAW_OUTLN_TURNS/2;
+        flashy_draw_projector_box_vertical_lines(p_btn->X, p_btn->Y,
+          box_w, box_h, advance, delta_p, p_btn->Colour);
         p_btn->Timer += p_btn->DrawSpeed;
         return 2;
     }
@@ -1243,7 +1327,8 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
     }
     event_from_key = false;
     akey = p_btn->AccelKey  & 0xFF;
-    if ((akey == KC_RETURN || akey == KC_ESCAPE) && is_key_pressed(akey, KMod_DONTCARE))
+    if ((akey == KC_RETURN || akey == KC_ESCAPE) &&
+      is_key_pressed(akey, KMod_DONTCARE))
     {
         clear_key_pressed(akey);
         p_btn->Flags |= GBxFlg_IsPushed;
@@ -1322,7 +1407,8 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
             lbDisplay.DrawFlags |= 0x8000;
             v17 = box_h + 1;
             v18 = box_w + 1;
-            draw_box_purple_list(p_btn->X - box_b, p_btn->Y - box_b, v18 + 2 * box_b, 2 * box_b + v17, p_btn->BGColour);
+            draw_box_purple_list(p_btn->X - box_b, p_btn->Y - box_b,
+              v18 + 2 * box_b, 2 * box_b + v17, p_btn->BGColour);
             lbDisplay.DrawFlags &= ~(Lb_SPRITE_OUTLINE|0x8000);
             lbDisplay.DrawFlags |= Lb_SPRITE_OUTLINE;
             draw_box_purple_list(p_btn->X, p_btn->Y, v18, v17, p_btn->Colour);
@@ -1349,16 +1435,14 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
         }
         else if ((p_btn->Flags & GBxFlg_IsPushed) != 0)
         {
-            if (!show_alert || p_btn == &alert_OK_button)
+            if (!button_input_suppressed_by_modal_box(p_btn))
             {
                 ushort smpl_id;
 
                 if (p_btn->CallBackFn != NULL)
                 {
                     ubyte clicked;
-                    //p_btn->CallBackFn(0); -- incompatible calling convention
-                    asm volatile ("call *%2\n"
-                      : "=r" (clicked) : "a" (0), "g" (p_btn->CallBackFn));
+                    clicked = p_btn->CallBackFn(0);
                     if (clicked)
                         smpl_id = 111;
                     else
@@ -1390,16 +1474,14 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
         }
         else if ((p_btn->Flags & GBxFlg_IsRPushed) != 0)
         {
-            if (!show_alert || p_btn == &alert_OK_button)
+            if (!button_input_suppressed_by_modal_box(p_btn))
             {
                 ushort smpl_id;
 
                 if (p_btn->CallBackFn != NULL)
                 {
                     ubyte clicked;
-                    //clicked = p_btn->CallBackFn(1); -- incompatible calling convention
-                    asm volatile ("call *%2\n"
-                      : "=r" (clicked) : "a" (1), "g" (p_btn->CallBackFn));
+                    clicked = p_btn->CallBackFn(1);
                     if (clicked)
                         smpl_id = 111;
                     else
@@ -1473,84 +1555,133 @@ ubyte flashy_draw_purple_button(struct ScreenButton *p_btn)
           lbDisplay.DrawFlags |= Lb_TEXT_HALIGN_CENTER;
     }
     if (p_btn->DrawTextFn != NULL) {
-        ubyte drawn;
-        //p_btn->DrawTextFn(p_btn); -- incompatible calling convention
-        asm volatile ("call *%2\n"
-          : "=r" (drawn) : "a" (p_btn), "g" (p_btn->DrawTextFn));
+        p_btn->DrawTextFn(p_btn);
     }
     lbDisplay.DrawFlags = 0;
     return ret;
-#endif
 }
 
-ubyte button_text(struct ScreenButton *p_btn)
+ubyte label_text(struct ScreenButton *p_btn)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_button_text\n"
-        : "=r" (ret) : "a" (p_btn));
-    return ret;
-#endif
     short text_x, text_y;
     short text_w, text_h;
 
     lbFontPtr = p_btn->Font;
     text_w = my_string_width(p_btn->Text);
-    text_h = font_height('A');
+    text_h = my_char_height('A');
     text_x = p_btn->X + ((p_btn->Width - text_w) >> 1) + 1;
     text_y = p_btn->Y + ((p_btn->Height - text_h) >> 1);
-    my_set_text_window(text_x, text_y, lbDisplay.GraphicsScreenWidth, text_y + text_h);
+    my_set_text_window(text_x, text_y,
+      lbDisplay.GraphicsScreenWidth, text_y + text_h);
     if (p_btn->Flags & 0x80) {
         p_btn->TextFadePos = -3;
         p_btn->Flags &= ~GBxFlg_Unkn0080;
     }
-    return flashy_draw_text(0, 0, p_btn->Text, p_btn->TextSpeed, p_btn->TextTopLine,
+    return flashy_draw_text(0, 0, p_btn->Text,
+      p_btn->TextSpeed, p_btn->TextTopLine,
+      &p_btn->TextFadePos, 0);
+}
+
+ubyte button_text(struct ScreenButton *p_btn)
+{
+    short text_x, text_y;
+    short text_w, text_h;
+
+    lbFontPtr = p_btn->Font;
+    text_w = my_string_width(p_btn->Text);
+    text_h = my_char_height('A');
+    text_x = p_btn->X + ((p_btn->Width - text_w) >> 1) + 1;
+    text_y = p_btn->Y + ((p_btn->Height - text_h) >> 1);
+    my_set_text_window(text_x, text_y,
+      lbDisplay.GraphicsScreenWidth, text_y + text_h);
+    if (p_btn->Flags & 0x80) {
+        p_btn->TextFadePos = -3;
+        p_btn->Flags &= ~GBxFlg_Unkn0080;
+    }
+    return flashy_draw_text(0, 0, p_btn->Text,
+      p_btn->TextSpeed, p_btn->TextTopLine,
       &p_btn->TextFadePos, 1);
 }
 
 ubyte info_box_text(struct ScreenInfoBox *p_box)
 {
-    ubyte ret;
-    asm volatile ("call ASM_info_box_text\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
+    short txwidth, lnheight;
+    short scr1_x, scr1_y;
+    short scr2_x, scr2_y;
+    ubyte drawn;
+
+    if ((p_box->Flags & 0x0080) != 0)
+    {
+        p_box->TextFadePos1 = -5;
+        p_box->TextFadePos2 = -5;
+        p_box->Flags &= ~0x0080;
+    }
+    {
+        lbFontPtr = p_box->Font1;
+        lnheight = my_char_height('A');
+        scr1_x = p_box->X + 3;
+        scr1_y = p_box->Y + 3;
+        scr2_x = p_box->X + p_box->Width;
+        scr2_y = p_box->Y + 3 + lnheight;
+        my_set_text_window(scr1_x, scr1_y, scr2_x, scr2_y);
+        drawn = flashy_draw_text(0, 0, p_box->Text1,
+          p_box->TextSpeed, 0, &p_box->TextFadePos1, 0);
+    }
+    if (drawn != 0)
+    {
+        lbFontPtr = p_box->Font2;
+        lnheight = my_char_height('A');
+        scr2_x = p_box->X + p_box->Width;
+        scr2_y = p_box->Y + p_box->Height;
+        txwidth = my_string_width(p_box->Text2);
+        scr1_x = scr2_x - txwidth - 2;
+        scr1_y = p_box->Y + ((p_box->Height - 1 - lnheight) >> 1);
+        my_set_text_window(scr1_x, scr1_y, scr2_x, scr2_y);
+        drawn = flashy_draw_text(0, 0, p_box->Text2,
+          p_box->TextSpeed, 0, &p_box->TextFadePos2, 0);
+    }
+    return drawn;
 }
 
-void draw_triangle_purple_list(int x1, int y1, int x2, int y2, int x3, int y3, TbPixel colour)
+void draw_triangle_purple_list(int x1, int y1,
+  int x2, int y2, int x3, int y3, TbPixel colour)
 {
-    asm volatile (
-      "push %6\n"
-      "push %5\n"
-      "push %4\n"
-      "call ASM_draw_triangle_purple_list\n"
-        : : "a" (x1), "d" (y1), "b" (x2), "c" (y2), "g" (x3), "g" (y3), "g" (colour));
+    struct PurpleDrawItem *p_pditem;
+
+    p_pditem = &purple_draw_list[purple_draw_index];
+    purple_draw_index++;
+
+    p_pditem->U.Triangle.X1 = lbDisplay.GraphicsWindowX + x1;
+    p_pditem->U.Triangle.Y1 = lbDisplay.GraphicsWindowY + y1;
+    p_pditem->U.Triangle.X2 = lbDisplay.GraphicsWindowX + x2;
+    p_pditem->U.Triangle.Y2 = lbDisplay.GraphicsWindowY + y2;
+    p_pditem->U.Triangle.X3 = lbDisplay.GraphicsWindowX + x3;
+    p_pditem->U.Triangle.Y3 = lbDisplay.GraphicsWindowY + y3;
+    p_pditem->U.Triangle.Colour = colour;
+    p_pditem->Flags = lbDisplay.DrawFlags;
+    p_pditem->Type = PuDT_TRIANGLE;
 }
 
 void draw_flic_purple_list(void (*fn)())
 {
-#if 0
-    asm volatile ("call ASM_draw_flic_purple_list\n"
-        : : "a" (fn));
-    return;
-#endif
-    struct PurpleDrawItem *pditem;
+    struct PurpleDrawItem *p_pditem;
 
-    pditem = &purple_draw_list[purple_draw_index];
+    p_pditem = &purple_draw_list[purple_draw_index];
     purple_draw_index++;
 
-    pditem->U.Flic.Function = fn;
-    pditem->U.Flic.Colour = lbDisplay.DrawColour;
-    pditem->Flags = lbDisplay.DrawFlags;
-    pditem->Type = PuDT_FLIC;
+    p_pditem->U.Flic.Function = fn;
+    p_pditem->U.Flic.Colour = lbDisplay.DrawColour;
+    p_pditem->Flags = lbDisplay.DrawFlags;
+    p_pditem->Type = PuDT_FLIC;
 }
 
 void draw_noise_box_purple_list(int x, int y, ulong width, ulong height)
 {
-    struct PurpleDrawItem *pditem;
+    struct PurpleDrawItem *p_pditem;
 
     draw_box_purple_list(x, y, width, height, 0);
-    pditem = &purple_draw_list[purple_draw_index - 1];
-    pditem->Type = PuDT_NOISEBOX;
+    p_pditem = &purple_draw_list[purple_draw_index - 1];
+    p_pditem->Type = PuDT_NOISEBOX;
 }
 
 /******************************************************************************/

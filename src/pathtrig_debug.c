@@ -43,7 +43,7 @@ static void print_walk_items_for_face(short face)
     {
         struct SingleObjectFace3 *p_face;
 
-        p_face = &game_object_faces[face];
+        p_face = &game_object_faces3[face];
         wh = p_face->WalkHeader;
     }
     else if (face < 0)
@@ -59,7 +59,7 @@ static void print_walk_items_for_face(short face)
     p_walk_head = &game_walk_headers[wh];
     for (wi = p_walk_head->StartItem;
       wi < p_walk_head->StartItem + p_walk_head->Count; wi++) {
-        LOGSYNC("face %d walkface %d", (int)face, (int)game_walk_items[wi]);
+        LOGSYNC_F("face %d walkface %d", (int)face, (int)game_walk_items[wi]);
     }
 }
 
@@ -67,9 +67,9 @@ void print_walk_items(void)
 {
     short face;
 
-    for (face = 1; face < next_object_face; face++)
+    for (face = 1; face < next_object_face3; face++)
     {
-        if ((game_object_faces[face].GFlags & 0x04) != 0)
+        if ((game_object_faces3[face].GFlags & 0x04) != 0)
             print_walk_items_for_face(face);
     }
     for (face = 1; face < next_object_face4; face++)
@@ -87,14 +87,14 @@ void print_mapel_collision_columns(void)
     {
         for (tile_z = 0; tile_z < MAP_TILE_HEIGHT; tile_z++)
         {
-            struct MyMapElement *p_mapel;
             struct ColColumn *p_ccol;
+            ushort ccol;
 
-            p_mapel = &game_my_big_map[MAP_TILE_WIDTH * tile_z + tile_x];
-            if (p_mapel->ColumnHead == 0) continue;
-            p_ccol = &game_col_columns[p_mapel->ColumnHead];
+            ccol = get_mapel_col_column_head(tile_x, tile_z);
+            if (ccol == 0) continue;
+            p_ccol = &game_col_columns[ccol];
 
-            LOGSYNC("%02d,%02d qbits %04x %04x %04x %04x", (int)tile_x, (int)tile_z,
+            LOGSYNC_F("%02d,%02d qbits %04x %04x %04x %04x", (int)tile_x, (int)tile_z,
               (int)p_ccol->QBits[0], (int)p_ccol->QBits[1],
               (int)p_ccol->QBits[2], (int)p_ccol->QBits[3]);
         }
@@ -123,7 +123,7 @@ void print_collision_vects(void)
                 p_colvect = &game_col_vects[p_cvlist->Vect];
 
 
-                LOGSYNC("%02d,%02d ColVectList Obj %d Vect %d Face %hd P1=%hd,%hd,%hd P2=%hd,%hd,%hd",
+                LOGSYNC_F("%02d,%02d ColVectList Obj %d Vect %d Face %hd P1=%hd,%hd,%hd P2=%hd,%hd,%hd",
                   (int)tile_x, (int)tile_z, (int)p_cvlist->Object,
                   (int)p_cvlist->Vect, p_colvect->Face,
                   p_colvect->X1, p_colvect->Y1, p_colvect->Z1,
@@ -152,7 +152,7 @@ void print_triangulation_trigs(void)
         p_pt1 = &triangulation[0].Points[p_tri->point[1]];
         p_pt2 = &triangulation[0].Points[p_tri->point[2]];
 
-        LOGSYNC("Tri pt0(%d,%d) pt1(%d,%d) pt2(%d,%d) jump=%d, solid=%d, enter=0x%x",
+        LOGSYNC_F("Tri pt0(%d,%d) pt1(%d,%d) pt2(%d,%d) jump=%d, solid=%d, enter=0x%x",
           (int)p_pt0->x, (int)p_pt0->y,
           (int)p_pt1->x, (int)p_pt1->y,
           (int)p_pt2->x, (int)p_pt2->y,
@@ -173,7 +173,7 @@ void print_triangulation_points(void)
             continue;
         p_pt = &triangulation[0].Points[pt];
 
-        LOGSYNC("Pt(%d,%d)",
+        LOGSYNC_F("Pt(%d,%d)",
           (int)p_pt->x, (int)p_pt->y);
     }
 }
@@ -241,6 +241,11 @@ void draw_triangulation_palette(ubyte *pal)
     }
 }
 
+/** Draw all pathfinding triangles, with colors marking passability.
+ *
+ * This debug drawing is typically used to save image file, not to draw
+ * on real screen. It changes screen buffer directly, without drawlists.
+ */
 void draw_triangulation_debug(int beg_x, int beg_y, int cor_shl)
 {
     int tri;
@@ -294,7 +299,6 @@ void draw_triangulation_debug(int beg_x, int beg_y, int cor_shl)
             if (iflg & 0x40) y2++;
         }
         lbDisplay.DrawFlags = 0;
-        //LbDrawTriangle(x0, y0, x2, y2, x1, y1, col); // this function is buggy for some coords
 
         col = (p_tri->enter & 0x01) ? 192 : 15;
         LbDrawLine(x0, y0, x1, y1, col);
@@ -322,13 +326,13 @@ void save_triangulation_png(const char *fname)
     ubyte *pal;
     ubyte *img;
 
-    pal = malloc(256*3);
-    img = malloc(img_dim*img_dim);
+    pal = LbMemoryAlloc(256*3);
+    img = LbMemoryAlloc(img_dim*img_dim);
     draw_triangulation_palette(pal);
     draw_triangulation_debug_image(img, margin, margin, img_dim, img_dim, cor_shl);
     LbPngSave(fname, img, img_dim, img_dim, pal, true);
-    free(pal);
-    free(img);
+    LbMemoryFree(pal);
+    LbMemoryFree(img);
 }
 
 /******************************************************************************/

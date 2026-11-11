@@ -31,6 +31,11 @@
 #include "weapon.h"
 
 /******************************************************************************/
+/** Problematic tile for mapwho debug.
+ */
+short bad_mapwho_tl_x = -1;
+short bad_mapwho_tl_z = -1;
+
 
 /** Searches for a thing of given type on the specific mapwho tile.
  * Besides being given a title, the thing must also meet circular range condition.
@@ -81,7 +86,10 @@ ThingIdx find_thing_on_mapwho_tile_within_circle_with_bfilter(short tile_x, shor
         }
         k++;
         if (k >= STHINGS_LIMIT+THINGS_LIMIT) {
-            LOGERR("Infinite loop in mapwho things list");
+            LOGERR("Infinite loop in mapwho (%d,%d) things list",
+              (int)tile_x, (int)tile_z);
+            bad_mapwho_tl_x = tile_x;
+            bad_mapwho_tl_z = tile_z;
             break;
         }
     }
@@ -146,7 +154,10 @@ ThingIdx find_thing_on_mapwho_tile_within_circle_with_mfilter(s32 *p_min_fval, s
         }
         k++;
         if (k >= STHINGS_LIMIT+THINGS_LIMIT) {
-            LOGERR("Infinite loop in mapwho things list");
+            LOGERR("Infinite loop in mapwho (%d,%d) things list",
+              (int)tile_x, (int)tile_z);
+            bad_mapwho_tl_x = tile_x;
+            bad_mapwho_tl_z = tile_z;
             break;
         }
     }
@@ -281,11 +292,6 @@ static ThingIdx find_thing_type_on_same_type_list_within_circle_with_bfilter(sho
             // Per thing code start
             if (p_sthing->Type == ttype) {
                 if ((p_sthing->SubType == subtype) || (subtype == -1)) {
-#if 0
-                    func_6fd1c(PRCCOORD_TO_MAPCOORD(p_sthing->X), PRCCOORD_TO_MAPCOORD(p_sthing->Y),
-                      PRCCOORD_TO_MAPCOORD(p_sthing->Z), X, PRCCOORD_TO_MAPCOORD(p_sthing->Y), Z, colour_lookup[ColLU_RED]);
-#endif
-
                     if (thing_is_within_circle(thing, X, Z, R)) {
                         if (filter(thing, params))
                             return thing;
@@ -302,10 +308,6 @@ static ThingIdx find_thing_type_on_same_type_list_within_circle_with_bfilter(sho
             // Per thing code start
             if (p_thing->Type == ttype) {
                 if ((p_thing->SubType == subtype) || (subtype == -1)) {
-#if 0
-                    func_6fd1c(PRCCOORD_TO_MAPCOORD(p_thing->X), PRCCOORD_TO_MAPCOORD(p_thing->Y),
-                      PRCCOORD_TO_MAPCOORD(p_thing->Z), X, PRCCOORD_TO_MAPCOORD(p_thing->Y), Z, colour_lookup[ColLU_RED]);
-#endif
                     if (thing_is_within_circle(thing, X, Z, R)) {
                         if (filter(thing, params))
                             return thing;
@@ -878,7 +880,7 @@ ThingIdx search_things_for_index(short index)
         {
             p_thing = &things[thing];
             if (index == p_thing->ThingOffset) {
-                if (p_thing->Type != TT_UNKN33)
+                if (p_thing->Type != TT_VEH_TURRET)
                     return thing;
             }
         }
@@ -1024,7 +1026,7 @@ struct Thing *check_for_radius_hit_person(int prc_x, int prc_y, int prc_z,
                   group = 99;
               if ((p_thing->U.UPerson.EffectiveGroup != group) || (group >= 100))
               {
-                if (!thing_group_have_truce(group, p_thing->U.UPerson.EffectiveGroup)
+                if (!groups_have_truce(group, p_thing->U.UPerson.EffectiveGroup)
                   && (p_thing->Type == TT_PERSON) && (p_thing != p_owner))
                 {
                     if ((p_thing->State != PerSt_DEAD) && (p_thing->State != PerSt_PERSON_BURNING) && (p_thing->Flag & TngF_Destroyed) == 0)
@@ -1077,6 +1079,38 @@ struct Thing *check_for_radius_hit_person(int prc_x, int prc_y, int prc_z,
     }
     return NULL;
 #endif
+}
+
+short find_nearest_person_min(int x, int y, int z,
+  int n_dist, int *a_dist, int angle1, u32 group_bits)
+{
+    short ret;
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[3];
+
+    stkargs[0] = (int)(intptr_t)a_dist;
+    stkargs[1] = (int)(intptr_t)angle1;
+    stkargs[2] = (int)(intptr_t)group_bits;
+
+    asm volatile (
+      "push 8(%5)\n"
+      "push 4(%5)\n"
+      "push 0(%5)\n"
+      "call ASM_find_nearest_person_min\n"
+        : "=r" (ret)
+        : "a" (x), "d" (y), "b" (z), "c" (n_dist), "S" (stkargs)
+        : "cc", "memory");
+    return ret;
+}
+
+struct Thing *check_for_people(int x, int y, int z, ushort radius)
+{
+    struct Thing *ret;
+    asm volatile (
+      "call ASM_check_for_people\n"
+        : "=r" (ret) : "a" (x), "d" (y), "b" (z), "c" (radius));
+    return ret;
 }
 
 /******************************************************************************/

@@ -34,6 +34,14 @@ extern struct TbSprite *pointer_sprites_end;
 extern ubyte *pointer_data;
 extern ubyte *pointer_data_end;
 
+/** In-game panel sprites.
+ */
+extern struct TbSprite *pop1_sprites;
+extern struct TbSprite *pop1_sprites_end;
+extern ubyte *pop1_data;
+extern ubyte *pop1_data_end;
+extern short pop1_sprites_scale;
+
 extern struct TbSprite *small_font;
 extern struct TbSprite *small_font_end;
 extern ubyte *small_font_data;
@@ -78,18 +86,12 @@ extern struct TbSprite *fepanel_sprites;
 extern struct TbSprite *fepanel_sprites_end;
 extern ubyte *fepanel_sprites_data;
 
-/** In-game panel sprites.
+/** Data for in-mission sprites.
+ *
+ * The references to actual sprites are declared within rendering library.
  */
-extern struct TbSprite *pop1_sprites;
-extern struct TbSprite *pop1_sprites_end;
-extern ubyte *pop1_data;
-extern ubyte *pop1_data_end;
-extern short pop1_sprites_scale;
-
-extern struct TbSprite *m_sprites;
-extern struct TbSprite *m_sprites_end;
-extern ubyte *m_spr_data;
-extern ubyte *m_spr_data_end;
+extern ubyte *m_sprites_data;
+extern ubyte *m_sprites_data_end;
 
 extern ubyte *dword_1C6DE4;
 extern ubyte *dword_1C6DE8;
@@ -114,7 +116,8 @@ TbResult load_sprites_fe_icons(ubyte **pp_buf,
 void setup_sprites_fe_icons(void);
 void reset_sprites_fe_icons(void);
 
-TbResult load_sprites_wepicons(ubyte **pp_buf, const char *dir);
+TbResult load_sprites_wepicons(ubyte **pp_buf,
+  const char *dir, short styleno, short max_detail);
 void setup_sprites_wepicons(void);
 void reset_sprites_wepicons(void);
 

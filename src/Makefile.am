@@ -4,25 +4,6 @@ bindir = $(prefix)/$(PACKAGE)
 MKW = $(PYTHON) $(top_srcdir)/util/mkwrappers
 
 syndwarsfx_SOURCES = \
-	app_gengh.c \
-	app_gentab.h \
-	app_spr_init.c \
-	ap_gspr_map.c \
-	ap_spr_smap.c \
-	app_sprite.h \
-	app_text_cw.c \
-	app_text_cw.h \
-	app_text_sf.c \
-	app_text_sf.h \
-	bflib_joyst.c \
-	bflib_joyst.h \
-	bflib_joyst_s.sx \
-	bflib_render_gpoly.c \
-	bflib_render_plin_s.sx \
-	bflib_render_drspr.c \
-	bflib_render_drspr.h \
-	bflib_render_drspr_s.sx \
-	bflib_snd_mss_s.sx \
 	bflib_vidraw.c \
 	bflib_vidraw.h \
 	bflib_vidraw_s.sx \
@@ -47,12 +28,13 @@ syndwarsfx_SOURCES = \
 	../bfsmacklib/include/smack.h \
 	../bfsmacklib/include/smack2ail.h \
 	../bfsmacklib/src/smack2ail.c \
+	../bfsmacklib/src/smailfile.c \
 	../bfsmacklib/src/bfsmacklib_s.sx \
-	linksmk.h \
-	linksmk.c \
 	config.h \
 	bmbang.c \
 	bmbang.h \
+	bmcrater.c \
+	bmcrater.h \
 	bat_s.sx \
 	bat.c \
 	bat.h \
@@ -66,42 +48,20 @@ syndwarsfx_SOURCES = \
 	command.h \
 	cybmod.c \
 	cybmod.h \
+	devcreds.c \
+	devcreds.h \
 	display.c \
 	display.h \
 	dos.c \
 	dos.h \
-	drawtext.c \
-	drawtext.h \
-	enginbckt.c \
-	enginbckt.h \
-	engindrwlstm.c \
-	engindrwlstm.h \
-	engindrwlstx.c \
-	engindrwlstx.h \
-	enginfexpl.c \
-	enginfexpl.h \
-	enginfloor.c \
-	enginfloor.h \
-	enginlights.c \
-	enginlights.h \
-	enginpriobjs.c \
-	enginpriobjs.h \
-	enginpritxtr.c \
-	enginpritxtr.h \
-	enginshrapn.c \
-	enginshrapn.h \
-	enginsngobjs.c \
-	enginsngobjs.h \
-	enginsngtxtr.c \
-	enginsngtxtr.h \
-	enginshadws.c \
-	enginshadws.h \
-	enginpeff.c \
-	enginpeff.h \
-	engintrns.c \
-	engintrns.h \
-	enginzoom.c \
-	enginzoom.h \
+	drawtext_wrp.c \
+	drawtext_wrp.h \
+	embedanim.c \
+	embedanim.h \
+	engindrwlstm_wrp.c \
+	engindrwlstm_wrp.h \
+	engindrwlstx_tng.c \
+	engindrwlstx_tng.h \
 	feappbar.c \
 	feappbar.h \
 	febrief.c \
@@ -136,6 +96,8 @@ syndwarsfx_SOURCES = \
 	festorage.h \
 	feworld.c \
 	feworld.h \
+	fmvplay.c \
+	fmvplay.h \
 	guiboxes.c \
 	guiboxes.h \
 	guigraph.c \
@@ -152,20 +114,17 @@ syndwarsfx_SOURCES = \
 	game_save.h \
 	game_speed.c \
 	game_speed.h \
-	game_sprani.c \
-	game_sprani.h \
 	game_sprts.c \
 	game_sprts.h \
 	game.h \
-	globals.h \
+	hud_draw.c \
+	hud_draw.h \
 	hud_panecfg.c \
 	hud_panecfg.h \
 	hud_panel.c \
 	hud_panel.h \
 	hud_target.c \
 	hud_target.h \
-	joy_modul1.sx \
-	joy_modul2.sx \
 	keyboard.c \
 	keyboard.h \
 	lvdraw3d.c \
@@ -187,6 +146,7 @@ syndwarsfx_SOURCES = \
 	mydraw.h \
 	netipx1.sx \
 	netser1.sx \
+	netdos.sx \
 	network.c \
 	network.h \
 	pathtrig.c \
@@ -202,6 +162,8 @@ syndwarsfx_SOURCES = \
 	pepgroup.h \
 	player.c \
 	player.h \
+	plyr_net.c \
+	plyr_net.h \
 	plyr_packet.c \
 	plyr_packet.h \
 	plyr_usrinp.c \
@@ -223,24 +185,31 @@ syndwarsfx_SOURCES = \
 	scandraw.h \
 	sound.c \
 	sound.h \
+	sound_smp_s.sx \
+	sound_heap_s.sx \
 	specblit.c \
 	specblit.h \
 	swars.sx \
 	swlog.h \
 	thing.c \
 	thing.h \
+	thing_expld.c \
+	thing_expld.h \
+	thing_expld_s.sx \
 	thing_search.c \
 	thing_search.h \
 	thing_fire.c \
 	thing_fire.h \
+	thing_fire_s.sx \
 	thing_debug.c \
-	thing_debug_s.sx \
+	thing_onface.h \
+	thing_onface.c \
+	thing_ovmous.h \
+	thing_ovmous.c \
 	tngcolisn.c \
 	tngcolisn.h \
 	tngobjdrw.c \
 	tngobjdrw.h \
-	timer.c \
-	timer.h \
 	osunix.c \
 	osunix.h \
 	util.c \
@@ -260,6 +229,7 @@ syndwarsfx_SOURCES = \
 
 syndwarsfx_CPPFLAGS = \
   -I"$(top_srcdir)/bfsmacklib/include" \
+  -I"$(top_srcdir)/swrendersoft/include" \
   -I"$(top_srcdir)/bfariadne/include"
 
 syndwarsfx_WRAPPERS = wrappers_dos.o wrappers_game.o wrappers_libc.o wrappers_util.o
@@ -278,7 +248,7 @@ endif
 nodist_EXTRA_syndwarsfx_SOURCES = dummy.cxx
 
 # Libraries included with the project
-syndwarsfx_PROJECT_LIBS = ../lib/libbullfrog.a ../lib/libbfsound.a
+syndwarsfx_PROJECT_LIBS = ../lib/libbullfrog.a ../lib/libbfsound.a ../lib/libswrender.a
 
 $(syndwarsfx_OBJECTS) $(bin_PROGRAMS): $(syndwarsfx_PROJECT_LIBS)
 
@@ -289,6 +259,9 @@ syndwarsfx_LDADD = \
 	$(MAKE) -C $(<D) DESTDIR="../" prefix="" install
 
 ../lib/libbfsound.a: ../bfsoundlib/libbfsound.a
+	$(MAKE) -C $(<D) DESTDIR="../" prefix="" install
+
+../lib/libswrender.a: ../swrendersoft/libswrender.a
 	$(MAKE) -C $(<D) DESTDIR="../" prefix="" install
 
 $(syndwarsfx_WRAPPERS:.o=.sx): %.sx: $(top_srcdir)/conf/%.conf

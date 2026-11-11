@@ -27,6 +27,7 @@
 #include "bfmemory.h"
 #include "bfmemut.h"
 #include "bftime.h"
+#include "bfwindows.h"
 
 #include "display.h"
 #include "dos.h"
@@ -67,6 +68,8 @@ struct ModemResponse { // sizeof=0x2C
 #pragma pack()
 /******************************************************************************/
 
+struct TbNetworkService nsvc;
+
 ubyte lbICommSessionActive;
 extern struct TbIPXHandler *IPXHandler;
 extern struct TbIPXPlayer IPXPlayer;
@@ -76,13 +79,13 @@ char ModemRequestString[80];
 extern struct TbUnknCommSt netunkst_1E81E0;
 
 extern struct TbSerialDev *dword_1E85E3;
+ubyte modem_is_configured = 0;
 
+extern int last_pkt_size;
 extern ulong ipx_send_packet_count[8][8];
 extern ulong ipx_got_player_send_packet_count[8];
 extern struct TbIPXPlayerHeader loggon_header;
 extern ubyte player_loggon;
-
-ubyte net_players_num = 1;
 
 extern struct ComHandlerInfo com_dev[4];
 extern struct IPXDatagramBackup datagram_backup[8];
@@ -118,6 +121,10 @@ struct NetworkServiceInfo Network_Service_List[] = {
 };
 
 /******************************************************************************/
+
+// Timeout value adjuster; currently decreases timeouts as the network doesn't work anyway
+#define TIMEOUT_MSEC(s) (s / 100)
+
 TbResult LbNetworkSetSessionCreateFunction(void *func)
 {
     NetworkServicePtr.F.SessionCreate = func;
@@ -273,7 +280,7 @@ void ipx_update(void)
     if (start_time == 0)
         start_time = LbTimerClock();
     curr_time = LbTimerClock();
-    if (curr_time - start_time > 100)
+    if (curr_time - start_time > TIMEOUT_MSEC(10000))
     {
         start_time = curr_time;
         IPXPlayer.Header.field_2A = 1;
@@ -314,7 +321,7 @@ TbResult ipx_create_session(char *a1, const char *a2)
 {
     struct TbIPXHandler *ipxhndl;
     struct TbIPXPlayer *p_plyrdt;
-    ulong tm_start, tm_curr;
+    TbClockMSec start_time, curr_time;
     TbResult ret;
     int i;
 
@@ -324,10 +331,10 @@ TbResult ipx_create_session(char *a1, const char *a2)
         return Lb_FAIL;
     }
 
-    tm_start = clock();
+    start_time = LbTimerClock();
     while (1)
     {
-        tm_curr = clock();
+        curr_time = LbTimerClock();
 #if defined(DOS)||defined(GO32)
         CallIPX(1);
 #endif
@@ -356,8 +363,9 @@ TbResult ipx_create_session(char *a1, const char *a2)
           return ret;
         }
 
-        if (tm_curr - tm_start >= 300)
+        if (curr_time - start_time >= TIMEOUT_MSEC(30000))
             break;
+        LbDoMultitasking();
     }
 
     for (i = 0; i < 16; i++)
@@ -460,8 +468,9 @@ int ipx_session_list(struct IPXSessionList *sesslist, int listlen)
 int ipx_join_session(struct IPXSessionList *p_ipxsess, char *a2)
 {
     struct TbIPXPlayerHeader ipxhead;
-    ulong tm_start, tm_curr;
+    TbClockMSec start_time, curr_time;
     TbResult ret;
+    ushort my_plyr;
     short i, k;
 
     LOGDBG("Starting");
@@ -481,10 +490,12 @@ int ipx_join_session(struct IPXSessionList *p_ipxsess, char *a2)
     strcpy(ipxhead.field_C, a2);
     strcpy(ipxhead.field_4, p_ipxsess->Session.Name);
     ipxhead.field_2 = IPXPlayer.Header.field_2;
+    my_plyr = 0;
 
-    tm_start = clock();
+    start_time = LbTimerClock();
     while ( 1 )
     {
+        curr_time = LbTimerClock();
         memcpy(IPXHandler->PlayerData, &ipxhead, sizeof(struct TbIPXPlayerHeader));
         IPXHandler->field_B = 45;
         memcpy(IPXHandler->field_12, &p_ipxsess->Session.Reserved[16], 6u);
@@ -513,13 +524,14 @@ int ipx_join_session(struct IPXSessionList *p_ipxsess, char *a2)
             if (strcasecmp(p_plyrdt->Header.field_4, p_ipxsess->Session.Name) != 0)
                 continue;
 
-            for (k = 0; k < 8; k++)
+            for (k = 0; k < NET_PLAYERS_COUNT; k++)
             {
                 struct TbIPXOnePlayer *p_nplyr;
-                p_nplyr = &p_plyrdt->Data.Data3.player[k];
+                p_nplyr = &p_plyrdt->Data.Data3.players[k];
                 if (memcmp(p_nplyr->field_4, ipxhead.field_1C, 6) == 0)
                 {
-                    tm_start = 0;
+                    start_time = 0;
+                    my_plyr = k;
                     ret = 1;
                     i = 31;
                     break;
@@ -531,16 +543,14 @@ int ipx_join_session(struct IPXSessionList *p_ipxsess, char *a2)
         {
             int ret2;
             ret2 = 0;
-            if (NetworkServicePtr.F.SessionJoin)
+            if (NetworkServicePtr.F.SessionJoin != NULL)
                 ret2 = NetworkServicePtr.F.SessionJoin();
             if (ret2 == -7)
                 return ret2;
         }
-        tm_curr = clock();
-        if (tm_curr - tm_start > 500)
-        {
+        if (curr_time - start_time > TIMEOUT_MSEC(50000))
             break;
-        }
+        LbDoMultitasking();
     }
     if (ret != -1)
     {
@@ -554,13 +564,13 @@ int ipx_join_session(struct IPXSessionList *p_ipxsess, char *a2)
         memcpy(IPXPlayer.Header.field_1C, IPXHandler->field_2E, sizeof(IPXPlayer.Header.field_1C));
         memcpy(&IPXPlayer.Header.field_20, IPXHandler->field_2E + 4, sizeof(IPXPlayer.Header.field_20));
         memcpy(IPXPlayer.Header.field_22, &IPXHandler->field_2A, sizeof(IPXPlayer.Header.field_22));
-        IPXHandler->field_C = k;
+        IPXHandler->field_C = my_plyr;
         IPXHandler->SessionActive = 1;
         IPXHandler->field_D = p_plyrdt->Header.field_2B;
         IPXPlayer.Data.num_players = p_plyrdt->Data.num_players;
-        IPXPlayer.Data.field_10E = p_plyrdt->Data.field_10E;
+        IPXPlayer.Data.MaxPlayers = p_plyrdt->Data.MaxPlayers;
         IPXPlayer.Header.field_26 = p_plyrdt->Header.field_26;
-        IPXPlayer.Header.field_2B = k;
+        IPXPlayer.Header.field_2B = my_plyr;
         strcpy(IPXPlayer.Header.field_C, a2);
         strcpy(IPXPlayer.Header.field_4, p_plyrdt->Header.field_4);
         memcpy(&IPXPlayer.Data, &p_plyrdt->Data, 0xE0u);
@@ -603,6 +613,12 @@ int ipx_exchange_packets(void *a1, int a2)
     asm volatile ("call ASM_ipx_exchange_packets\n"
         : "=r" (ret) : "a" (a1), "d" (a2) );
     return ret;
+}
+
+void ipx_send_last_packet(int a1)
+{
+    asm volatile ("call ASM_ipx_send_last_packet\n"
+        : : "a" (a1) );
 }
 
 void ipx_shutdown(ushort a1)
@@ -654,13 +670,79 @@ void ipx_openup_listeners(void)
     IPXHandler->SessionActive = 1;
 }
 
-int ipx_stop_network(void)
+void ipx_stop_network(int plyr)
 {
-    int ret;
+#if 0
     LOGDBG("Starting");
     asm volatile ("call ASM_ipx_stop_network\n"
-        : "=r" (ret) : );
-    return ret;
+        : : "a" (plyr) );
+    return;
+#endif
+    TbClockMSec start_time, curr_time;
+    int my_plyr;
+    int i;
+
+    my_plyr = IPXPlayer.Header.field_2B;
+    LOGDBG("Starting, my_plyr=%d plyr=%d", (int)my_plyr, (int)plyr);
+    if (my_plyr == plyr)
+    {
+        if ((IPXHandler->field_D == plyr) && (IPXPlayer.Data.num_players > 1))
+        {
+            start_time = LbTimerClock();
+            while (1)
+            {
+                curr_time = LbTimerClock();
+                for (i = 0; i < 8; i++) {
+                    ipx_send_last_packet(i);
+                }
+                if (NetworkServicePtr.F.netsvcfunc_unkn20 != NULL)
+                    NetworkServicePtr.F.netsvcfunc_unkn20();
+
+                if (curr_time - start_time > TIMEOUT_MSEC(50000))
+                    break;
+                LbDoMultitasking();
+            }
+        }
+        IPXHandler->SessionActive = 0;
+        IPXPlayer.Header.field_2A = 0;
+        IPXPlayer.Header.field_26 = 0;
+        IPXPlayer.Header.field_2C = 0;
+        IPXPlayer.Data.MaxPlayers = 0;
+        IPXPlayer.Header.field_2B = 0;
+        IPXPlayer.Data.num_players = 0;
+        LbMemorySet(&IPXPlayer.Data, 0, 0xE0u);
+        LbMemorySet(IPXPlayer.Header.field_4, 0, sizeof(IPXPlayer.Header.field_4));
+    }
+    else
+    {
+        ipx_got_player_send_packet_count[plyr] = 0;
+        ipx_send_packet_count[plyr][plyr] = 0;
+        ipx_send_packet_count[my_plyr][plyr] = 0;
+
+        if (IPXPlayer.Data.num_players > 0)
+        {
+          IPXPlayer.Data.num_players--;
+          LbMemorySet(&IPXPlayer.Data.Data3.players[plyr], 0, sizeof(struct TbIPXOnePlayer));
+
+          if (plyr == IPXHandler->field_D)
+          {
+            for (i = 0; i < 8; i++)
+            {
+                if (IPXPlayer.Data.Data3.players[i].field_1A)
+                {
+                    IPXHandler->field_D = i;
+                    break;
+                }
+            }
+            last_pkt_size = 0;
+            if (IPXHandler->field_D == IPXPlayer.Header.field_2B)
+                if (IPXPlayer.Header.field_26 > 0)
+                    IPXPlayer.Header.field_26--;
+          }
+        }
+        if (NetworkServicePtr.F.netsvcfunc_unkn20 != NULL)
+            NetworkServicePtr.F.netsvcfunc_unkn20();
+    }
 }
 
 TbResult ipx_get_player_name(char *name, int plyr)
@@ -677,10 +759,10 @@ TbResult ipx_get_player_name(char *name, int plyr)
         return Lb_FAIL;
     if (!IPXHandler->SessionActive)
         return Lb_FAIL;
-    if (!IPXPlayer.Data.Data3.player[plyr].field_1A)
+    if (!IPXPlayer.Data.Data3.players[plyr].field_1A)
         return Lb_FAIL;
 
-    strcpy(name, IPXPlayer.Data.Data3.player[plyr].name);
+    strcpy(name, IPXPlayer.Data.Data3.players[plyr].name);
     return Lb_SUCCESS;
 }
 
@@ -770,7 +852,7 @@ TbResult ipx_send_packet_to_player_wait(int plyr, ubyte *data, int dtlen)
         LOGERR("Cond 1 not met");
         return Lb_OK;
     }
-    if ((plyr >= 8 && plyr != 0xFFFF)
+    if ((plyr >= NET_PLAYERS_COUNT && plyr != 0xFFFF)
       || (plyr == IPXPlayer.Header.field_2B)
       || (plyr != 0xFFFF && !IPXPlayer.Data.Data1.Sub1[plyr].field_47) )
     {
@@ -803,7 +885,7 @@ TbResult ipx_receive_packet_from_player_wait(int plyr, ubyte *data, int dtlen)
         LOGERR("Cond 1 not met");
         return Lb_OK;
     }
-    if ((plyr >= 8)
+    if ((plyr >= NET_PLAYERS_COUNT)
       || (plyr == IPXPlayer.Header.field_2B)
       || (!IPXPlayer.Data.Data1.Sub1[plyr].field_47) )
     {
@@ -827,44 +909,45 @@ TbResult ipx_receive_packet_from_player_wait(int plyr, ubyte *data, int dtlen)
 
 int ipx_session_list_conv(struct TbNetworkSessionList *p_nslist, int listlen)
 {
-    struct TbNetworkSessionList *nslent;
+    struct TbNetworkSessionList *p_nslent;
     struct IPXSessionList ipxsess;
     int n_ent;
     int i, k;
 
     memset(&ipxsess, 0, sizeof(struct IPXSessionList));
 
-    nslent = p_nslist;
+    n_ent = 0;
+    p_nslent = p_nslist;
     for (i = 0; i < listlen; i++)
     {
         TbResult ret;
 
         ret = ipx_session_list(&ipxsess, 1);
-        memset(nslent, 0, sizeof(struct TbNetworkSessionList));
+        memset(p_nslent, 0, sizeof(struct TbNetworkSessionList));
         if (ret != Lb_SUCCESS)
             continue;
-        nslent->NumberOfPlayers = ipxsess.NumberOfPlayers;
-        nslent->Session.GameId = ipxsess.Session.GameId;
-        nslent->Session.HostPlayerNumber = ipxsess.Session.HostPlayerNumber;
-        strcpy(nslent->Session.Name, ipxsess.Session.Name);
+        p_nslent->NumberOfPlayers = ipxsess.NumberOfPlayers;
+        p_nslent->Session.GameId = ipxsess.Session.GameId;
+        p_nslent->Session.HostPlayerNumber = ipxsess.Session.HostPlayerNumber;
+        strcpy(p_nslent->Session.Name, ipxsess.Session.Name);
 
-        for (k = 0; k < 8; k++)
+        for (k = 0; k < NET_PLAYERS_COUNT; k++)
         {
             if (ipxsess.Player[k].Used)
             {
-                nslent->Player[k].Id = 1;
-                nslent->Player[k].PlayerNumber = k;
-                strcpy(nslent->Player[k].Name, ipxsess.Player[k].Name);
+                p_nslent->Player[k].Id = 1;
+                p_nslent->Player[k].PlayerNumber = k;
+                strcpy(p_nslent->Player[k].Name, ipxsess.Player[k].Name);
 
                 if (k == ipxsess.Session.HostPlayerNumber) {
-                    memcpy(&nslent->Session.Reserved[0], &ipxsess.Player[k].Res0, 4);
-                    memcpy(&nslent->Session.Reserved[4], &ipxsess.Player[k].Res4, 4);
-                    memcpy(&nslent->Session.Reserved[8], &ipxsess.Player[k].Res8, 2);
+                    memcpy(&p_nslent->Session.Reserved[0], &ipxsess.Player[k].Res0, 4);
+                    memcpy(&p_nslent->Session.Reserved[4], &ipxsess.Player[k].Res4, 4);
+                    memcpy(&p_nslent->Session.Reserved[8], &ipxsess.Player[k].Res8, 2);
                 }
             }
         }
         n_ent++;
-        nslent++;
+        p_nslent++;
     }
     return n_ent;
 }
@@ -1008,8 +1091,13 @@ void write_buffer(struct TbSerialDev *p_serdev, const ubyte *buf, uint buflen)
         c = buf[i];
         write_char(p_serdev, c);
     }
-#else
+#elif defined(WIN32)
     // On Windows, WriteFile() should be used
+    //uint written;
+    //TbBool ret;
+    //ret = WriteFile(p_serdev->Handle, buf, buflen, &written, NULL);
+    assert(!"not implemented");
+#else
     // On Linux, write the device file with standard file ops
     assert(!"not implemented");
 #endif
@@ -1026,8 +1114,13 @@ uint read_buffer(struct TbSerialDev *p_serdev, const ubyte *buf, uint buflen, ui
             break;
     }
     return i;
+#elif defined(WIN32)
+    // On Windows, ReadFile() should be used
+    //uint received;
+    //TbBool ret;
+    //ret = ReadFile(p_serdev->Handle, buf, buflen, &received, NULL);
+    assert(!"not implemented");
 #else
-    // On Windows, WriteFile() should be used
     // On Linux, write the device file with standard file ops
     assert(!"not implemented");
 #endif
@@ -1109,7 +1202,7 @@ int get_modem_response(struct TbSerialDev *p_serdev)
 {
     const struct ModemResponse *resp;
     char locstr[80];
-    TbClockMSec start_time;
+    TbClockMSec start_time, curr_time;
     int ret;
     int chr;
     ushort lspos, mrpos;
@@ -1123,8 +1216,8 @@ int get_modem_response(struct TbSerialDev *p_serdev)
     lspos = 0;
     while (!done)
     {
-        if (LbTimerClock() - start_time > 4000)
-            return -1;
+        curr_time = LbTimerClock();
+
         chr = read_char(p_serdev);
         if (mrpos >= strlen(ModemRequestString)) {
             mrpos = 0;
@@ -1170,6 +1263,10 @@ int get_modem_response(struct TbSerialDev *p_serdev)
             if (NetworkServicePtr.F.UsedSessionInit() == -7)
                 return -7;
         }
+
+        if (curr_time - start_time > TIMEOUT_MSEC(4000))
+            return -1;
+        LbDoMultitasking();
     }
     return ret;
 }
@@ -1300,9 +1397,9 @@ void net_unkn_post_init_1(struct TbUnknCommSt *p_a1)
 
     p_a1->field_0 = 0;
     p_a1->field_1 = 0;
-    p_a1->WriteCb = 0;
-    p_a1->ReadCb = 0;
-    p_a1->ExchangeCb = 0;
+    p_a1->WriteCb = NULL;
+    p_a1->ReadCb = NULL;
+    p_a1->ExchangeCb = NULL;
     p_a1->field_2 = 0;
     p_a1->field_6 = 0;
     p_a1->field_110 = 0;
@@ -1404,14 +1501,144 @@ void net_unkn_change_state(struct TbUnknCommSt *p_a1)
     LOGSYNC("  WAITING_FOR_DATA = ", p_a1->field_6 ? "TRUE" : "FALSE");
 }
 
-void net_unkn_sub_323(struct TbUnknCommSt *p_a1, ubyte *a2, uint a3)
+void net_unkn_sub_335(struct TbUnknCommSt *p_ucs1, ubyte *p_buf, uint buf_len)
 {
-    assert(!"Not implemented");
+    char locstr[512];
+    uint i;
+
+    if (p_ucs1->WriteCb == NULL) {
+        return;
+    }
+
+    if (p_ucs1->field_1A7 || p_ucs1->field_2B7)
+    {
+        for (i = 0; i < buf_len; i++) {
+            sprintf(&locstr[3 * i], "%02X ", (int)p_buf[i]);
+        }
+    }
+
+    if (p_ucs1->field_1A7) {
+        locstr[3 * buf_len] = '\0';
+        LOGSYNC("TX DATA: %s", locstr);
+    }
+
+    if (p_ucs1->field_2B7)
+    {
+        locstr[3 * buf_len] = '\n';
+        locstr[3 * buf_len + 1] = '\r';
+        p_ucs1->WriteCb((ubyte *)locstr, 3 * buf_len + 2);
+    }
+    else
+    {
+        p_ucs1->WriteCb(p_buf, buf_len);
+    }
 }
 
-void net_unkn_sub_335(struct TbUnknCommSt *p_a1, ubyte *a2, uint a3)
+void net_unkn_sub_323(struct TbUnknCommSt *p_ucs1, ubyte *p_inpbuf, uint inpbuf_len)
 {
-    assert(!"Not implemented");
+    ubyte locdata[128];
+    ubyte lochead[4];
+    uint i, dtlen, pos;
+    ubyte cksum;
+    TbBool no_data;
+
+    if (p_inpbuf == NULL) {
+        return;
+    }
+    no_data = 1;
+    if ((p_ucs1->field_110 != 0) && (inpbuf_len == p_ucs1->field_8D))
+    {
+        for (i = 0; i < inpbuf_len; i++)
+        {
+            if (p_inpbuf[i] != p_ucs1->field_91[i])
+                no_data = 0;
+        }
+    }
+    else
+    {
+        no_data = 0;
+    }
+    if (p_ucs1->field_1AB != 0) {
+        no_data = 0;
+    }
+
+    if (no_data)
+    {
+        cksum = 0;
+        lochead[0] = 0xAD;
+        cksum ^= lochead[0];
+        lochead[2] = p_ucs1->field_0;
+        cksum ^= lochead[2];
+        lochead[1] = cksum & 0x7F;
+        net_unkn_sub_335(p_ucs1, lochead, 3);
+        for (i = 0; i < 3; i++)
+        {
+            p_ucs1->field_A[i] = lochead[i];
+        }
+        p_ucs1->field_89 = 1;
+        return;
+    }
+
+    p_ucs1->field_110 = 0;
+    pos = 0;
+    for (i = 0; i < inpbuf_len; i++)
+    {
+        ubyte c;
+
+        c = p_inpbuf[i] + 0x56;
+        switch (c)
+        {
+        case 0:
+            locdata[pos++] = 0xAE;
+            locdata[pos++] = 0;
+            break;
+        case 1:
+            locdata[pos++] = 0xAE;
+            locdata[pos++] = 1;
+            break;
+        case 2:
+            locdata[pos++] = 0xAE;
+            locdata[pos++] = 2;
+            break;
+        case 3:
+            locdata[pos++] = 0xAE;
+            locdata[pos++] = 3;
+            break;
+        case 4:
+            locdata[pos++] = 0xAE;
+            locdata[pos++] = 4;
+            break;
+        default:
+            locdata[pos++] = p_inpbuf[i];
+            break;
+        }
+    }
+    dtlen = pos;
+
+    cksum = 0;
+    lochead[0] = 0xAA;
+    cksum ^= lochead[0];
+    lochead[1] = dtlen;
+    cksum ^= lochead[1];
+    lochead[3] = p_ucs1->field_0;
+    cksum ^= lochead[3];
+    for (i = 0; i < dtlen; i++) {
+        cksum ^= locdata[i];
+    }
+    lochead[2] = cksum & 0x7F;
+
+    net_unkn_sub_335(p_ucs1, lochead, 4);
+    net_unkn_sub_335(p_ucs1, locdata, dtlen);
+
+    for (i = 0; i < 4; i++)
+        p_ucs1->field_A[i] = lochead[i];
+    for (i = 0; i < dtlen; i++)
+        p_ucs1->field_A[i + 4] = locdata[i];
+
+    p_ucs1->field_89 = 1;
+    p_ucs1->field_8D = inpbuf_len;
+    for (i = 0; i < inpbuf_len; i++)
+        p_ucs1->field_91[i] = p_inpbuf[i];
 }
 
 sbyte net_unkn_sub_324(struct TbUnknCommSt *p_a1, void *a2, intptr_t *params, int a4)
@@ -1541,15 +1768,14 @@ int unkn_exchange(struct TbUnknCommSt *p_a1, void *a2, intptr_t *params)
 
 int run_exchange_func()
 {
-    static uint32_t start_time[4];
-    uint32_t end_time;
-    int idx = 0;
+    static TbClockMSec start_time = 0;
+    TbClockMSec end_time;
 
-    end_time = dos_clock();
-    if ((end_time - start_time[idx]) < 10) {
+    end_time = LbTimerClock();
+    if (end_time - start_time < TIMEOUT_MSEC(1000)) {
         return 0;
     }
-    start_time[idx] = end_time;
+    start_time = end_time;
 
     if (NetworkServicePtr.F.SessionExchange == NULL) {
         return 0;
@@ -1559,13 +1785,6 @@ int run_exchange_func()
 
 struct TbSerialDev *LbCommInit(ushort idx)
 {
-#if 0
-    struct TbSerialDev *ret;
-    LOGDBG("Starting");
-    asm volatile ("call ASM_LbCommInit\n"
-        : "=r" (ret) : "a" (idx) );
-    return ret;
-#else
     struct TbSerialDev *p_serdev;
 
     assert(sizeof(struct TbSerialDev) == 4301);
@@ -1612,7 +1831,6 @@ struct TbSerialDev *LbCommInit(ushort idx)
     net_unkn_post_init_3(&netunkst_1E81E0, net_unkn_callback2);
 
     return p_serdev;
-#endif
 }
 
 TbResult LbCommSetBaud(int rate, ushort dev_id)
@@ -1633,12 +1851,6 @@ TbResult LbCommSetBaud(int rate, ushort dev_id)
 
 int LbCommExchange(ushort idx, void *data, int datalen)
 {
-#if 0
-    int ret;
-    asm volatile ("call ASM_LbCommExchange\n"
-        : "=r" (ret) : "a" (idx), "d" (data), "b" (datalen) );
-    return ret;
-#else
     struct TbSerialDev *p_serdev;
     intptr_t params[2];
 
@@ -1654,7 +1866,7 @@ int LbCommExchange(ushort idx, void *data, int datalen)
     if (p_serdev->num_players <= 1) {
         return 1;
     }
-    if ( p_serdev->field_10A9 )
+    if (p_serdev->SessionOwnerLocal)
     {
         if (run_exchange_func() == -7)
             return -7;
@@ -1675,7 +1887,6 @@ int LbCommExchange(ushort idx, void *data, int datalen)
             return -7;
     }
     return 1;
-#endif
 }
 
 int LbCommStopExchange(ubyte a1)
@@ -2216,7 +2427,7 @@ TbResult LbNetworkAnswer(void)
     return ret;
 }
 
-TbResult LbNetworkSessionStop(void)
+TbResult LbNetworkSessionStop(int plyr)
 {
     struct TbSerialDev *serhead;
     TbResult ret;
@@ -2225,7 +2436,7 @@ TbResult LbNetworkSessionStop(void)
     switch (NetworkServicePtr.I.Type)
     {
     case NetSvc_IPX:
-        ipx_stop_network();
+        ipx_stop_network(plyr);
         ret = Lb_SUCCESS;
         break;
     case NetSvc_COM1:
@@ -2260,7 +2471,7 @@ TbResult LbNetworkHostPlayerNumber(void)
     case NetSvc_COM3:
     case NetSvc_COM4:
         serhead = NetworkServicePtr.I.Id;
-        if (!serhead->field_10A9)
+        if (!serhead->SessionOwnerLocal)
             ret = 0;
         else
             ret = 1;
@@ -2299,7 +2510,7 @@ int LbNetworkPlayerNumber(void)
     case NetSvc_COM3:
     case NetSvc_COM4:
         serhead = NetworkServicePtr.I.Id;
-        if (!serhead->field_10A9)
+        if (!serhead->SessionOwnerLocal)
             ret = 0;
         else
             ret = 1;
@@ -2529,7 +2740,7 @@ TbResult LbCommSessionCreate(struct TbSerialDev *serhead, const char *sess_name,
     TbResult ret;
 
     LOGDBG("Starting");
-    serhead->field_10A9 = 1;
+    serhead->SessionOwnerLocal = 1;
     strcpy(serhead->field_10AD, a2);
 
     exchange_cb_bkp = NetworkServicePtr.F.SessionExchange;
@@ -2553,7 +2764,8 @@ TbResult LbCommSessionJoin(struct TbSerialDev *serhead, char *sess_name, const c
     TbResult ret;
 
     LOGDBG("Starting");
-    serhead->field_10A9 = 0;
+    LbMemorySet(locstr, 0, sizeof(locstr));
+    serhead->SessionOwnerLocal = 0;
     strcpy(&serhead->field_10AD[16], a2);
 
     exchange_cb_bkp = NetworkServicePtr.F.SessionExchange;
@@ -2582,7 +2794,7 @@ TbResult LbNetworkSessionCreate(struct TbNetworkSession *session, char *a2)
     switch (NetworkServicePtr.I.Type)
     {
     case NetSvc_IPX:
-        IPXPlayer.Data.field_10E = session->MaxPlayers;
+        IPXPlayer.Data.MaxPlayers = session->MaxPlayers;
         ret = ipx_create_session(session->Name, a2);
         break;
     case NetSvc_COM1:
@@ -2695,7 +2907,7 @@ void net_system_init0(void)
     LbNetworkSetSessionAnswerFunction(my_net_session_callback);
     LbNetworkSetSessionHangUpFunction(my_net_session_callback);
     if (LbNetworkReadConfig("modem.cfg") != Lb_FAIL)
-        data_1c4a70 = 1;
+        modem_is_configured = 1;
 }
 
 void net_system_init2(void)
@@ -2708,7 +2920,7 @@ void net_system_init2(void)
     LbNetworkSetSessionAnswerFunction(my_net_session_callback);
     LbNetworkSetSessionHangUpFunction(my_net_session_callback);
     if (LbNetworkReadConfig("modem.cfg") != Lb_FAIL)
-        data_1c4a70 = 1;
+        modem_is_configured = 1;
 }
 
 void net_system_reset(void)

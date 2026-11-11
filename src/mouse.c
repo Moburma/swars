@@ -77,6 +77,40 @@ TbResult load_mouse_pointers_sprites_for_current_mode(void)
 
 void do_change_mouse(ushort mouse)
 {
-    LbMouseChangeSprite(&pointer_sprites[mouse]);
+    struct TbSprite *p_mspr;
+
+    if (pointer_sprites == NULL) {
+        LOGERR("Pointer sprite not allocated, using none");
+        p_mspr = NULL;
+    } else {
+        p_mspr = &pointer_sprites[mouse];
+    }
+    LbMouseChangeSprite(p_mspr);
     LbMouseChangeSpriteOffset(pointer_hotspot[mouse].x, pointer_hotspot[mouse].y);
+}
+
+void mouse_setup(TbBool show_pointer)
+{
+    short ratio;
+    struct TbSprite *p_mspr;
+
+    if (lbDisplay.GraphicsScreenHeight < 400)
+        ratio = 2 * NORMAL_MOUSE_MOVE_RATIO;
+    else
+        ratio = 1 * NORMAL_MOUSE_MOVE_RATIO;
+
+    if (!show_pointer) {
+        p_mspr = NULL;
+    } else if (pointer_sprites == NULL) {
+        LOGERR("Pointer sprite not allocated, using none");
+        p_mspr = NULL;
+    } else {
+        p_mspr = &pointer_sprites[1];
+    }
+    LbMouseSetup(p_mspr, ratio, ratio);
+}
+
+void mouse_update_on_screen_mode_change(TbBool show_pointer)
+{
+    mouse_setup(show_pointer);
 }

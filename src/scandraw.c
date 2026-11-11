@@ -18,22 +18,28 @@
 /******************************************************************************/
 #include "scandraw.h"
 
+#include <stdlib.h>
 #include "bfanywnd.h"
 #include "bfendian.h"
 #include "bfgentab.h"
 #include "bfline.h"
 #include "bfmath.h"
+#include "bfmemut.h"
 #include "bfpixel.h"
 #include "bfplanar.h"
 
+#include "app_sprite.h"
+#include "engincam.h"
+#include "engincolour.h"
 #include "engintrns.h"
+#include "huddrwlstm.h"
+
 #include "campaign.h"
-#include "display.h"
 #include "thing.h"
+#include "thing_onface.h"
 #include "game_options.h"
 #include "game_speed.h"
 #include "game.h"
-#include "keyboard.h"
 #include "weapon.h"
 #include "swlog.h"
 /******************************************************************************/
@@ -43,37 +49,15 @@ enum ScannerArrowModes {
     SCANNER_ARROW_ORIENTATION,
 };
 
-struct scanstr1 {
-    long u;
-    long v;
-};
-
 struct scanstr2 {
     long du;
     long dv;
 };
 
-struct scanstr3 {
-    long u1;
-    long v1;
-    long u2;
-    long v2;
-};
-
 struct NearestPos {
-    ulong dist;
+    u32 dist;
     short x;
     short y;
-};
-
-/** String of keycodes for changing arrow mode.
- * Cannot be of type TbKeyCode as contains plain numeric value as well.
- */
-const int scanner_arrow_mode_code_keys[] = {
-    KC_NUMPAD3, KC_DECIMAL, KC_NUMPAD1, KC_NUMPAD4,
-    KC_NUMPAD1, KC_NUMPAD5, KC_NUMPAD9, KC_NUMPAD2,
-    KC_NUMPAD6, KC_NUMPAD5, KC_NUMPAD3, KC_NUMPAD5,
-    9999,
 };
 
 /** Points for dotted symmetric circle of size above 15 but below 17.
@@ -394,48 +378,31 @@ const struct TbPoint circle_line_sz5[] = {
 };
 #define circle_line_sz5_count (sizeof(circle_line_sz5)/sizeof(circle_line_sz5[0]))
 
-extern long scanner_next_key_no;
+extern s32 SCANNER_scr_x;
+extern s32 SCANNER_scr_y;
+extern s32 SCANNER_ln_width;
 
-extern long SCANNER_dw064;
-extern long SCANNER_dw068;
-extern long SCANNER_dw06C;
-extern long SCANNER_dw070;
-extern long SCANNER_dw074;
-extern long SCANNER_dw07C;
-extern long SCANNER_dw080;
+/** Shifts for rotation and scaling of the scanner.
+ *
+ * There are 3 sets: high, normal and low precision.
+ */
+extern s32 SCANNER_nrp_sh_y;
+extern s32 SCANNER_nrp_sh_x;
+extern s32 SCANNER_hip_sh_y;
+extern s32 SCANNER_hip_sh_x;
+extern ubyte SCANNER_lop_sh_y;
+extern ubyte SCANNER_lop_sh_x;
 
-extern ubyte SCANNER_bt084;
-extern ubyte SCANNER_bt085;
 extern ubyte SCANNER_brig;
 extern ubyte SCANNER_cont;
 
-extern struct scanstr1 SCANNER_bbpoint[255];
-extern long dword_1DBB64[];
-extern long dword_1DBB6C[512];
+extern s32 SCANNER_unknarr_1DBB6C[512];
 extern TbPixel *SCANNER_screenptr;
-extern ulong SCANNER_keep_arcs;
-extern long scanner_arrow_mode; // = 1;
+extern u32 SCANNER_keep_arcs;
 
-extern struct scanstr3 SCANNER_arcpoint[20];
+ubyte net_player_colours[8];
 
-void SCANNER_process_special_input(void)
-{
-    ushort sckey, nxkey;
-
-    sckey = scanner_arrow_mode_code_keys[scanner_next_key_no];
-    if (is_key_pressed(sckey, KMod_DONTCARE))
-    {
-        clear_key_pressed(sckey);
-        nxkey = scanner_arrow_mode_code_keys[++scanner_next_key_no];
-        if (nxkey == 9999)
-        {
-            scanner_next_key_no = 0;
-            scanner_arrow_mode = scanner_arrow_mode ^ 1;
-        }
-    }
-}
-
-void SCANNER_dnt_SCANNER_dw070_update(ushort flags1)
+void SCANNER_dnt_ln_width_update(ushort flags1)
 {
     s64 nm_prec;
     int nm_shft;
@@ -447,137 +414,281 @@ void SCANNER_dnt_SCANNER_dw070_update(ushort flags1)
 
     if ((flags1 & 0x01) != 0)
     {
-        nm_prec = (s64)SCANNER_dw06C << 16;
-        nm_shft = -(nm_prec / SCANNER_dw064);
+        nm_prec = (s64)SCANNER_scr_x << 16;
+        nm_shft = -(nm_prec / SCANNER_nrp_sh_y);
         n2_cand = nm_shft >> 16;
     }
     else if ((flags1 & 0x02) != 0)
     {
-        nm_prec = (0x1000000 - (s64)SCANNER_dw06C) << 16;
-        nm_shft = nm_prec / SCANNER_dw064;
+        nm_prec = (0x1000000 - (s64)SCANNER_scr_x) << 16;
+        nm_shft = nm_prec / SCANNER_nrp_sh_y;
         n2_cand = nm_shft >> 16;
     }
 
     if ((flags1 & 0x04) != 0)
     {
-        nm_prec = (s64)SCANNER_dw070 << 16;
-        nm_shft = -(nm_prec / SCANNER_dw068);
+        nm_prec = (s64)SCANNER_scr_y << 16;
+        nm_shft = -(nm_prec / SCANNER_nrp_sh_x);
         n1_cand = nm_shft >> 16;
     }
     else if ((flags1 & 0x08) != 0)
     {
-        nm_prec = (0x1000000 - (s64)SCANNER_dw070) << 16;
-        nm_shft = nm_prec / SCANNER_dw068;
+        nm_prec = (0x1000000 - (s64)SCANNER_scr_y) << 16;
+        nm_shft = nm_prec / SCANNER_nrp_sh_x;
         n1_cand = nm_shft >> 16;
     }
-
-    // set SCANNER_dw074 = min(SCANNER_dw074, n2_cand, n1_cand);
-    pv_val = SCANNER_dw074;
+    // set SCANNER_ln_width = min(SCANNER_ln_width, n2_cand, n1_cand);
+    pv_val = SCANNER_ln_width;
     if (n1_cand >= pv_val)
         mn_of2 = pv_val;
     else
         mn_of2 = n1_cand;
-    if (mn_of2 > n2_cand)
-      mn_val = n2_cand;
-    else if (n1_cand >= pv_val)
-        mn_val = pv_val;
+    if (mn_of2 >= n2_cand)
+        mn_val = n2_cand;
     else
-        mn_val = n1_cand;
-    SCANNER_dw074 = mn_val;
+        mn_val = mn_of2;
+    SCANNER_ln_width = mn_val;
 }
 
-void SCANNER_process_bbpoints(void)
+/** Draws one scanner floor map scanline, sampling `SCANNER_data`.
+ */
+void SCANNER_map_line_sample(void)
 {
-    asm volatile (
-      "call ASM_SCANNER_process_bbpoints\n"
-        :  :  : "eax" );
+    s32 n;
+    s32 cu_x, cu_y;
+    TbPixel *p_out;
+    s32 i;
+
+    cu_x = SCANNER_scr_x;
+    cu_y = SCANNER_scr_y;
+    p_out = SCANNER_screenptr;
+    n = SCANNER_ln_width;
+
+    for (i = 0; i < n; i++)
+    {
+        ubyte tile_x, tile_z;
+
+        tile_x = (cu_x >> 16);
+        tile_z = (cu_y >> 16);
+        *p_out = SCANNER_data[tile_x][tile_z];
+        p_out++;
+
+        cu_x += SCANNER_nrp_sh_y;
+        cu_y += SCANNER_nrp_sh_x;
+    }
+
+    SCANNER_scr_x = cu_x;
+    SCANNER_scr_y = cu_y;
+    SCANNER_screenptr = p_out;
+    SCANNER_ln_width = n;
 }
 
-void SCANNER_dnt_sub1_sub1(void)
+/** Draws one scanner floor map scanline for the transparent map variant.
+ *
+ *  Samples `SCANNER_data` and blends it with what is already on screen.
+ */
+void SCANNER_map_line_sample_blend(void)
 {
+#if 0
     asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub1\n"
+      "call ASM_SCANNER_map_line_sample_blend\n"
         :  :  : "eax" );
+    return;
+#endif
+    ubyte tile_x, tile_z;
+    u32 frac_x, frac_z;
+    ubyte step_int_x, step_int_z;
+    u32 step_frac_x, step_frac_z;
+    TbPixel *p_out;
+    s32 n, i;
+
+    tile_x = (SCANNER_scr_x >> 16);
+    tile_z = (SCANNER_scr_y >> 16);
+    frac_x = (SCANNER_scr_x & 0xFFFF) << 16;
+    frac_z = (SCANNER_scr_y & 0xFFFF) << 16;
+
+    step_frac_x = SCANNER_hip_sh_y;
+    step_frac_z = SCANNER_hip_sh_x;
+    step_int_x = SCANNER_lop_sh_y;
+    step_int_z = SCANNER_lop_sh_x;
+    low_trans_grey_brightness = SCANNER_brig;
+
+    p_out = SCANNER_screenptr;
+    n = SCANNER_ln_width;
+
+    for (i = 0; i < n; i++)
+    {
+        TbPixel col1;
+        u32 new_frac;
+
+        col1 = SCANNER_data[tile_x][tile_z];
+        *p_out = LbBlendPixelLowTrans4Remap(pixmap.fade_table, 0, 1, col1, *p_out);
+        p_out++;
+
+        new_frac = frac_x + step_frac_x;
+        tile_x = tile_x + step_int_x + (new_frac < frac_x);
+        frac_x = new_frac;
+
+        new_frac = frac_z + step_frac_z;
+        tile_z = tile_z + step_int_z + (new_frac < frac_z);
+        frac_z = new_frac;
+    }
+
+    SCANNER_scr_x = ((frac_x >> 16) | ((u32)tile_x << 16));
+    SCANNER_scr_y = ((frac_z >> 16) | ((u32)tile_z << 16));
+    SCANNER_screenptr = p_out;
+    SCANNER_ln_width = n;
 }
 
-void SCANNER_dnt_sub1_sub2(void)
+/** Draws blank within scanner floor map scanline.
+ */
+void SCANNER_map_line_blank(void)
 {
-    asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub2\n"
-        :  :  : "eax" );
+    s32 n;
+    TbPixel *p_out;
+
+    p_out = SCANNER_screenptr;
+    n = SCANNER_ln_width;
+
+    LbMemorySet(p_out, 0, n);
+    p_out += n;
+    n = 0;
+
+    SCANNER_screenptr = p_out;
+    SCANNER_ln_width = n;
 }
 
-void SCANNER_dnt_sub1_sub3(void)
+/** Dims (greys out) the pixels within a scanner floor map scanline.
+ *
+ *  This does not blank the pixels to zero - it keeps showing whatever
+ *  underlying view is there, tinted with a translucent grey.
+ */
+void SCANNER_map_line_dim(void)
 {
-    asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub3\n"
-        :  :  : "eax" );
+    s32 cu_x, cu_y;
+    TbPixel *p_out;
+    s32 n, i;
+
+    cu_x = SCANNER_scr_x;
+    cu_y = SCANNER_scr_y;
+    p_out = SCANNER_screenptr;
+    n = SCANNER_ln_width;
+    low_trans_grey_brightness = SCANNER_brig;
+
+    for (i = 0; i < n; i++)
+    {
+        TbPixel col1;
+
+        col1 = 0x49;
+        *p_out = LbBlendPixelLowTrans4Remap(pixmap.fade_table, 4, 1, col1, *p_out);
+        p_out++;
+
+        cu_x += SCANNER_nrp_sh_y;
+        cu_y += SCANNER_nrp_sh_x;
+    }
+
+    SCANNER_scr_x = cu_x;
+    SCANNER_scr_y = cu_y;
+    SCANNER_screenptr = p_out;
+    SCANNER_ln_width = n;
 }
 
-void SCANNER_dnt_sub1_sub4(void)
+/** Blanks scanner map pixels from `SCANNER_screenptr` while given condition holds.
+ */
+static void SCANNER_map_line_blank_while_oob(ushort flags2)
 {
-    asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub4\n"
-        :  :  : "eax" );
+    s32 cu_x, cu_y;
+    TbPixel *p_out;
+    s32 n;
+
+    cu_x = SCANNER_scr_x;
+    cu_y = SCANNER_scr_y;
+    p_out = SCANNER_screenptr;
+    n = SCANNER_ln_width;
+
+    while (n > 0)
+    {
+        TbBool oob;
+
+        oob = true;
+        if ((flags2 & 0x01) != 0)
+            oob = oob && (cu_x < 0);
+        if ((flags2 & 0x02) != 0)
+            oob = oob && (cu_x >= 0x1000000);
+        if ((flags2 & 0x04) != 0)
+            oob = oob && (cu_y < 0);
+        if ((flags2 & 0x08) != 0)
+            oob = oob && (cu_y >= 0x1000000);
+
+        if (!oob)
+            break;
+
+        *p_out = 0;
+        p_out++;
+        cu_x += SCANNER_nrp_sh_y;
+        cu_y += SCANNER_nrp_sh_x;
+        n--;
+    }
+
+    SCANNER_scr_x = cu_x;
+    SCANNER_scr_y = cu_y;
+    SCANNER_screenptr = p_out;
+    SCANNER_ln_width = n;
 }
 
-void SCANNER_dnt_sub1_sub5(void)
+/** Dims scanner map pixels while the given out-of-map-bounds condition holds.
+ */
+static void SCANNER_map_line_dim_while_oob(ushort flags2)
 {
-    asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub5\n"
-        :  :  : "eax" );
+    s32 cu_x, cu_y;
+    TbPixel *p_out;
+    s32 n;
+
+    cu_x = SCANNER_scr_x;
+    cu_y = SCANNER_scr_y;
+    p_out = SCANNER_screenptr;
+    n = SCANNER_ln_width;
+    low_trans_grey_brightness = SCANNER_brig;
+
+    while (n > 0)
+    {
+        TbPixel col1;
+        TbBool oob;
+
+        oob = true;
+        if ((flags2 & 0x01) != 0)
+            oob = oob && (cu_x < 0);
+        if ((flags2 & 0x02) != 0)
+            oob = oob && (cu_x >= 0x1000000);
+        if ((flags2 & 0x04) != 0)
+            oob = oob && (cu_y < 0);
+        if ((flags2 & 0x08) != 0)
+            oob = oob && (cu_y >= 0x1000000);
+
+        if (!oob)
+            break;
+
+        col1 = 0x49;
+        *p_out = LbBlendPixelLowTrans4Remap(pixmap.fade_table, 4, 1, col1, *p_out);
+        p_out++;
+
+        cu_x += SCANNER_nrp_sh_y;
+        cu_y += SCANNER_nrp_sh_x;
+        n--;
+    }
+
+    SCANNER_scr_x = cu_x;
+    SCANNER_scr_y = cu_y;
+    SCANNER_screenptr = p_out;
+    SCANNER_ln_width = n;
 }
 
-void SCANNER_dnt_sub1_sub6(void)
-{
-    asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub6\n"
-        :  :  : "eax" );
-}
-
-void SCANNER_dnt_sub1_sub7(void)
-{
-    asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub7\n"
-        :  :  : "eax" );
-}
-
-void SCANNER_dnt_sub1_sub8(void)
-{
-    asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub8\n"
-        :  :  : "eax" );
-}
-
-void SCANNER_dnt_sub1_sub9(void)
-{
-    asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub9\n"
-        :  :  : "eax" );
-}
-
-void SCANNER_dnt_sub1_sub10(void)
-{
-    asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub10\n"
-        :  :  : "eax" );
-}
-
-void SCANNER_dnt_sub1_sub11(void)
-{
-    asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub11\n"
-        :  :  : "eax" );
-}
-
-void SCANNER_dnt_sub1_sub12(void)
-{
-    asm volatile (
-      "call ASM_SCANNER_dnt_sub1_sub12\n"
-        :  :  : "eax" );
-}
-
-void SCANNER_draw_new_transparent_map_line(int cu_x2, int cu_y2)
+/** Renders one scanner floor map row.
+ *
+ * Uses Cohen-Sutherland-style clipping of texture within the
+ * valid [0, 0x1000000) texture range.
+ */
+static void SCANNER_draw_solid_map_row(int cu_x2, int cu_y2)
 {
     ushort flags1, flags2;
 
@@ -586,79 +697,62 @@ void SCANNER_draw_new_transparent_map_line(int cu_x2, int cu_y2)
            | (0x04 * (cu_x2 < 0))
            | (0x08 * (cu_x2 >= 0x1000000));
 
-    while ( 2 )
+    while (1)
     {
+        s32 cu_x, cu_y;
         int dt_val, pv_val, cu_val;
 
-        flags2 = (0x01 * (SCANNER_dw06C < 0))
-               | (0x02 * (SCANNER_dw06C >= 0x1000000))
-               | (0x04 * (SCANNER_dw070 < 0))
-               | (0x08 * (SCANNER_dw070 >= 0x1000000));
+        cu_x = SCANNER_scr_x;
+        cu_y = SCANNER_scr_y;
+
+        flags2 = (0x01 * (cu_x < 0))
+               | (0x02 * (cu_x >= 0x1000000))
+               | (0x04 * (cu_y < 0))
+               | (0x08 * (cu_y >= 0x1000000));
 
         if ((flags1 | flags2) == 0)
         {
-            SCANNER_dnt_sub1_sub12();
-            break;
+            // Whole rest of the row is within the map texture - sample it.
+            SCANNER_map_line_sample();
+            return;
         }
         if ((flags1 & flags2) != 0)
         {
-            SCANNER_dnt_sub1_sub1();
-            break;
+            // Row leaves the map on this side and never returns - blank it.
+            LbMemorySet(SCANNER_screenptr, 0, SCANNER_ln_width);
+            return;
         }
 
         switch (flags2)
         {
         case 0x00:
-            pv_val = SCANNER_dw074;
-            SCANNER_dnt_SCANNER_dw070_update(flags1);
-            cu_val = SCANNER_dw074;
+            // Currently inside the map, but will leave it before the row
+            // ends. Sample map pixels, then blank the remainder of the row.
+            pv_val = SCANNER_ln_width;
+            SCANNER_dnt_ln_width_update(flags1);
+            cu_val = SCANNER_ln_width;
             dt_val = pv_val - cu_val;
+
             if ((cu_val > 0) && (cu_val <= 400)) {
-                SCANNER_dnt_sub1_sub2();
+                SCANNER_map_line_sample();
             }
             if ((dt_val > 0) && (dt_val <= 400)) {
-                SCANNER_dw074 = dt_val;
-                SCANNER_dnt_sub1_sub3();
+                SCANNER_ln_width = dt_val;
+                SCANNER_map_line_blank();
             }
             break;
         case 0x01:
-            SCANNER_dnt_sub1_sub4();
-            if (SCANNER_dw074)
-                continue;
-            break;
         case 0x02:
-            SCANNER_dnt_sub1_sub5();
-            if (SCANNER_dw074)
-                continue;
-            break;
         case 0x04:
-            SCANNER_dnt_sub1_sub6();
-            if (SCANNER_dw074)
-                continue;
-            break;
         case 0x05:
-            SCANNER_dnt_sub1_sub8();
-            if (SCANNER_dw074)
-                continue;
-            break;
         case 0x06:
-            SCANNER_dnt_sub1_sub9();
-            if (SCANNER_dw074)
-                continue;
-            break;
         case 0x08:
-            SCANNER_dnt_sub1_sub7();
-            if (SCANNER_dw074)
-                continue;
-            break;
         case 0x09:
-            SCANNER_dnt_sub1_sub10();
-            if (SCANNER_dw074)
-                continue;
-            break;
         case 0x0A:
-            SCANNER_dnt_sub1_sub11();
-            if (SCANNER_dw074)
+            // Currently outside the map - blank pixels
+            // until back inside or the row runs out.
+            SCANNER_map_line_blank_while_oob(flags2);
+            if (SCANNER_ln_width != 0)
                 continue;
             break;
         default:
@@ -668,49 +762,141 @@ void SCANNER_draw_new_transparent_map_line(int cu_x2, int cu_y2)
     }
 }
 
-void SCANNER_draw_new_transparent_map(void)
+static void SCANNER_draw_new_transparent_map_row(int cu_x2, int cu_y2)
 {
-#if 0
-    asm volatile ("call ASM_SCANNER_draw_new_transparent_map\n"
-        :  :  : "eax" );
-    return;
-#endif
-    int dt_x, dt_y;
-    int sh_x, sh_y;
-    int cu_x1, cu_y1, cu_x2, cu_y2;
-    long *p_width;
-    TbPixel *p_out;
-    int cu_y;
+    ushort flags1, flags2;
 
-    dt_x = (ingame.Scanner.X2 - ingame.Scanner.X1) >> 1;
-    dt_y = (ingame.Scanner.Y2 - ingame.Scanner.Y1) >> 1;
+    flags1 = (0x01 * (cu_y2 < 0))
+           | (0x02 * (cu_y2 >= 0x1000000))
+           | (0x04 * (cu_x2 < 0))
+           | (0x08 * (cu_x2 >= 0x1000000));
+
+    while (1)
+    {
+        s32 cu_x, cu_y;
+        int dt_val, pv_val, cu_val;
+
+        cu_x = SCANNER_scr_x;
+        cu_y = SCANNER_scr_y;
+
+        flags2 = (0x01 * (cu_x < 0))
+               | (0x02 * (cu_x >= 0x1000000))
+               | (0x04 * (cu_y < 0))
+               | (0x08 * (cu_y >= 0x1000000));
+
+        if ((flags1 | flags2) == 0)
+        {
+            SCANNER_map_line_sample_blend();
+            break;
+        }
+        if ((flags1 & flags2) != 0)
+        {
+            SCANNER_map_line_dim();
+            break;
+        }
+
+        switch (flags2)
+        {
+        case 0x00:
+            pv_val = SCANNER_ln_width;
+            SCANNER_dnt_ln_width_update(flags1);
+            cu_val = SCANNER_ln_width;
+            dt_val = pv_val - cu_val;
+
+            if ((cu_val > 0) && (cu_val <= 400)) {
+                SCANNER_map_line_sample_blend();
+            }
+            if ((dt_val > 0) && (dt_val <= 400)) {
+                SCANNER_ln_width = dt_val;
+                SCANNER_map_line_dim();
+            }
+            break;
+        case 0x01:
+        case 0x02:
+        case 0x04:
+        case 0x05:
+        case 0x06:
+        case 0x08:
+        case 0x09:
+        case 0x0A:
+            SCANNER_map_line_dim_while_oob(flags2);
+            if (SCANNER_ln_width)
+                continue;
+            break;
+        default:
+            break;
+        }
+        break;
+    }
+}
+
+void SCANNER_set_center_point(int cor_x, int cor_z, int angle)
+{
+    ingame.Scanner.MX = cor_x >> 7;
+    ingame.Scanner.MZ = cor_z >> 7;
+    ingame.Scanner.Angle = angle;
+}
+
+void SCANNER_shift_center_point(int dt_cor_x, int dt_cor_z)
+{
+    ingame.Scanner.MX += dt_cor_x >> 7;
+    ingame.Scanner.MZ += dt_cor_z >> 7;
+    if (ingame.Scanner.MX < 0)
+        ingame.Scanner.MX = 0;
+    if (ingame.Scanner.MZ < 0)
+        ingame.Scanner.MZ = 0;
+    if (ingame.Scanner.MX > 256)
+        ingame.Scanner.MX = 256;
+    if (ingame.Scanner.MZ > 256)
+        ingame.Scanner.MZ = 256;
+}
+
+void SCANNER_update_shifts(void)
+{
+    int sh_x, sh_y;
+
     sh_y = (ingame.Scanner.Zoom * lbSinTable[ingame.Scanner.Angle]) >> 8;
     sh_x = (ingame.Scanner.Zoom * lbSinTable[ingame.Scanner.Angle + LbFPMath_PI/2]) >> 8;
 
-    SCANNER_dw07C = sh_y << 16;
-    SCANNER_dw080 = sh_x << 16;
-    SCANNER_bt084 = (sh_y >> 16);
-    SCANNER_bt085 = (sh_x >> 16);
-    SCANNER_brig = ingame.Scanner.Brightness;
-    SCANNER_cont = ingame.Scanner.Contrast;
-    SCANNER_dw064 = sh_y;
-    SCANNER_dw068 = sh_x;
+    SCANNER_hip_sh_y = sh_y << 16;
+    SCANNER_hip_sh_x = sh_x << 16;
+    SCANNER_nrp_sh_y = sh_y;
+    SCANNER_nrp_sh_x = sh_x;
+    SCANNER_lop_sh_y = (sh_y >> 16);
+    SCANNER_lop_sh_x = (sh_x >> 16);
+}
 
-    cu_y2 = (ingame.Scanner.MZ << 16) + sh_y * dt_x + sh_x * dt_y;
-    cu_x2 = (ingame.Scanner.MX << 16) + sh_x * dt_x - sh_y * dt_y;
+static void SCANNER_draw_solid_map(void)
+{
+    s32 dt_x, dt_y;
+    s32 sh_x, sh_y;
+    s32 cu_x1, cu_y1, cu_x2, cu_y2;
+    s32 *p_width;
+    TbPixel *p_out;
+    int cu_y;
+
+    sh_y = SCANNER_nrp_sh_y;
+    sh_x = SCANNER_nrp_sh_x;
+
+    dt_x = (ingame.Scanner.X2 - ingame.Scanner.X1) >> 1;
+    dt_y = (ingame.Scanner.Y2 - ingame.Scanner.Y1) >> 1;
+
     cu_x1 = (ingame.Scanner.MZ << 16) + sh_x * dt_y - sh_y * dt_x;
     cu_y1 = (ingame.Scanner.MX << 16) - sh_x * dt_x - sh_y * dt_y;
+    cu_x2 = (ingame.Scanner.MX << 16) + sh_x * dt_x - sh_y * dt_y;
+    cu_y2 = (ingame.Scanner.MZ << 16) + sh_y * dt_x + sh_x * dt_y;
+
     p_width = SCANNER_width;
     p_out = &lbDisplay.WScreen[ingame.Scanner.X1 + lbDisplay.PhysicalScreenWidth * ingame.Scanner.Y1];
 
     for (cu_y = ingame.Scanner.Y1; cu_y <= ingame.Scanner.Y2; cu_y++)
     {
-        SCANNER_dw06C = cu_x1;
-        SCANNER_dw070 = cu_y1;
-        SCANNER_dw074 = *p_width + 1;
+        SCANNER_scr_x = cu_x1;
+        SCANNER_scr_y = cu_y1;
+        SCANNER_ln_width = *p_width + 1;
         SCANNER_screenptr = p_out;
 
-        SCANNER_draw_new_transparent_map_line(cu_x2, cu_y2);
+        SCANNER_draw_solid_map_row(cu_x2, cu_y2);
 
         p_width++;
         p_out += lbDisplay.PhysicalScreenWidth;
@@ -721,16 +907,48 @@ void SCANNER_draw_new_transparent_map(void)
     }
 }
 
-void unkn_draw_transformed_point(short x, short y, long ptX, long ptY, long ptZ, ubyte colour)
+static void SCANNER_draw_new_transparent_map(void)
 {
-    struct EnginePoint ep;
+    int dt_x, dt_y;
+    int sh_x, sh_y;
+    int cu_x1, cu_y1, cu_x2, cu_y2;
+    s32 *p_width;
+    TbPixel *p_out;
+    int cu_y;
 
-    ep.X3d = ptX - engn_xc;
-    ep.Z3d = ptZ - engn_zc;
-    ep.Y3d = ptY - engn_yc;
-    ep.Flags = 0;
-    transform_point(&ep);
-    LbDrawLine(x, y, ep.pp.X, ep.pp.Y, colour);
+    SCANNER_brig = ingame.Scanner.Brightness;
+    SCANNER_cont = ingame.Scanner.Contrast;
+
+    sh_y = SCANNER_nrp_sh_y;
+    sh_x = SCANNER_nrp_sh_x;
+
+    dt_x = (ingame.Scanner.X2 - ingame.Scanner.X1) >> 1;
+    dt_y = (ingame.Scanner.Y2 - ingame.Scanner.Y1) >> 1;
+
+    cu_x1 = (ingame.Scanner.MZ << 16) + sh_x * dt_y - sh_y * dt_x;
+    cu_y1 = (ingame.Scanner.MX << 16) - sh_x * dt_x - sh_y * dt_y;
+    cu_x2 = (ingame.Scanner.MX << 16) + sh_x * dt_x - sh_y * dt_y;
+    cu_y2 = (ingame.Scanner.MZ << 16) + sh_y * dt_x + sh_x * dt_y;
+
+    p_width = SCANNER_width;
+    p_out = &lbDisplay.WScreen[ingame.Scanner.X1 + lbDisplay.PhysicalScreenWidth * ingame.Scanner.Y1];
+
+    for (cu_y = ingame.Scanner.Y1; cu_y <= ingame.Scanner.Y2; cu_y++)
+    {
+        SCANNER_scr_x = cu_x1;
+        SCANNER_scr_y = cu_y1;
+        SCANNER_ln_width = *p_width + 1;
+        SCANNER_screenptr = p_out;
+
+        SCANNER_draw_new_transparent_map_row(cu_x2, cu_y2);
+
+        p_width++;
+        p_out += lbDisplay.PhysicalScreenWidth;
+        cu_y1 += sh_y;
+        cu_x1 -= sh_x;
+        cu_y2 -= sh_x;
+        cu_x2 += sh_y;
+    }
 }
 
 void draw_objective_point(long x, long y, ThingIdx thing, short a4, ubyte colour)
@@ -753,132 +971,26 @@ void draw_objective_point(long x, long y, ThingIdx thing, short a4, ubyte colour
         ptY = p_thing->Y;
         ptZ = p_thing->Z;
     }
-    unkn_draw_transformed_point(x, y, ptX, ptY, ptZ, colour);
+    draw_mapcoord_to_scrcoord_line(x, y, ptX, ptY, ptZ, colour);
 }
 
-void draw_map_flat_circle(short cor_x, short cor_y, short cor_z, short radius, TbPixel colour)
+//TODO remove when no longer needed - just use the enlist funct directly
+void draw_map_flat_circle(short cor_x, short cor_y_m8, short cor_z,
+  short radius, TbPixel colour)
 {
-#if 0
-    asm volatile (
-      "push %4\n"
-      "call ASM_draw_map_flat_circle\n"
-        : : "a" (cor_x), "d" (cor_y), "b" (cor_z), "c" (radius), "g" (colour));
-#endif
-    struct EnginePoint ep1;
-    struct EnginePoint ep2;
-    int cir_cor_x, cir_cor_z;
-    int cir_nxt_x, cir_nxt_z;
-    ushort slice;
-
-    cir_cor_x = cor_x;
-    cir_cor_z = cor_z + radius;
-    for (slice = 1; slice < 0x40; slice++)
-    {
-        short cir_dt_x, cir_dt_z;
-        cir_dt_x = (radius * lbSinTable[slice * 2 * LbFPMath_PI / 0x40]) >> 16;
-        cir_dt_z = (radius * lbSinTable[LbFPMath_PI/2 + slice * 2*LbFPMath_PI / 0x40]) >> 16;
-        cir_nxt_x = cor_x + cir_dt_x;
-        cir_nxt_z = cor_z + cir_dt_z;
-
-        ep1.X3d = cir_cor_x - engn_xc;
-        ep1.Y3d = cor_y - engn_yc;
-        ep1.Z3d = cir_cor_z - engn_zc;
-        ep1.Flags = 0;
-        transform_point(&ep1);
-        ep2.X3d = cir_nxt_x - engn_xc;
-        ep2.Y3d = cor_y - engn_yc;
-        ep2.Z3d = cir_nxt_z - engn_zc;
-        ep2.Flags = 0;
-        transform_point(&ep2);
-        LbDrawLine(ep1.pp.X, ep1.pp.Y, ep2.pp.X, ep2.pp.Y, colour);
-
-        cir_cor_x = cir_nxt_x;
-        cir_cor_z = cir_nxt_z;
-    }
-    {
-        cir_nxt_x = cor_x;
-        cir_nxt_z = cor_z + radius;
-
-        ep1.X3d = cir_cor_x - engn_xc;
-        ep1.Y3d = cor_y - engn_yc;
-        ep1.Z3d = cir_cor_z - engn_zc;
-        ep1.Flags = 0;
-        transform_point(&ep1);
-        ep2.X3d = cir_nxt_x - engn_xc;
-        ep2.Y3d = cor_y - engn_yc;
-        ep2.Z3d = cir_nxt_z - engn_zc;
-        ep2.Flags = 0;
-        transform_point(&ep2);
-        LbDrawLine(ep1.pp.X, ep1.pp.Y, ep2.pp.X, ep2.pp.Y, colour);
-    }
+    enlist_hud_draw_mapcoord_flat_circle(cor_x, cor_y_m8, cor_z, radius,
+      Lb_SPRITE_OUTLINE, 1, colour);
 }
 
-void draw_map_flat_rect(int cor_x, int cor_y, int cor_z, int size_x, int size_z, TbPixel colour)
+void draw_map_flat_rect(short cor_x, short cor_y_m8, short cor_z,
+  short size_x, short size_z, TbPixel colour)
 {
-#if 0
-    asm volatile (
-      "push %5\n"
-      "push %4\n"
-      "call ASM_draw_map_flat_rect\n"
-        : : "a" (a1), "d" (a2), "b" (a3), "c" (a4), "g" (a5), "g" (a6));
-#endif
-    struct EnginePoint ep1;
-    struct EnginePoint ep2;
-    int cor_x2, cor_z2;
-
-    cor_x2 = cor_x + size_x;
-    cor_z2 = cor_z + size_z;
-
-    ep1.X3d = cor_x  - engn_xc;
-    ep1.Y3d = cor_y  - engn_yc;
-    ep1.Z3d = cor_z  - engn_zc;
-    ep1.Flags = 0;
-    transform_point(&ep1);
-    ep2.X3d = cor_x2 - engn_xc;
-    ep2.Y3d = cor_y  - engn_yc;
-    ep2.Z3d = cor_z  - engn_zc;
-    ep2.Flags = 0;
-    transform_point(&ep2);
-    LbDrawLine(ep1.pp.X, ep1.pp.Y, ep2.pp.X, ep2.pp.Y, colour);
-
-    ep1.X3d = cor_x2 - engn_xc;
-    ep1.Y3d = cor_y  - engn_yc;
-    ep1.Z3d = cor_z  - engn_zc;
-    ep1.Flags = 0;
-    transform_point(&ep1);
-    ep2.X3d = cor_x2 - engn_xc;
-    ep2.Y3d = cor_y  - engn_yc;
-    ep2.Z3d = cor_z2 - engn_zc;
-    ep2.Flags = 0;
-    transform_point(&ep2);
-    LbDrawLine(ep1.pp.X, ep1.pp.Y, ep2.pp.X, ep2.pp.Y, colour);
-
-    ep1.X3d = cor_x2 - engn_xc;
-    ep1.Y3d = cor_y  - engn_yc;
-    ep1.Z3d = cor_z2 - engn_zc;
-    ep1.Flags = 0;
-    transform_point(&ep1);
-    ep2.X3d = cor_x  - engn_xc;
-    ep2.Y3d = cor_y  - engn_yc;
-    ep2.Z3d = cor_z2 - engn_zc;
-    ep2.Flags = 0;
-    transform_point(&ep2);
-    LbDrawLine(ep1.pp.X, ep1.pp.Y, ep2.pp.X, ep2.pp.Y, colour);
-
-    ep1.X3d = cor_x  - engn_xc;
-    ep1.Y3d = cor_y  - engn_yc;
-    ep1.Z3d = cor_z2 - engn_zc;
-    ep1.Flags = 0;
-    transform_point(&ep1);
-    ep2.Flags = 0;
-    ep2.X3d = cor_x  - engn_xc;
-    ep2.Y3d = cor_y  - engn_yc;
-    ep2.Z3d = cor_z  - engn_zc;
-    transform_point(&ep2);
-    LbDrawLine(ep1.pp.X, ep1.pp.Y, ep2.pp.X, ep2.pp.Y, colour);
+    enlist_hud_draw_mapcoord_flat_box(cor_x, cor_y_m8, cor_z, size_x, size_z,
+      Lb_SPRITE_OUTLINE, 1, colour);
 }
 
-void SCANNER_draw_shape_from_points(int x, int y, const struct TbPoint *points, ushort count, TbPixel col)
+void SCANNER_draw_shape_from_points(int x, int y,
+  const struct TbPoint *points, ushort count, TbPixel col)
 {
     int i;
 
@@ -904,7 +1016,8 @@ void SCANNER_draw_shape_from_points(int x, int y, const struct TbPoint *points, 
  *
  * This function assumes graphics window set to the scanner map area.
  */
-void SCANNER_draw_shape_part_from_points(int x, int y, const struct TbPoint *points, ushort count, ushort frame, ushort part, TbPixel col)
+void SCANNER_draw_shape_part_from_points(int x, int y,
+  const struct TbPoint *points, ushort count, ushort frame, ushort part, TbPixel col)
 {
     ushort i;
 
@@ -1190,11 +1303,6 @@ void SCANNER_draw_mark_point3_blink2_filled(int x, int y, TbPixel col)
 
 void SCANNER_draw_mark_point5_blink4(int x, int y, TbPixel col)
 {
-#if 0
-    asm volatile (
-      "call ASM_SCANNER_draw_mark_point5_blink4\n"
-        : : "a" (x), "d" (y), "b" (col));
-#endif
     ushort frame, sz;
 
     frame = gameturn & 3;
@@ -1211,11 +1319,6 @@ void SCANNER_draw_mark_point5_blink4(int x, int y, TbPixel col)
 
 void SCANNER_draw_mark_point7(int x, int y, TbPixel col)
 {
-#if 0
-    asm volatile (
-      "call ASM_SCANNER_draw_mark_point7\n"
-        : : "a" (x), "d" (y), "b" (col));
-#endif
     ushort sz;
 
     sz = SCANNER_scale_size(7);
@@ -1236,13 +1339,6 @@ void SCANNER_draw_circle_point7_flowing(int x, int y, TbPixel col)
         sz = 5;
 
     SCANNER_draw_circle_arc_line(x, y, sz, angle, anpart, col);
-}
-
-void SCANNER_process_arcpoints(void)
-{
-    asm volatile (
-      "call ASM_SCANNER_process_arcpoints\n"
-        :  :  : "eax" );
 }
 
 void SCANNER_draw_orientation_arrow(int pos_x1, int pos_y1, int range, int angle)
@@ -1356,38 +1452,111 @@ static void scanner_coords_line_clip(int *x1, int *y1, int *x2, int *y2, int sc_
 
 static void map_coords_to_scanner(int *sc_x, int *sc_y, int sh_x, int sh_y, int bsh_x, int bsh_y)
 {
-    u32 tmp;
     int rval_xy, rval_yy, rval_yx, rval_xx, rval_div;
     long prec_x, prec_y;
 
-    tmp = (sh_x * bsh_y) & 0xFFFF0000;
-    tmp |= ((sh_x * (s64)bsh_y) >> 32) & 0xFFFF;
-    rval_xy = bw_rotl32(tmp, 16);
+    rval_xy = mul_shift16_sign_pad_lo(sh_x, bsh_y);
 
-    tmp = (sh_y * bsh_y) & 0xFFFF0000;
-    tmp |= ((sh_y * (s64)bsh_y) >> 32) & 0xFFFF;
-    rval_yy = bw_rotl32(tmp, 16);
+    rval_yy = mul_shift16_sign_pad_lo(sh_y, bsh_y);
 
-    tmp = (sh_y * bsh_x) & 0xFFFF0000;
-    tmp |= ((sh_y * (s64)bsh_x) >> 32) & 0xFFFF;
-    rval_yx = bw_rotl32(tmp, 16);
+    rval_yx = mul_shift16_sign_pad_lo(sh_y, bsh_x);
 
-    tmp = (sh_x * bsh_x) & 0xFFFF0000;
-    tmp |= ((sh_x * (s64)bsh_x) >> 32) & 0xFFFF;
-    rval_xx = bw_rotl32(tmp, 16);
+    rval_xx = mul_shift16_sign_pad_lo(sh_x, bsh_x);
 
-    tmp = (sh_y * sh_y) & 0xFFFF0000;
-    tmp |= ((sh_y * (s64)sh_y) >> 32) & 0xFFFF;
-    rval_div = bw_rotl32(tmp, 16);
-    tmp = (sh_x * sh_x) & 0xFFFF0000;
-    tmp |= ((sh_x * (s64)sh_x) >> 32) & 0xFFFF;
-    rval_div += bw_rotl32(tmp, 16);
+    rval_div = mul_shift16_sign_pad_lo(sh_y, sh_y)
+      + mul_shift16_sign_pad_lo(sh_x, sh_x);
 
     prec_y = ((rval_yx - (s64)rval_xy) << 16) / rval_div;
     prec_x = ((rval_xx + (s64)rval_yy) << 16) / rval_div;
 
     *sc_y = prec_y >> 16;
     *sc_x = prec_x >> 16;
+}
+
+/** Draws the BigBlip markers and their boundary-trail lines on top of the scanner map.
+ */
+static void SCANNER_draw_solid_blips(int pos_mx, int pos_mz, int sh_x, int sh_y)
+{
+    struct TbAnyWindow window_bkp;
+    short bn;
+    int sc_width;
+
+    LbScreenStoreGraphicsWindow(&window_bkp);
+
+    sc_width = (ingame.Scanner.X2 - ingame.Scanner.X1) - 24;
+
+    for (bn = 0; bn < SCANNER_BIG_BLIP_COUNT; bn++)
+    {
+        int base_i, i;
+
+        if (ingame.Scanner.BigBlip[bn].Period == 0)
+            continue;
+
+        LbScreenLoadGraphicsWindow(&window_bkp);
+
+        {
+            int bsh_x, bsh_y;
+            int sc_x, sc_y;
+
+            bsh_y = 2 * ingame.Scanner.BigBlip[bn].Z - pos_mz;
+            bsh_x = 2 * ingame.Scanner.BigBlip[bn].X - pos_mx;
+            map_coords_to_scanner(&sc_x, &sc_y, sh_x, sh_y, bsh_x, bsh_y);
+
+            if ((sc_y >= 1) && (ingame.Scanner.Y1 + sc_y <= ingame.Scanner.Y2)
+             && (sc_x >= 1) && (sc_x <= SCANNER_width[sc_y]))
+            {
+                SCANNER_draw_mark_point5_blink4(ingame.Scanner.X1 + sc_x,
+                  ingame.Scanner.Y1 + sc_y, 0x57);
+            }
+        }
+
+        LbScreenSetGraphicsWindow(ingame.Scanner.X1, ingame.Scanner.Y1,
+          ingame.Scanner.X2 - ingame.Scanner.X1 + 1,
+          ingame.Scanner.Y2 - ingame.Scanner.Y1 + 1);
+
+        base_i = bn * 16;
+
+        for (i = 0; i < 16; i++)
+        {
+            int bsh_x, bsh_y;
+            int sc_x, sc_y;
+
+            bsh_y = 2 * SCANNER_bbpoint[i].X - pos_mz;
+            bsh_x = 2 * SCANNER_bbpoint[i].Z - pos_mx;
+            map_coords_to_scanner(&sc_x, &sc_y, sh_x, sh_y, bsh_x, bsh_y);
+
+            SCANNER_unknarr_1DBB6C[2 * (base_i + i) + 0] = sc_x;
+            SCANNER_unknarr_1DBB6C[2 * (base_i + i) + 1] = sc_y;
+        }
+
+        for (i = 0; i < 16; i++)
+        {
+            int ri;
+            int x1, y1, x2, y2;
+
+            ri = base_i + i;
+            x1 = SCANNER_unknarr_1DBB6C[2 * ri + 0];
+            y1 = SCANNER_unknarr_1DBB6C[2 * ri + 1];
+            if (i == 15)
+              ri = base_i + i - 15;
+            else
+              ri = base_i + i + 1;
+            x2 = SCANNER_unknarr_1DBB6C[2 * ri + 0];
+            y2 = SCANNER_unknarr_1DBB6C[2 * ri + 1];
+
+            if ((x1 - sc_width <= y1) || (x2 - sc_width <= y2))
+            {
+                ushort ft_idx;
+
+                scanner_coords_line_clip(&x1, &y1, &x2, &y2, sc_width);
+                ft_idx = 512 * (31 - ingame.Scanner.BigBlip[bn].Counter)
+                           + ingame.Scanner.BigBlip[bn].Colour;
+                LbDrawLine(x1, y1, x2, y2, pixmap.fade_table[ft_idx]);
+            }
+        }
+    }
+
+    LbScreenLoadGraphicsWindow(&window_bkp);
 }
 
 void SCANNER_draw_blips(int pos_mx, int pos_mz, int sh_x, int sh_y)
@@ -1422,12 +1591,12 @@ void SCANNER_draw_blips(int pos_mx, int pos_mz, int sh_x, int sh_y)
             int bsh_x, bsh_y;
             int sc_x, sc_y;
 
-            bsh_y = 2 * SCANNER_bbpoint[i].u - pos_mz;
-            bsh_x = 2 * SCANNER_bbpoint[i].v - pos_mx;
+            bsh_y = 2 * SCANNER_bbpoint[i].X - pos_mz;
+            bsh_x = 2 * SCANNER_bbpoint[i].Z - pos_mx;
             map_coords_to_scanner(&sc_x, &sc_y, sh_x, sh_y, bsh_x, bsh_y);
 
-            dword_1DBB6C[2 * (base_i + i) + 0] = sc_x;
-            dword_1DBB6C[2 * (base_i + i) + 1] = sc_y;
+            SCANNER_unknarr_1DBB6C[2 * (base_i + i) + 0] = sc_x;
+            SCANNER_unknarr_1DBB6C[2 * (base_i + i) + 1] = sc_y;
         }
 
         for (i = 0; i < 16; i++)
@@ -1436,14 +1605,14 @@ void SCANNER_draw_blips(int pos_mx, int pos_mz, int sh_x, int sh_y)
             int x1, y1, x2, y2;
 
             ri = base_i + i;
-            x1 = dword_1DBB6C[2 * ri + 0];
-            y1 = dword_1DBB6C[2 * ri + 1];
+            x1 = SCANNER_unknarr_1DBB6C[2 * ri + 0];
+            y1 = SCANNER_unknarr_1DBB6C[2 * ri + 1];
             if (i == 15)
               ri = base_i + i - 15;
             else
               ri = base_i + i + 1;
-            x2 = dword_1DBB6C[2 * ri + 0];
-            y2 = dword_1DBB6C[2 * ri + 1];
+            x2 = SCANNER_unknarr_1DBB6C[2 * ri + 0];
+            y2 = SCANNER_unknarr_1DBB6C[2 * ri + 1];
 
             if ((x1 - sc_width <= y1) || (x2 - sc_width <= y2))
             {
@@ -1488,14 +1657,14 @@ void SCANNER_draw_arcs(int pos_mx, int pos_mz, int sh_x, int sh_y)
         {
             int bsh_x, bsh_y;
 
-            bsh_y = 2 * SCANNER_arcpoint[bn].u1 - pos_mz;
-            bsh_x = 2 * SCANNER_arcpoint[bn].v1 - pos_mx;
+            bsh_y = 2 * SCANNER_arcpoint[bn].X - pos_mz;
+            bsh_x = 2 * SCANNER_arcpoint[bn].Z - pos_mx;
             map_coords_to_scanner(&base_x, &base_y, sh_x, sh_y, bsh_x, bsh_y);
         }
 
-        base_i = bn * 5;
+        base_i = bn * SCANNER_POINTS_PER_ARC;
 
-        for (i = 1; i < 5; i++)
+        for (i = 1; i < SCANNER_POINTS_PER_ARC; i++)
         {
             int bsh_x, bsh_y;
             int ri;
@@ -1503,8 +1672,8 @@ void SCANNER_draw_arcs(int pos_mx, int pos_mz, int sh_x, int sh_y)
 
             ri = base_i + i;
 
-            bsh_y = 2 * SCANNER_arcpoint[ri].u1 - pos_mz;
-            bsh_x = 2 * SCANNER_arcpoint[ri].v1 - pos_mx;
+            bsh_y = 2 * SCANNER_arcpoint[ri].X - pos_mz;
+            bsh_x = 2 * SCANNER_arcpoint[ri].Z - pos_mx;
             map_coords_to_scanner(&ssb_x, &ssb_y, sh_x, sh_y, bsh_x, bsh_y);
 
             x1 = base_x;
@@ -1626,14 +1795,16 @@ void SCANNER_draw_thing(struct Thing *p_thing, struct NearestPos *p_nearest, int
     y = ingame.Scanner.Y1 + base_y;
     if ((p_thing->Flag & TngF_Destroyed) == 0)
     {
-        if (((p_thing->Flag & TngF_PlayerAgent) == 0) || (p_thing->U.UPerson.CurrentWeapon == WEP_CLONESHLD))
+        short plyr;
+        plyr = person_get_dcontrol_player(p_thing->ThingOffset);
+        if ((plyr < 0) || (p_thing->U.UPerson.CurrentWeapon == WEP_CLONESHLD))
         {
             SCANNER_draw_mark_point3_blink2_filled(x, y, col);
         }
         else
         {
-            if (in_network_game)
-                SCANNER_draw_mark_point5_blink4(x, y, net_player_colours[p_thing->U.UPerson.ComCur >> 2]);
+            if (in_network_game && (plyr >= 0))
+                SCANNER_draw_mark_point5_blink4(x, y, net_player_colours[plyr]);
             else
                 SCANNER_draw_mark_point5_blink4(x, y, col);
         }
@@ -1745,24 +1916,35 @@ void SCANNER_draw_things_dots(int pos_mx, int pos_mz, int sh_x, int sh_y, int po
 void SCANNER_draw_area_frame(void)
 {
     LbDrawLine(ingame.Scanner.X1 - 1, ingame.Scanner.Y1 - 1,
-      ingame.Scanner.X1 - 1, ingame.Scanner.Y2 + 1, SCANNER_colour[4]);
+      ingame.Scanner.X1 - 1, ingame.Scanner.Y2 + 1, SCANNER_colour[ScnClr_Frame]);
     LbDrawLine(ingame.Scanner.X1 - 1, ingame.Scanner.Y1 - 1,
-      ingame.Scanner.X2 - 24, ingame.Scanner.Y1 - 1, SCANNER_colour[4]);
+      ingame.Scanner.X2 - 24, ingame.Scanner.Y1 - 1, SCANNER_colour[ScnClr_Frame]);
     LbDrawLine(ingame.Scanner.X1 - 1, ingame.Scanner.Y2 + 1,
-      ingame.Scanner.X2, ingame.Scanner.Y2 + 1, SCANNER_colour[4]);
+      ingame.Scanner.X2, ingame.Scanner.Y2 + 1, SCANNER_colour[ScnClr_Frame]);
     LbDrawLine(ingame.Scanner.X2 - 24, ingame.Scanner.Y1 - 1,
-      ingame.Scanner.X2 + 1, ingame.Scanner.Y1 + 24, SCANNER_colour[4]);
+      ingame.Scanner.X2 + 1, ingame.Scanner.Y1 + 24, SCANNER_colour[ScnClr_Frame]);
     LbDrawLine(ingame.Scanner.X2 + 1, ingame.Scanner.Y1 + 24,
-      ingame.Scanner.X2 + 1, ingame.Scanner.Y2 + 1, SCANNER_colour[4]);
+      ingame.Scanner.X2 + 1, ingame.Scanner.Y2 + 1, SCANNER_colour[ScnClr_Frame]);
+}
+
+static void SCANNER_draw_solid_signals(void)
+{
+    int dt_x, dt_y;
+    int sh_x, sh_y;
+    int pos_mx, pos_mz;
+
+    dt_x = (ingame.Scanner.X2 - ingame.Scanner.X1) >> 1;
+    dt_y = (ingame.Scanner.Y2 - ingame.Scanner.Y1) >> 1;
+    sh_y = SCANNER_nrp_sh_y;
+    sh_x = SCANNER_nrp_sh_x;
+    pos_mz = (ingame.Scanner.MZ << 16) + sh_x * dt_y - sh_y * dt_x;
+    pos_mx = (ingame.Scanner.MX << 16) - sh_x * dt_x - sh_y * dt_y;
+
+    SCANNER_draw_solid_blips(pos_mx, pos_mz, sh_x, sh_y);
 }
 
 void SCANNER_draw_signals(void)
 {
-#if 0
-    asm volatile ("call ASM_SCANNER_draw_signals\n"
-        :  :  : "eax" );
-    return;
-#endif
     int sh_x, sh_y;
     int range;
     int pos_mx, pos_mz;
@@ -1801,10 +1983,16 @@ void SCANNER_draw_signals(void)
     SCANNER_draw_things_dots(pos_mx, pos_mz, sh_x, sh_y, pos_x1, pos_y1, range);
 }
 
+void SCANNER_fe_draw_solid(void)
+{
+    SCANNER_update_shifts();
+    SCANNER_draw_solid_map();
+    SCANNER_draw_solid_signals();
+}
+
 void SCANNER_draw_new_transparent(void)
 {
-    SCANNER_process_special_input();
-    SCANNER_process_bbpoints();
+    SCANNER_update_shifts();
     SCANNER_draw_new_transparent_map();
     SCANNER_draw_signals();
     SCANNER_draw_area_frame();

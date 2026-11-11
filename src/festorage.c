@@ -28,33 +28,41 @@
 #include "guiboxes.h"
 #include "guitext.h"
 #include "display.h"
+#include "game_options.h"
 #include "game_save.h"
 #include "game_sprts.h"
 #include "game.h"
 #include "keyboard.h"
+#include "mydraw.h"
 #include "purpldrw.h"
 #include "sound.h"
 #include "swlog.h"
 /******************************************************************************/
-extern struct ScreenButton storage_LOAD_button;
-extern struct ScreenButton storage_SAVE_button;
-extern struct ScreenButton storage_NEW_MORTAL_button;
-extern struct ScreenTextBox storage_slots_box;
-extern ubyte byte_1C4880[8];
+struct ScreenButton storage_LOAD_button = {0};
+struct ScreenButton storage_SAVE_button = {0};
+struct ScreenButton storage_NEW_MORTAL_button = {0};
+struct ScreenTextBox storage_slots_box = {0};
+ubyte byte_1C4880[8];
 
-ubyte ac_do_storage_NEW_MORTAL(ubyte click);
-ubyte ac_load_game_slot(ubyte click);
-ubyte ac_save_game_slot(ubyte click);
-ubyte ac_show_menu_storage_slots_box(struct ScreenTextBox *p_box);
+ubyte restore_savegame = 0;
+
+/******************************************************************************/
+
+ubyte do_storage_NEW_MORTAL(ubyte click);
+ubyte load_game_slot(ubyte click);
+ubyte save_game_slot(ubyte click);
+
+int autosave_game(void)
+{
+    // only autosave mortal games
+    if ((ingame.Flags & GamF_MortalGame) == 0)
+        return 1;
+
+    return save_game_write(0, save_active_desc);
+}
 
 ubyte show_menu_storage_slots_box(struct ScreenTextBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_show_menu_storage_slots_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     short scr_x, scr_y;
     short i, k;
     char locstr[8];
@@ -119,7 +127,7 @@ ubyte show_menu_storage_slots_box(struct ScreenTextBox *p_box)
     ln_height = 22;
     slot = save_slot_base;
     entry_height = ln_height + 4;
-    while (slot < (save_slot_base + 8) && scr_y + ln_height < p_box->ScrollWindowHeight + 23)
+    while (slot < (save_slot_base + SAVE_SLOTS_VISIBLE_COUNT) && scr_y + ln_height < p_box->ScrollWindowHeight + 23)
     {
         const char *text;
         char *slot_str;
@@ -221,17 +229,11 @@ ubyte show_menu_storage_slots_box(struct ScreenTextBox *p_box)
         draw_text_purple_list2(scr_x + 36, scr_y + 6, save_active_desc, 0);
     }
     lbDisplay.DrawFlags = 0;
-    //storage_LOAD_button.DrawFn(&storage_LOAD_button); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-        :  : "a" (&storage_LOAD_button), "g" (storage_LOAD_button.DrawFn));
+    storage_LOAD_button.DrawFn(&storage_LOAD_button);
     if (!restore_savegame) {
-        //storage_SAVE_button.DrawFn(&storage_SAVE_button); -- incompatible calling convention
-        asm volatile ("call *%1\n"
-            :  : "a" (&storage_SAVE_button), "g" (storage_SAVE_button.DrawFn));
+        storage_SAVE_button.DrawFn(&storage_SAVE_button);
     }
-    //storage_NEW_MORTAL_button.DrawFn(&storage_NEW_MORTAL_button); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-        :  : "a" (&storage_NEW_MORTAL_button), "g" (storage_NEW_MORTAL_button.DrawFn));
+    storage_NEW_MORTAL_button.DrawFn(&storage_NEW_MORTAL_button);
     return 0;
 }
 
@@ -239,9 +241,7 @@ ubyte show_storage_screen(void)
 {
     ubyte drawn;
 
-    //drawn = storage_slots_box.DrawFn(&storage_slots_box); -- incompatible calling convention
-    asm volatile ("call *%2\n"
-        : "=r" (drawn) : "a" (&storage_slots_box), "g" (storage_slots_box.DrawFn));
+    drawn = storage_slots_box.DrawFn(&storage_slots_box);
     return drawn;
 }
 
@@ -261,7 +261,7 @@ void init_storage_screen_boxes(void)
 #endif
 
     init_screen_text_box(&storage_slots_box, 213u, 72u, 420u, 354, 6, med2_font, 1);
-    storage_slots_box.DrawTextFn = ac_show_menu_storage_slots_box;
+    storage_slots_box.DrawTextFn = show_menu_storage_slots_box;
     storage_slots_box.ScrollWindowHeight = 208;
     storage_slots_box.Lines = 99;
     storage_slots_box.Flags |= (GBxFlg_RadioBtn | GBxFlg_IsMouseOver);
@@ -274,9 +274,9 @@ void init_storage_screen_boxes(void)
       gui_strings[439], 6, med2_font, 1, 0);
     init_screen_button(&storage_NEW_MORTAL_button, 627u, 405u,
       gui_strings[482], 6, med2_font, 1, 128);
-    storage_LOAD_button.CallBackFn = ac_load_game_slot;
-    storage_SAVE_button.CallBackFn = ac_save_game_slot;
-    storage_NEW_MORTAL_button.CallBackFn = ac_do_storage_NEW_MORTAL;
+    storage_LOAD_button.CallBackFn = load_game_slot;
+    storage_SAVE_button.CallBackFn = save_game_slot;
+    storage_NEW_MORTAL_button.CallBackFn = do_storage_NEW_MORTAL;
 
     // Reposition the components to current resolution
 

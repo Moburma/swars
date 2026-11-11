@@ -20,14 +20,14 @@
 #define NETWORK_H
 
 #include "bftypes.h"
-#include "cybmod.h"
-#include "weapon.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 /******************************************************************************/
 #pragma pack(1)
+
+#define NET_PLAYERS_COUNT 8
 
 typedef void *NSERV_HANDLE;
 typedef void *NSESS_HANDLE;
@@ -82,14 +82,6 @@ struct TbNetworkService { // sizeof=10
     };
 };
 
-// TODO maybe this only ocntains one string?
-struct NetPlayer2 {
-  char field_0[13];
-  char field_D;
-  char field_E[10];
-  char field_18;
-};
-
 struct ModemCommand {
   char cmd[80];
 };
@@ -101,7 +93,7 @@ struct TbUnknCommSt {
   int field_6;
   ubyte field_A[127];
   int field_89;
-  int field_8D;
+  uint field_8D;
   ubyte field_91[127];
   int field_110;
   ubyte field_114[131];
@@ -142,7 +134,9 @@ struct TbSerialDev { // sizeof=4301
   ushort field_10A2;
   int baudrate;
   ubyte comdev_id;
-  ubyte field_10A9;
+  /** Whether the network session is owned by the local user.
+   */
+  ubyte SessionOwnerLocal;
   ubyte field_10AA;
   ubyte field_10AB;
   ubyte num_players;
@@ -204,7 +198,7 @@ struct TbIPXOnePlayer {
 };
 
 struct TbIPXPlayerData3 {
-    struct TbIPXOnePlayer player[8]; // offset=45
+    struct TbIPXOnePlayer players[NET_PLAYERS_COUNT]; // offset=45
 };
 
 struct TbIPXPlayerData { // sizeof=226
@@ -214,7 +208,7 @@ struct TbIPXPlayerData { // sizeof=226
         struct TbIPXPlayerData3 Data3;
     };
     ubyte num_players;
-    ubyte field_10E; // offset=225 (within TbIPXPlayer offset=270)
+    ubyte MaxPlayers; // offset=225 (within TbIPXPlayer offset=270)
 };
 
 struct TbIPXPlayer { // sizeof=271
@@ -269,21 +263,17 @@ struct TbNetworkPlayer { // sizeof=22
 
 struct TbNetworkSessionList { // sizeof=218
     struct TbNetworkSession Session; // offset=0
-    struct TbNetworkPlayer Player[8]; // offset=28
+    struct TbNetworkPlayer Player[NET_PLAYERS_COUNT]; // offset=28
     short NumberOfPlayers; // offset=216
 };
 
 #pragma pack()
 /******************************************************************************/
-extern ubyte data_1c4a70;
-extern ubyte net_players_num;
+extern ubyte modem_is_configured;
 extern struct TbNetworkService NetworkServicePtr;
 extern ulong NetTimeoutTicks;
-extern struct NetPlayer2 net_players[5];
 // Application-accessible copy of the service structure?
 extern struct TbNetworkService nsvc;
-
-extern struct WeaponsFourPack net_agents__FourPacks[8][4]; // maybe a part of larger struct, maybe not
 
 TbResult LbNetworkReadConfig(const char *fname);
 TbResult LbNetworkSetBaud(int rate);
@@ -315,7 +305,7 @@ TbResult LbNetworkReset(void);
 TbResult LbNetworkDial(const char *distr);
 TbResult LbNetworkAnswer(void);
 TbResult LbNetworkHangUp(void);
-TbResult LbNetworkSessionStop(void);
+TbResult LbNetworkSessionStop(int plyr);
 TbResult LbNetworkShutDownListeners(void);
 
 TbResult LbModemReadConfig(const char *fname);

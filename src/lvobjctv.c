@@ -26,9 +26,13 @@
 #include "bfmemut.h"
 #include "bfini.h"
 
+#include "engincolour.h"
+#include "huddrwlstm.h"
+
 #include "bigmap.h"
 #include "campaign.h"
 #include "drawtext.h"
+#include "hud_draw.h"
 #include "keyboard.h"
 #include "lvfiles.h"
 #include "thing.h"
@@ -37,8 +41,8 @@
 #include "player.h"
 #include "scanner.h"
 #include "scandraw.h"
-#include "display.h"
 #include "game.h"
+#include "game_data.h"
 #include "game_options.h"
 #include "game_speed.h"
 #include "vehicle.h"
@@ -246,15 +250,21 @@ const struct TbNamedEnum missions_conf_netscan_objctv_params[] = {
 #define OBJECTIVE_TEXT_MAX 300
 
 struct NetscanObjective mission_netscan_objectives[MISSION_NETSCAN_OBV_COUNT];
-ushort next_mission_netscan_objective;
+ushort next_mission_netscan_objective = 1;
 
-ushort next_objective = 1;
+struct NetscanObjective netscan_objectives[NETSCAN_OBJECTIVES_MAX_COUNT];
+ubyte netscan_objectives_count;
+
+struct Objective *game_used_objectives = NULL;
 ushort next_used_objective = 1;
 
-extern ulong dword_1C8460;
-extern ulong dword_1C8464;
-extern short draw_objectv_x;
-extern short draw_objectv_y;
+struct Objective *game_objectives = NULL;
+ushort next_objective = 1;
+
+u32 dword_1C8460 = 0;
+u32 dword_1C8464 = 0;
+short draw_objectv_x;
+short draw_objectv_y;
 
 char *objective_text[OBJECTIVE_TEXT_MAX];
 
@@ -401,14 +411,20 @@ TbBool objective_target_is_any_thing(struct Objective *p_objectv)
 
 void draw_objective_group_whole_on_engine_scene(ushort group)
 {
-    ThingIdx thing;
     struct Thing *p_thing;
+    ThingIdx thing;
+    short i;
     ubyte colk;
 
+    assert(group < PEOPLE_GROUPS_LIMIT);
     colk = dword_1C8460 & 7;
     thing = same_type_head[256 + group];
-    for (; thing > 0; thing = p_thing->LinkSameGroup)
+    for (i = 0; thing > 0; thing = p_thing->LinkSameGroup, i++)
     {
+        if (i >= THINGS_LIMIT) {
+            LOGERR("Infinite loop in same group things list");
+            break;
+        }
         p_thing = &things[thing];
         draw_objective_point(draw_objectv_x - 10, draw_objectv_y, thing, 0, colour_lookup[colk]);
     }
@@ -416,14 +432,20 @@ void draw_objective_group_whole_on_engine_scene(ushort group)
 
 void draw_objective_group_non_flag2_on_engine_scene(ushort group)
 {
-    ThingIdx thing;
     struct Thing *p_thing;
+    ThingIdx thing;
+    short i;
     ubyte colk;
 
+    assert(group < PEOPLE_GROUPS_LIMIT);
     colk = dword_1C8460 & 7;
     thing = same_type_head[256 + group];
-    for (; thing > 0; thing = p_thing->LinkSameGroup)
+    for (i = 0; thing > 0; thing = p_thing->LinkSameGroup, i++)
     {
+        if (i >= THINGS_LIMIT) {
+            LOGERR("Infinite loop in same group things list");
+            break;
+        }
         p_thing = &things[thing];
         if ((p_thing->Flag & TngF_Destroyed) == 0) {
             draw_objective_point(draw_objectv_x - 10, draw_objectv_y, thing, 0, colour_lookup[colk]);
@@ -433,14 +455,20 @@ void draw_objective_group_non_flag2_on_engine_scene(ushort group)
 
 void draw_objective_group_non_pers_on_engine_scene(ushort group)
 {
-    ThingIdx thing;
     struct Thing *p_thing;
+    ThingIdx thing;
+    short i;
     ubyte colk;
 
+    assert(group < PEOPLE_GROUPS_LIMIT);
     colk = dword_1C8460 & 7;
     thing = same_type_head[256 + group];
-    for (; thing > 0; thing = p_thing->LinkSameGroup)
+    for (i = 0; thing > 0; thing = p_thing->LinkSameGroup, i++)
     {
+        if (i >= THINGS_LIMIT) {
+            LOGERR("Infinite loop in same group things list");
+            break;
+        }
         p_thing = &things[thing];
         if ((p_thing->Flag & TngF_Persuaded) == 0) {
             draw_objective_point(draw_objectv_x - 10, draw_objectv_y, thing, 0, colour_lookup[colk]);
@@ -450,17 +478,23 @@ void draw_objective_group_non_pers_on_engine_scene(ushort group)
 
 void draw_objective_group_not_own_by_plyr_on_engine_scene(ushort group, ushort plyr)
 {
+    struct Thing *p_thing;
     short plyagent, plygroup;
     ThingIdx thing;
-    struct Thing *p_thing;
+    short i;
     ubyte colk;
 
+    assert(group < PEOPLE_GROUPS_LIMIT);
     colk = dword_1C8460 & 7;
     plyagent = players[plyr].DirectControl[0];
     plygroup = things[plyagent].U.UPerson.Group;
     thing = same_type_head[256 + group];
-    for (; thing > 0; thing = p_thing->LinkSameGroup)
+    for (i = 0; thing > 0; thing = p_thing->LinkSameGroup, i++)
     {
+        if (i >= THINGS_LIMIT) {
+            LOGERR("Infinite loop in same group things list");
+            break;
+        }
         p_thing = &things[thing];
         if (((p_thing->Flag & TngF_Persuaded) == 0) || things[p_thing->Owner].U.UPerson.Group != plygroup) {
             if ((p_thing->Flag & TngF_Destroyed) == 0)
@@ -471,14 +505,20 @@ void draw_objective_group_not_own_by_plyr_on_engine_scene(ushort group, ushort p
 
 void draw_objective_group_not_own_by_pers_on_engine_scene(ushort group, short owntng)
 {
-    ThingIdx thing;
     struct Thing *p_thing;
+    ThingIdx thing;
+    short i;
     ubyte colk;
 
+    assert(group < PEOPLE_GROUPS_LIMIT);
     colk = dword_1C8460 & 7;
     thing = same_type_head[256 + group];
-    for (; thing > 0; thing = p_thing->LinkSameGroup)
+    for (i = 0; thing > 0; thing = p_thing->LinkSameGroup, i++)
     {
+        if (i >= THINGS_LIMIT) {
+            LOGERR("Infinite loop in same group things list");
+            break;
+        }
         p_thing = &things[thing];
         if (((p_thing->Flag & TngF_Persuaded) == 0) && (p_thing->Owner != owntng)) {
             if ((p_thing->Flag & TngF_Destroyed) == 0)
@@ -552,8 +592,9 @@ void draw_objective_dirctly_on_engine_scene(ushort objectv)
     case GAME_OBJ_MEM_G_ARRIVES:
     case GAME_OBJ_ALL_G_ARRIVES:
         // Arrival place
-        draw_map_flat_circle(p_objectv->X, p_objectv->Y, p_objectv->Z, p_objectv->Radius << 6, colour_lookup[ColLU_RED]);
-        unkn_draw_transformed_point(draw_objectv_x - 10, draw_objectv_y,
+        enlist_hud_draw_mapcoord_flat_circle(p_objectv->X, p_objectv->Y, p_objectv->Z,
+          p_objectv->Radius << 6, 0, 1, colour_lookup[ColLU_RED]);
+        draw_mapcoord_to_scrcoord_line(draw_objectv_x - 10, draw_objectv_y,
           p_objectv->X, p_objectv->Y, p_objectv->Z, colour_lookup[colk]);
         break;
     case GAME_OBJ_P_ARRIVES:
@@ -563,8 +604,9 @@ void draw_objective_dirctly_on_engine_scene(ushort objectv)
         thing = p_objectv->Thing;
         draw_objective_point(draw_objectv_x - 10, draw_objectv_y, thing, 0, colour_lookup[colk]);
         // Arrival place
-        draw_map_flat_circle(p_objectv->X, p_objectv->Y, p_objectv->Z, p_objectv->Radius << 6, colour_lookup[ColLU_RED]);
-        unkn_draw_transformed_point(draw_objectv_x - 10, draw_objectv_y,
+        enlist_hud_draw_mapcoord_flat_circle(p_objectv->X, p_objectv->Y, p_objectv->Z,
+          p_objectv->Radius << 6, 0, 1, colour_lookup[ColLU_RED]);
+        draw_mapcoord_to_scrcoord_line(draw_objectv_x - 10, draw_objectv_y,
           p_objectv->X, p_objectv->Y, p_objectv->Z, colour_lookup[colk]);
         break;
     case GAME_OBJ_PERSUADE_P:
@@ -598,12 +640,12 @@ void draw_objective(ushort objectv, ubyte flag)
     if (!byte_1C844F)
     {
         if ((p_objectv->Flags & GObjF_HIDDEN) != 0)
-            scroll_text = "-";
+            scrollinfo_text = "-";
         else if (p_objectv->ObjText != 0) {
             assert(p_objectv->ObjText < OBJECTIVE_TEXT_MAX);
-            scroll_text = objective_text[p_objectv->ObjText];
+            scrollinfo_text = objective_text[p_objectv->ObjText];
         } else {
-            scroll_text = p_odef->DefText;
+            scrollinfo_text = p_odef->DefText;
         }
         ++dword_1C8464;
     }
@@ -613,14 +655,14 @@ void draw_objective(ushort objectv, ubyte flag)
         short group;
 
         group = p_objectv->Thing;
-        if (group >= PEOPLE_GROUPS_COUNT) group = 0;
+        if (group >= PEOPLE_GROUPS_LIMIT) group = 0;
         sprintf(locstr, "[%d] %20s t %d id %d", group_actions[group].Alive,
           p_odef->CmdName, p_objectv->Thing, p_objectv->UniqueID);
         if (gameturn & 4)
             colk = dword_1C8460 & 7;
         else
             colk = 1;
-        draw_text(draw_objectv_x, draw_objectv_y, locstr, colour_lookup[colk]);
+        draw_simple_text(draw_objectv_x, draw_objectv_y, locstr, colour_lookup[colk]);
     }
 
     if (byte_1C844F) {
@@ -633,7 +675,7 @@ void draw_objective(ushort objectv, ubyte flag)
 TbBool screen_objective_text_set_failed(void)
 {
     if (ingame.fld_unkCB5 > 0) {
-        scroll_text = objective_text[ingame.fld_unkCB5];
+        scrollinfo_text = objective_text[ingame.fld_unkCB5];
         return true;
     }
     return false;
@@ -810,25 +852,81 @@ ubyte mem_group_arrived_square2(struct Thing *p_person, ushort group, short x, s
   int x2, int z2, int count)
 {
     ubyte ret;
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[3];
+
+    stkargs[0] = (int)(intptr_t)x2;
+    stkargs[1] = (int)(intptr_t)z2;
+    stkargs[2] = (int)(intptr_t)count;
+
     asm volatile (
-      "push %7\n"
-      "push %6\n"
-      "push %5\n"
+      "push 8(%5)\n"
+      "push 4(%5)\n"
+      "push 0(%5)\n"
       "call ASM_mem_group_arrived_square2\n"
-        : "=r" (ret) : "a" (p_person), "d" (group), "b" (x), "c" (z), "g" (x2), "g" (z2), "g" (count));
+        : "=r" (ret)
+        : "a" (p_person), "d" (group), "b" (x), "c" (z), "S" (stkargs)
+        : "cc", "memory");
     return ret;
 }
 
-ubyte mem_group_arrived(ushort group, short x, short y, short z,
+ubyte mem_group_arrived(ushort group, short cor_x, short cor_y, short cor_z,
   int radius, int count)
 {
-    ubyte ret;
-    asm volatile (
-      "push %6\n"
-      "push %5\n"
-      "call ASM_mem_group_arrived\n"
-        : "=r" (ret) : "a" (group), "d" (x), "b" (y), "c" (z), "g" (radius), "g" (count));
-    return ret;
+    struct Thing *p_thing;
+    ThingIdx thing;
+    PlayerIdx plyr;
+    int m;
+    int dist_sq;
+
+    m = 0;
+    dist_sq = (radius * radius) << 12;
+    if (!in_network_game || (group != 0))
+    {
+        for (thing = same_type_head[256 + group]; thing != 0; thing = p_thing->LinkSameGroup)
+        {
+            p_thing = &things[thing];
+            if (ingame.DisplayMode == DpM_UNKN_3B) {
+                enlist_hud_draw_line_from_thing_to_mapcoord(thing,
+                  cor_x, cor_y, cor_z, 0, ColLU_WHITE);
+            }
+            if ((p_thing->Flag & TngF_Destroyed) == 0) {
+                if (thing_arrived_at_obj_radius(thing, cor_x, cor_y, cor_z, dist_sq)) {
+                    m++;
+                }
+            }
+            if (m >= count)
+                return 1;
+        }
+        return 0;
+    }
+
+    for (plyr = 0; plyr < 8; plyr++)
+    {
+        ushort grp;
+
+        if ( ((1 << plyr) & ingame.InNetGame_UNSURE) == 0)
+            continue;
+        grp = level_def.PlayableGroups[plyr];
+
+        for (thing = same_type_head[256 + grp]; thing != 0; thing = p_thing->LinkSameGroup)
+        {
+            p_thing = &things[thing];
+            if (ingame.DisplayMode == DpM_UNKN_3B) {
+                enlist_hud_draw_line_from_thing_to_mapcoord(thing,
+                  cor_x, cor_y, cor_z, 0, ColLU_WHITE);
+            }
+            if ((p_thing->Flag & TngF_Destroyed) == 0) {
+                if (thing_arrived_at_obj_radius(thing, cor_x, cor_y, cor_z, dist_sq)) {
+                    m++;
+                }
+            }
+            if (m >= count)
+                return 1;
+        }
+    }
+    return 0;
 }
 
 TbBool person_is_near_thing(ThingIdx neartng, ThingIdx thing, ushort radius)
@@ -858,14 +956,20 @@ TbBool person_is_near_thing(ThingIdx neartng, ThingIdx thing, ushort radius)
 
 TbBool group_members_arrived_at_objectv(ushort group, struct Objective *p_objectv, ushort amount)
 {
-    ThingIdx thing;
     struct Thing *p_thing;
+    ThingIdx thing;
+    short i;
     ushort n;
 
+    assert(group < PEOPLE_GROUPS_LIMIT);
     n = 0;
     thing = same_type_head[256 + group];
-    for (; thing > 0; thing = p_thing->LinkSameGroup)
+    for (i = 0; thing > 0; thing = p_thing->LinkSameGroup, i++)
     {
+        if (i >= THINGS_LIMIT) {
+            LOGERR("Infinite loop in same group things list");
+            break;
+        }
         p_thing = &things[thing];
         if (thing_arrived_at_obj(thing, p_objectv))
             n++;
@@ -892,7 +996,7 @@ ubyte fix_single_objective(struct Objective *p_objectv, ushort objectv, const ch
     ret = 1;
     if ((p_odef->Flags & ObDF_ReqGroup) != 0)
     {
-        if ((p_objectv->Thing < 0) || (p_objectv->Thing >= PEOPLE_GROUPS_COUNT)) {
+        if ((p_objectv->Thing < 0) || (p_objectv->Thing >= PEOPLE_GROUPS_LIMIT)) {
             LOGERR("Objv%s%d = %s Group(%hd) out of range",
               srctext, objectv, p_odef->CmdName, p_objectv->Thing);
             p_objectv->Thing = 0;
@@ -1083,7 +1187,7 @@ ubyte fix_single_objective(struct Objective *p_objectv, ushort objectv, const ch
 
     if ((p_odef->Flags & ObDF_ReqSecGrp) != 0)
     {
-        if ((p_objectv->Arg2 <= 0) || (p_objectv->Arg2 >= PEOPLE_GROUPS_COUNT)) {
+        if ((p_objectv->Arg2 <= 0) || (p_objectv->Arg2 >= PEOPLE_GROUPS_LIMIT)) {
             LOGERR("Objv%s%d = %s SecGroup(%d) out of range",
               srctext, objectv, p_odef->CmdName, (int)p_objectv->Arg2);
             p_objectv->Arg2 = 0;

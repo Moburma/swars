@@ -51,10 +51,10 @@ enum PlrTargetType {
 };
 
 //TODO would make more sense to have a struct for each agent, and then a merging struct
-struct AgentInfo {
-    ulong Weapons[CRYO_PODS_MAX_COUNT];
+struct AgentInfo { // sizeof=0x185
+    u32 Weapons[CRYO_PODS_MAX_COUNT];
     union Mod Mods[CRYO_PODS_MAX_COUNT];
-    ulong Sex;
+    u32 Sex;
     char RandomName[CRYO_PODS_MAX_COUNT];
     struct WeaponsFourPack FourPacks[CRYO_PODS_MAX_COUNT];
     ubyte NumAgents;
@@ -88,7 +88,7 @@ typedef struct {
     /** Double mode is multiple players using the same computer (controlling individual agents). */
     ubyte DoubleMode;
     ubyte PlayerNo;
-    ulong Weapons[AGENTS_SQUAD_MAX_COUNT];
+    u32 Weapons[AGENTS_SQUAD_MAX_COUNT];
     union Mod Mods[AGENTS_SQUAD_MAX_COUNT];
     /** Per-user controlled agent command param value Y */
     short UserVY[LOCAL_USERS_MAX_COUNT];
@@ -115,11 +115,22 @@ extern PlayerInfo players[PLAYERS_LIMIT];
 extern PlayerIdx local_player_no;
 extern struct AgentInfo cryo_agents;
 
+extern char net_player_names[PLAYERS_LIMIT][16];
+
+extern ushort netgame_agent_pos_x[PLAYERS_LIMIT][4];
+extern ushort netgame_agent_pos_z[PLAYERS_LIMIT][4];
+
+extern ubyte playable_agents;
+
+/******************************************************************************/
+
 void place_single_player(void);
 
 void player_update_agents_from_cryo(PlayerInfo *p_player);
 void cryo_update_agents_from_player(PlayerInfo *p_player);
 void players_sync_from_cryo(void);
+void cryo_agents_assign_random_names_and_sex(void);
+void cryo_agents_clear_wep_mod(void);
 
 /** Returns if given agent of the local players team has a free slot for a weapon.
  */
@@ -130,19 +141,44 @@ TbBool player_cryo_remove_weapon_one(ushort cryo_no, WeaponType wtype);
 TbBool player_cryo_transfer_weapon_between_agents(ushort from_cryo_no,
   ushort to_cryo_no, ubyte weapon);
 TbBool player_cryo_add_cybmod(ushort cryo_no, ubyte cybmod);
-const char *get_cryo_agent_name(ushort cryo_no);
+const char *get_cryo_agent_name(short cryo_no);
 void remove_agent(ubyte cryo_no);
 void add_agent(ulong weapons, ushort mods);
 
-void player_mission_agents_reset(PlayerIdx plyr);
+/** Reset agents toggled to reduce team size during mission.
+ */
+void player_mission_agents_toggle_reset(PlayerIdx plyr);
+
+void player_agent_reset_prev_weapon(PlayerIdx plyr, ushort plagent);
+void player_agent_update_prev_weapon(PlayerIdx plyr, ushort plagent);
 void player_agents_init_prev_weapon(PlayerIdx plyr);
+
 void player_agents_add_random_epidermises(PlayerInfo *p_player);
-void player_agent_update_prev_weapon(struct Thing *p_agent);
 short player_agent_current_or_prev_weapon(PlayerIdx plyr, ushort plagent);
 TbBool player_agent_has_weapon(PlayerIdx plyr, ushort plagent, WeaponType wtype);
+TbBool thing_is_player_agent_under_direct_control(ThingIdx thing);
 short player_agent_weapon_delay(PlayerIdx plyr, ushort plagent, WeaponType wtype);
 void player_agent_set_weapon_delay(PlayerIdx plyr, ushort plagent, WeaponType wtype, short delay_turns);
 void player_agents_clear_weapon_delays(PlayerIdx plyr);
+int place_default_player(PlayerIdx plyr, TbBool replace);
+void place_single_player(void);
+
+/** Set coords in player agent user vector.
+ */
+void player_agent_set_user_vect(PlayerIdx plyr, short plagent,
+  MapCoord vx, MapCoord vy, MapCoord vz);
+
+/** Clear coords in player agent user vector.
+ */
+void player_agent_clear_user_vect(PlayerIdx plyr, short plagent);
+
+/** Retrieve and clear Y coord in player agent user vector.
+ */
+MapCoord player_agent_clear_user_vect_y(PlayerIdx plyr, short plagent);
+
+/** Get player agent user vector.
+ */
+void player_agent_get_user_vect(PlayerIdx plyr, short plagent, struct MapCoords *p_usrv);
 
 TbBool player_can_toggle_thermal(PlayerIdx plyr);
 void player_toggle_thermal(PlayerIdx plyr);
@@ -152,8 +188,12 @@ TbBool player_agent_is_alive(PlayerIdx plyr, ushort plagent);
 TbBool player_agent_is_executing_commands(PlayerIdx plyr, ushort plagent);
 ThingIdx direct_control_thing_for_player(PlayerIdx plyr);
 void set_default_player_control(void);
+void players_init_default_control_mode(void);
 void player_target_clear(PlayerIdx plyr);
 void kill_my_players(PlayerIdx plyr);
+
+void net_player_names_clear(void);
+void net_player_name_set(PlayerIdx plyr, const char *nname);
 /******************************************************************************/
 #ifdef __cplusplus
 }

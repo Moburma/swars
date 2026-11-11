@@ -106,6 +106,16 @@ enum PacketActions
     PAct_AGENT_SELF_DESTRUCT = 0xFF,
 };
 
+enum PacketActionFlags
+{
+    PActF_None = 0x0000,
+    PActF_TriggerUse = 0x8000,
+};
+
+/** All flags placed at top of action field.
+ */
+#define PActF_All (PActF_TriggerUse)
+
 enum PacketCheatAllAgents
 {
     PCheatAA_RESURRECT_AND_WEPAPN = 0,
@@ -183,24 +193,25 @@ struct ShortPacket
 #pragma pack()
 /******************************************************************************/
 extern struct Packet packets[8];
-extern void (*my_build_packet)(struct Packet *packet, ushort action, ulong param1, long x, long y, long z);
+extern void (*my_build_packet)(struct Packet *packet, ushort action, u32 param1, s32 x, s32 y, s32 z);
 extern ubyte pktrec_mode;
 extern ushort packet_rec_no;
 extern ubyte packet_rec_use_levelno;
 
 const char * get_packet_action_name(ushort atype);
 const char * get_packet_action_result_text(short result);
+void snprint_packet(char *buf, ulong buflen, struct Packet *p_pckt);
 
-void build_packet(struct Packet *packet, ushort action, ulong param1, long x, long y, long z);
-void build_packet2(struct Packet *packet, ushort action, ulong param1, long x, long y, long z);
-void build_packet3(struct Packet *packet, ushort action, ulong param1, long x, long y, long z);
-void build_packet4(struct Packet *packet, ushort action, ulong param1, long x, long y, long z);
+void build_packet(struct Packet *packet, ushort action, u32 param1, s32 x, s32 y, s32 z);
+void build_packet2(struct Packet *packet, ushort action, u32 param1, s32 x, s32 y, s32 z);
+void build_packet3(struct Packet *packet, ushort action, u32 param1, s32 x, s32 y, s32 z);
+void build_packet4(struct Packet *packet, ushort action, u32 param1, s32 x, s32 y, s32 z);
 
 void PacketRecord_Close(void);
 void PacketRecord_OpenWrite(void);
 void PacketRecord_OpenRead(void);
-TbResult PacketRecord_Read(struct Packet *p_pckt);
-void PacketRecord_Write(struct Packet *p_pckt);
+TbResult PacketRecord_Read(struct Packet *p_pckt, ushort dblmode);
+void PacketRecord_Write(struct Packet *p_pckt, ushort dblmode);
 TbResult PacketRecord_ReadNP(struct NetworkPlayer *p_netplyr);
 void PacketRecord_WriteNP(struct NetworkPlayer *p_netplyr);
 TbBool PacketRecord_IsPlayback(void);

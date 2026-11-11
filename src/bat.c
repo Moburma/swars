@@ -18,15 +18,17 @@
 /******************************************************************************/
 #include "bat.h"
 
-#include <string.h>
 #include "bfgentab.h"
 #include "bfkeybd.h"
 #include "bfmemut.h"
 #include "bfscreen.h"
 #include "ssampply.h"
+#include <stdlib.h>
+#include <string.h>
+
+#include "engincolour.h"
 
 #include "bigmap.h"
-#include "display.h"
 #include "game.h"
 #include "game_options.h"
 #include "keyboard.h"
@@ -294,7 +296,7 @@ static void BAT_ball_colour_fade(void)
 
     if (BAT_level_intro_timer > 60)
     {
-        fade_lv = 32 - 2 * (90 - BAT_level_intro_timer);
+        fade_lv = (PALETTE_FADE_LEVELS / 2) - 2 * (90 - BAT_level_intro_timer);
         if (fade_lv < 0)
             fade_lv = 0;
         BAT_ball_colour = pixmap.fade_table[256 * fade_lv + colour_lookup[1]];

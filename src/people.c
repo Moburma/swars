@@ -20,41 +20,55 @@
 
 #include "bfmath.h"
 #include "bfmemory.h"
+#include "bfpalette.h"
 #include "bffile.h"
 #include "bfini.h"
 #include "bfutility.h"
 #include "ssampply.h"
+#include <assert.h>
+#include <stdlib.h>
+
+#include "engincam.h"
+#include "engincolour.h"
+#include "enginlights.h"
+#include "drawtext.h"
+#include "huddrwlstm.h"
 
 #include "bmbang.h"
 #include "bigmap.h"
 #include "building.h"
 #include "command.h"
-#include "display.h"
-#include "drawtext.h"
+#include "drawshape.h"
+#include "drawtext_wrp.h"
 #include "enginsngobjs.h"
 #include "enginsngtxtr.h"
 #include "engintrns.h"
 #include "febrief.h"
+#include "frame_sprani.h"
 #include "game.h"
 #include "game_data.h"
 #include "game_options.h"
 #include "game_speed.h"
-#include "game_sprani.h"
+#include "hud_draw.h"
 #include "lvdraw3d.h"
 #include "lvobjctv.h"
 #include "misstat.h"
+#include "pathtrig.h"
 #include "pepgroup.h"
 #include "player.h"
 #include "scandraw.h"
 #include "sound.h"
 #include "thing.h"
 #include "thing_fire.h"
+#include "thing_onface.h"
 #include "thing_search.h"
 #include "tngcolisn.h"
 #include "vehicle.h"
 #include "weapon.h"
 #include "swlog.h"
 /******************************************************************************/
+#define ALERT_PEEPS_RANGE 4
+
 struct PeepStat peep_type_stats[] = {
     {   0,    0,    0,    0,   0, 0,   0, 0, 0, 0},
     {1000, 1024, 2048, 1024,  20, 5, 512, 0, 0, 0},
@@ -206,12 +220,24 @@ ubyte sfx_woman_shot[] = {
   12, 27,
 };
 
-extern ushort female_peep;
-extern sbyte byte_154F6C[8];
+ushort female_peep = 0x2028;
+
+struct MyPath my_paths[1600];
+ushort path_count = 0;
+ushort head_my_path = 1;
+ushort word_1531DA = 1;
+
+ushort word_17FA58[400];
+
+sbyte burning_timer_delatas[] = {
+  0, 0, 1, 0, 1, 0, 0, 0,
+};
 extern short word_1AA38E;
 extern short word_1AA390;
 extern short word_1AA392;
 extern short word_1AA394;
+
+short unkn01_thing_idx = 0;
 
 void read_people_conf_file(void)
 {
@@ -453,9 +479,114 @@ const char *person_type_name(ushort ptype)
     return p_pestata->Name;
 }
 
+TbBool person_type_is_basic_civilian(ushort ptype)
+{
+    return (ptype == SubTT_PERS_BRIEFCASE_M
+         || ptype == SubTT_PERS_WHITE_BRUN_F
+         || ptype == SubTT_PERS_WHIT_BLOND_F
+         || ptype == SubTT_PERS_LETH_JACKT_M);
+}
+
+TbBool person_type_is_tough_civilian(ushort ptype)
+{
+    return (ptype == SubTT_PERS_SHADY_M
+         || ptype == SubTT_PERS_FAST_BLOND_F);
+}
+
+TbBool person_type_is_synd_agent(ushort ptype)
+{
+    return (ptype == SubTT_PERS_AGENT);
+}
+
+TbBool person_type_is_scientist(ushort ptype)
+{
+    return (ptype == SubTT_PERS_SCIENTIST);
+}
+
+TbBool person_type_is_security(ushort ptype)
+{
+    return (ptype == SubTT_PERS_MERCENARY
+         || ptype == SubTT_PERS_MECH_SPIDER
+         || ptype == SubTT_PERS_POLICE);
+}
+
+TbBool person_type_is_wide_definition_civilian(ushort ptype)
+{
+    return (person_type_is_basic_civilian(ptype)
+         || person_type_is_tough_civilian(ptype)
+         || person_type_is_scientist(ptype));
+}
+
+TbBool person_type_is_any_major_faction(ushort ptype)
+{
+    return (person_type_faction_is_syndicate(ptype)
+         || person_type_faction_is_church(ptype)
+         || person_type_faction_is_punks(ptype));
+}
+
 TbBool person_type_only_affected_by_adv_persuader(ushort ptype)
 {
     return (ptype == SubTT_PERS_ZEALOT);
+}
+
+TbBool person_type_faction_is_syndicate(ushort ptype)
+{
+    return (ptype == SubTT_PERS_AGENT);
+}
+
+TbBool person_type_faction_is_church(ushort ptype)
+{
+    return (ptype == SubTT_PERS_ZEALOT
+      || ptype == SubTT_PERS_HIGH_PRIEST);
+}
+
+TbBool person_type_faction_is_punks(ushort ptype)
+{
+    return (ptype == SubTT_PERS_PUNK_M
+      || ptype == SubTT_PERS_PUNK_F);
+}
+
+WeaponType person_type_get_favourite_weapon(ushort ptype)
+{
+    switch (ptype)
+    {
+    case SubTT_PERS_AGENT:
+        return WEP_MINIGUN;
+    case SubTT_PERS_ZEALOT:
+    case SubTT_PERS_HIGH_PRIEST:
+        return WEP_ELLASER;
+    case SubTT_PERS_PUNK_F:
+    case SubTT_PERS_PUNK_M:
+        return WEP_UZI;
+    case SubTT_PERS_BRIEFCASE_M:
+    case SubTT_PERS_WHITE_BRUN_F:
+    case SubTT_PERS_MERCENARY:
+    case SubTT_PERS_SCIENTIST:
+    case SubTT_PERS_WHIT_BLOND_F:
+    case SubTT_PERS_LETH_JACKT_M:
+        return WEP_NULL;
+    case SubTT_PERS_MECH_SPIDER:
+        return WEP_LASER;
+    case SubTT_PERS_POLICE:
+        return WEP_LASER;
+    case SubTT_PERS_SHADY_M:
+        return WEP_UZI;
+    default:
+        return WEP_NULL;
+    }
+}
+
+int person_type_get_persuasion_credit(ushort ptype)
+{
+    if (person_type_faction_is_church(ptype))
+        return 1000;
+    if (person_type_faction_is_syndicate(ptype))
+        return 1000;
+    if (person_type_faction_is_punks(ptype))
+        return 150;
+    if (person_type_is_scientist(ptype))
+        return 500;
+    return 100;
 }
 
 void snprint_person_state(char *buf, ulong buflen, struct Thing *p_thing)
@@ -481,7 +612,8 @@ void snprint_person_state(char *buf, ulong buflen, struct Thing *p_thing)
     if (p_thing->State == PerSt_GOTO_POINT)
     {
         if (nparams) { sprintf(s, ", "); s += strlen(s); }
-        sprintf(s, "Coord(%d,%d,%d)", (int)p_thing->U.UPerson.GotoX, 0, (int)p_thing->U.UPerson.GotoX);
+        sprintf(s, "Coord(%d,%d,%d)", (int)p_thing->U.UPerson.GotoX,
+          0, (int)p_thing->U.UPerson.GotoZ);
         s += strlen(s);
         nparams++;
     }
@@ -589,6 +721,34 @@ TbBool person_carries_any_medikit(ThingIdx person)
     return person_carries_weapon(p_person, WEP_MEDI2) || person_carries_weapon(p_person, WEP_MEDI1);
 }
 
+void person_weapons_reset_previous(struct Thing *p_person)
+{
+    PlayerIdx plyr;
+    ushort plagent;
+
+    if ((p_person->Flag & TngF_PlayerAgent) == 0) {
+        return;
+    }
+
+    plyr = p_person->U.UPerson.ComCur >> 2;
+    plagent = p_person->U.UPerson.ComCur & 3;
+    player_agent_reset_prev_weapon(plyr, plagent);
+}
+
+void person_weapons_update_previous(struct Thing *p_person)
+{
+    PlayerIdx plyr;
+    ushort plagent;
+
+    if ((p_person->Flag & TngF_PlayerAgent) == 0) {
+        return;
+    }
+
+    plyr = p_person->U.UPerson.ComCur >> 2;
+    plagent = p_person->U.UPerson.ComCur & 3;
+    player_agent_update_prev_weapon(plyr, plagent);
+}
+
 TbBool person_can_accept_control(ThingIdx person)
 {
     return !person_is_dead_or_dying(person)
@@ -631,7 +791,7 @@ TbBool person_only_affected_by_adv_persuader(ThingIdx person)
 
     p_person = &things[person];
 
-    if ((p_person->Flag2 & TgF2_Unkn00400000) != 0)
+    if ((p_person->Flag2 & TgF2_AlteredSubType) != 0)
         ptype = p_person->U.UPerson.OldSubType;
     else
         ptype = p_person->SubType;
@@ -723,6 +883,14 @@ short calc_person_speed(struct Thing *p_person)
         speed = PERSON_MAX_SPEED;
 
     return speed;
+}
+
+short calc_person_heavy_weapon_spread(struct Thing *p_person)
+{
+    // The wider the shooter's mood swing and the less arm mod level
+    // they have, the more the shot is allowed to stray off target.
+    return 60 + abs(p_person->U.UPerson.Mood)
+      - 16 * cybmod_arms_level(&p_person->U.UPerson.UMod);
 }
 
 void person_set_helath_to_max_limit(struct Thing *p_person)
@@ -843,8 +1011,9 @@ short person_get_dcontrol_player(ThingIdx person)
 {
     struct Thing *p_person;
 
-    if (!person_has_slot_in_any_player_dcontrol(person))
+    if (!person_has_slot_in_any_player_dcontrol(person)) {
         return -1;
+    }
 
     p_person = &things[person];
 
@@ -868,6 +1037,28 @@ short person_slot_in_player_dcontrol(ThingIdx person, PlayerIdx plyr)
     }
 
     return (p_person->U.UPerson.ComCur & 3);
+}
+
+MapCoord player_agent_person_clear_user_vect_y(struct Thing *p_person)
+{
+    PlayerIdx plyr;
+    ushort plagent;
+
+    plyr = p_person->U.UPerson.ComCur >> 2;
+    plagent = p_person->U.UPerson.ComCur & 3;
+
+    return player_agent_clear_user_vect_y(plyr, plagent);
+}
+
+void player_agent_person_get_user_vect(struct Thing *p_person, struct MapCoords *p_usrv)
+{
+    PlayerIdx plyr;
+    ushort plagent;
+
+    plyr = p_person->U.UPerson.ComCur >> 2;
+    plagent = p_person->U.UPerson.ComCur & 3;
+
+    player_agent_get_user_vect(plyr, plagent, p_usrv);
 }
 
 ubyte person_sex(struct Thing *p_person)
@@ -909,14 +1100,23 @@ void person_finish_executing_commands(struct Thing *p_person)
     }
 }
 
+void person_burning_stifle_fire(struct Thing *p_person)
+{
+    p_person->Flag &= ~TngF_Unkn40000000;
+    p_person->State = PerSt_WAIT;
+    remove_path(p_person);
+    person_reset_default_anim_mode(p_person);
+}
+
 void person_resurrect(struct Thing *p_person)
 {
     p_person->Flag &= ~TngF_Destroyed;
     p_person->Flag &= ~TngF_Unkn02000000;
+    p_person->Flag &= ~TngF_Unkn40000000;
     p_person->State = PerSt_WAIT;
     remove_path(p_person);
     p_person->Health = p_person->U.UPerson.MaxHealth * 3 / 4;
-    set_person_anim_mode(p_person, ANIM_PERS_WEPLIGHT_IDLE);
+    person_reset_default_anim_mode(p_person);
 }
 
 void person_set_persuade_power__to_allow_all(struct Thing *p_person)
@@ -926,6 +1126,43 @@ void person_set_persuade_power__to_allow_all(struct Thing *p_person)
     max_required_pers_power = 20;
     p_person->U.UPerson.PersuadePower = max(p_person->U.UPerson.PersuadePower,
       max_required_pers_power);
+}
+
+TbBool person_has_weapon_target_within_range(struct Thing *p_person, ThingIdx target)
+{
+    struct Thing *p_target;
+    int dist, range;
+
+    p_target = &things[target];
+
+    range = get_weapon_range(p_person) + 127;
+    dist = get_things_distance_mapcoords_fast(p_person->ThingOffset, target);
+
+    return  (dist <= range + p_target->Radius);
+}
+
+TbBool person_is_basic_civilian(struct Thing *p_person, TbBool ignore_disguise)
+{
+    ubyte subType;
+
+    if (ignore_disguise && ((p_person->Flag2 & TgF2_AlteredSubType) != 0))
+        subType = p_person->U.UPerson.OldSubType;
+    else
+        subType = p_person->SubType;
+
+    return person_type_is_basic_civilian(subType);
+}
+
+TbBool person_is_scientist(struct Thing *p_person, TbBool ignore_disguise)
+{
+    ubyte subType;
+
+    if (ignore_disguise && ((p_person->Flag2 & TgF2_AlteredSubType) != 0))
+        subType = p_person->U.UPerson.OldSubType;
+    else
+        subType = p_person->SubType;
+
+    return person_type_is_scientist(subType);
 }
 
 ushort calc_person_radius_type(struct Thing *p_person, ushort stype)
@@ -987,6 +1224,22 @@ void reset_person_frame(struct Thing *p_person)
     p_person->Frame = nstart_ani[p_person->StartFrame + 1 + p_person->U.UPerson.Angle];
 }
 
+ushort get_person_anim_subframe(struct Thing *p_person)
+{
+    short sbfrm;
+
+    sbfrm = p_person->Frame - nstart_ani[p_person->StartFrame + 1 + p_person->U.UPerson.Angle];
+
+    // Person animations have limited frames, as some arrays are indexing on them
+    // though if some special effect frames exceed that, no problem - we will limit the value
+    // We may also encounter outranged value here if frame was modified to an animation
+    // which is not stored in StartFrame, this happens for some effects
+    if ((sbfrm < 0) || (sbfrm >= PERSON_ANIM_MAX_FRAMES))
+        sbfrm = 0;
+
+    return sbfrm;
+}
+
 void switch_person_anim_mode(struct Thing *p_person, ubyte animode)
 {
     ushort person_anim;
@@ -1005,19 +1258,26 @@ void set_person_anim_mode(struct Thing *p_person, ubyte animode)
     reset_person_frame(p_person);
 }
 
-void change_player_angle(struct Thing *p_person, ushort angle)
+void change_person_angle(struct Thing *p_person, ubyte angl)
 {
     short person_anim, sframe;
 
-    if (angle == p_person->U.UPerson.Angle)
+    if (angl == p_person->U.UPerson.Angle)
         return;
 
-    p_person->U.UPerson.Angle = angle;
+    p_person->U.UPerson.Angle = angl;
     person_anim = people_frames[p_person->SubType][p_person->U.UPerson.AnimMode];
 
     // TODO why are we not updating p_person->StartFrame here?
     sframe = person_anim - 1;
     p_person->Frame = nstart_ani[sframe + 1 + p_person->U.UPerson.Angle];
+}
+
+void change_person_angle_full(struct Thing *p_person, short full_angle)
+{
+    ubyte angl;
+    angl = (((full_angle + 128) >> 8) + 8) & 7;
+    change_person_angle(p_person, angl);
 }
 
 void init_person_thing(struct Thing *p_person)
@@ -1098,20 +1358,242 @@ void set_person_animmode_walk(struct Thing *p_person)
     if ((p_person->Flag & TngF_Destroyed) != 0)
         return;
 
-    p_person->U.UPerson.AnimMode = gun_out_anim(p_person, 0);
-    reset_person_frame(p_person);
+    set_person_anim_mode(p_person, gun_out_anim(p_person, 0));
     p_person->Timer1 = 48;
     p_person->StartTimer1 = 48;
-    p_person->Flag2 &= ~(0x80000000|TngF_Persuaded);
+    p_person->Flag2 &= ~(TgF2_IgnoreEnemies|TgF2_Unkn00080000);
     p_person->Speed = calc_person_speed(p_person);
+}
+
+int check_col_collision_floor(int cor_x, int cor_y, int cor_z)
+{
+    int ret;
+    asm volatile ("call ASM_check_col_collision_floor\n"
+        : "=r" (ret) : "a" (cor_x), "d" (cor_y), "b" (cor_z));
+    return ret;
+}
+
+short do_vect_colide(struct MyMapElement *p_me, int x1, int y1, int z1, int x2, int y2, int z2)
+{
+    short ret;
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[3];
+
+    stkargs[0] = (int)(intptr_t)x2;
+    stkargs[1] = (int)(intptr_t)y2;
+    stkargs[2] = (int)(intptr_t)z2;
+
+    asm volatile (
+      "push 8(%5)\n"
+      "push 4(%5)\n"
+      "push 0(%5)\n"
+      "call ASM_do_vect_colide\n"
+        : "=r" (ret)
+        : "a" (p_me), "d" (x1), "b" (y1), "c" (z1), "S" (stkargs)
+        : "cc", "memory");
+    return ret;
 }
 
 int can_i_see_thing(struct Thing *p_me, struct Thing *p_him, int max_dist, ushort flags)
 {
-    int ret;
-    asm volatile ("call ASM_can_i_see_thing\n"
-        : "=r" (ret) : "a" (p_me), "d" (p_him), "b" (max_dist), "c" (flags));
-    return ret;
+    int cor_dx, cor_dy, cor_dz;
+    int distance;
+    int tl_dx, tl_dz;
+    int cor_swp_inc_x, cor_swp_inc_y, cor_swp_inc_z;
+    TbBool vehicle_involved;
+    int cor_him_x, cor_him_y, cor_him_z;
+    int cor_me_x, cor_me_y, cor_me_z;
+    int cor_swp_x, cor_swp_y, cor_swp_z;
+    short delta_angle;
+    int sweep_steps, step;
+    ubyte tl_him_zip;
+
+    if ((p_me == NULL) || (p_him == NULL))
+        return 0;
+    if ((p_him->Flag2 & (TgF2_ExistsOffMap|TgF2_Unkn0002)) != 0)
+        return 0;
+
+    vehicle_involved = (p_me->Type == TT_VEHICLE) || (p_him->Type == TT_VEHICLE);
+    if (((p_me->Flag & TngF_InVehicle) != 0) ||
+      ((p_him->Flag & TngF_InVehicle) != 0)) {
+        vehicle_involved = 1;
+    }
+
+    cor_him_x = PRCCOORD_TO_MAPCOORD(p_him->X);
+    cor_him_y = PRCCOORD_TO_MAPCOORD(p_him->Y);
+    cor_him_z = PRCCOORD_TO_MAPCOORD(p_him->Z);
+
+    cor_me_x = PRCCOORD_TO_MAPCOORD(p_me->X);
+    cor_me_y = PRCCOORD_TO_MAPCOORD(p_me->Y);
+    cor_me_z = PRCCOORD_TO_MAPCOORD(p_me->Z);
+
+    // Subtracting pre-shifted values would not always produce the same results
+    cor_dx = PRCCOORD_TO_MAPCOORD(p_him->X - p_me->X);
+    cor_dy = cor_him_y - cor_me_y;
+    cor_dz = PRCCOORD_TO_MAPCOORD(p_him->Z - p_me->Z);
+
+    distance = cor_dz * cor_dz + cor_dx * cor_dx;
+    if (max_dist < distance)
+        return 0;
+
+    distance += ((cor_dy * cor_dy) << 6);
+    delta_angle = arctan(cor_dx, -cor_dz);
+
+    if ((flags & 0x01) == 0)
+    {
+        short angl;
+        angl = (p_me->U.UPerson.Angle << 8) - delta_angle;
+        angl = (angl + 0x0800) & 0x7FF;
+        if (angl > 200 && angl < 0x7FF - 200)
+          return 0;
+    }
+    distance = LbSqrL(distance);
+
+    sweep_steps = distance >> 6;
+    if (sweep_steps == 0)
+        sweep_steps = 1;
+    if (distance == 0)
+        distance = 1;
+
+    {
+        struct MyMapElement *p_mapel;
+        short tl_him_x, tl_him_z;
+
+        tl_him_x = MAPCOORD_TO_TILE(cor_him_x);
+        tl_him_z = MAPCOORD_TO_TILE(cor_him_z);
+        p_mapel = &game_my_big_map[MAP_TILE_WIDTH * tl_him_z + tl_him_x];
+        tl_him_zip = p_mapel->Zip;
+    }
+
+    cor_me_y += 18;
+
+    // TODO wouldn't it make sense to keep the values with fractional part, to avoid rounding down on each step?
+    cor_swp_x = cor_me_x;
+    cor_swp_y = cor_me_y;
+    cor_swp_z = cor_me_z;
+
+    cor_swp_inc_x = cor_dx / sweep_steps;
+    cor_swp_inc_y = cor_dy / sweep_steps;
+    cor_swp_inc_z = cor_dz / sweep_steps;
+
+    tl_dx = (cor_dx <= 0) ? -1 : 1;
+    tl_dz = (cor_dz <= 0) ? -1 : 1;
+
+    if (cor_dy != 0)
+        tl_him_zip = 0;
+
+    for (step = sweep_steps; step > 0; step--)
+    {
+      struct MyMapElement *p_mapel;
+      short tl_me_x, tl_me_z;
+
+
+      if ((cor_swp_x < 0) || (cor_swp_x >= MAP_COORD_WIDTH))
+          return 0;
+      if ((cor_swp_z < 0) || (cor_swp_z >= MAP_COORD_HEIGHT))
+          return 0;
+      if (vehicle_involved) {
+          if (check_col_collision(cor_swp_x, cor_swp_y, cor_swp_z))
+              return 0;
+      } else {
+          if (check_col_collision_floor(cor_swp_x, cor_swp_y, cor_swp_z))
+              return 0;
+      }
+
+      tl_me_x = MAPCOORD_TO_TILE(cor_swp_x);
+      tl_me_z = MAPCOORD_TO_TILE(cor_swp_z);
+
+      p_mapel = &game_my_big_map[MAP_TILE_WIDTH * tl_me_z + tl_me_x];
+
+      if (debug_hud_collision || byte_1C844F)
+      {
+          char locstr[12];
+          sprintf(locstr, "%d", (int)p_mapel->Zip);
+          draw_mapcoord_simple_text_at_ground(cor_swp_x, cor_swp_z, locstr);
+      }
+
+      if ((tl_him_zip != 0) && (tl_him_zip == p_mapel->Zip))
+        break;
+
+      if (!vehicle_involved)
+      {
+          int cor_x, cor_z;
+          {
+              if (debug_hud_collision || byte_1C844F) {
+                  cor_x = (cor_swp_x & 0xFF00);
+                  cor_z = (cor_swp_z & 0xFF00);
+                  draw_map_flat_rect(cor_x, 8 * cor_swp_y, cor_z, 256, 256, colour_lookup[0]);
+              }
+              p_mapel = &game_my_big_map[MAP_TILE_WIDTH * (tl_me_z) + (tl_me_x)];
+              if (do_vect_colide(p_mapel, cor_me_x, cor_me_y, cor_me_z,
+                cor_him_x, cor_him_y, cor_him_z))
+                  return 0;
+          }
+          if (tl_dx != 0)
+          {
+              if (debug_hud_collision || byte_1C844F) {
+                  cor_x = (cor_swp_x & 0xFF00) + TILE_TO_MAPCOORD(tl_dx, 0);
+                  cor_z = (cor_swp_z & 0xFF00);
+                  draw_map_flat_rect(cor_x, 8 * cor_swp_y, cor_z, 256, 256, colour_lookup[2]);
+              }
+              p_mapel = &game_my_big_map[MAP_TILE_WIDTH * (tl_me_z) + (tl_me_x + tl_dx)];
+              if (do_vect_colide(p_mapel, cor_me_x, cor_me_y, cor_me_z,
+                cor_him_x, cor_him_y, cor_him_z))
+                  return 0;
+          }
+          if (tl_dz != 0)
+          {
+              if (debug_hud_collision || byte_1C844F) {
+                  cor_x = (cor_swp_x & 0xFF00);
+                  cor_z = (cor_swp_z & 0xFF00) + TILE_TO_MAPCOORD(tl_dz, 0);
+                  draw_map_flat_rect(cor_x, 8 * cor_swp_y, cor_z, 256, 256, colour_lookup[4]);
+              }
+              p_mapel = &game_my_big_map[MAP_TILE_WIDTH * (tl_me_z + tl_dz) + (tl_me_x)];
+              if (do_vect_colide(p_mapel, cor_me_x, cor_me_y, cor_me_z,
+                cor_him_x, cor_him_y, cor_him_z))
+                  return 0;
+          }
+          {
+              if (debug_hud_collision || byte_1C844F) {
+                  cor_x = (cor_swp_x & 0xFF00) + TILE_TO_MAPCOORD(tl_dx, 0);
+                  cor_z = (cor_swp_z & 0xFF00) + TILE_TO_MAPCOORD(tl_dz, 0);
+                  draw_map_flat_rect(cor_x, 8 * cor_swp_y, cor_z, 256, 256, colour_lookup[3]);
+              }
+              p_mapel = &game_my_big_map[MAP_TILE_WIDTH * (tl_me_z + tl_dz) + (tl_me_x + tl_dx)];
+              if (do_vect_colide(p_mapel, cor_me_x, cor_me_y, cor_me_z,
+                cor_him_x, cor_him_y, cor_him_z))
+                  return 0;
+          }
+      }
+      if (debug_hud_collision || byte_1C844F)
+      {
+          int cor_x, cor_y, cor_z;
+          ubyte colkp;
+
+          cor_x = cor_swp_x + cor_swp_inc_x;
+          cor_y = cor_swp_y + cor_swp_inc_y;
+          cor_z = cor_swp_z + cor_swp_inc_z;
+
+          if ((step & 1) != 0)
+              colkp = 4;
+          else
+              colkp = 2;
+          draw_mapcoord_line_col(cor_swp_x, 8 * cor_swp_y, cor_swp_z,
+            cor_x, 8 * cor_y, cor_z, colour_lookup[colkp]);
+          colkp = 0;
+          draw_mapcoord_line_col(cor_swp_x, 0, cor_swp_z,
+            cor_x, 0, cor_z, colour_lookup[colkp]);
+      }
+      cor_swp_x += cor_swp_inc_x;
+      cor_swp_y += cor_swp_inc_y;
+      cor_swp_z += cor_swp_inc_z;
+    }
+
+    if ((flags == 0x01) && delta_angle >> 8 != p_me->U.UPerson.Angle )
+        change_person_angle(p_me, ((delta_angle + 128) & 0x7FF) >> 8);
+
+    return distance;
 }
 
 TbBool can_i_enter_vehicle(struct Thing *p_me, struct Thing *p_vehicle)
@@ -1126,19 +1608,21 @@ TbBool can_i_enter_vehicle(struct Thing *p_me, struct Thing *p_vehicle)
     ThingIdx thing;
     ushort tngroup, mygroup;
 
-    if ((p_me->Flag2 & 0x0800) != 0)
+    if (person_is_executing_commands(p_me->ThingOffset)) {
+        // if person is executing commands, allow unconditionally
         return true;
+    }
 
     thing = p_vehicle->U.UVehicle.PassengerHead;
     if (thing <= 0)
         return true;
     p_thing = &things[thing];
 
-    tngroup = p_thing->U.UObject.EffectiveGroup;
-    mygroup = p_me->U.UObject.EffectiveGroup;
-    if (tngroup == mygroup)
+    tngroup = p_thing->U.UObject.EffectiveGroup & 0x7F;
+    mygroup = p_me->U.UObject.EffectiveGroup & 0x7F;
+    if (groups_equal(tngroup, mygroup))
         return true;
-    if (thing_group_have_truce(tngroup, mygroup) || thing_group_have_truce(mygroup, tngroup))
+    if (groups_have_truce(tngroup, mygroup) || groups_have_truce(mygroup, tngroup))
         return true;
 
     return false;
@@ -1166,7 +1650,7 @@ void set_person_persuaded(struct Thing *p_person, struct Thing *p_attacker, usho
 
     p_person->Flag |= TngF_Unkn40000000 | TngF_Unkn0004;
     p_person->Owner = p_attacker->ThingOffset;
-    p_person->Flag &= ~(TngF_Unkn00800000|TngF_Unkn00040000|TngF_Unkn00020000|TngF_Unkn0800|TngF_Unkn0080);
+    p_person->Flag &= ~(TngF_Unkn00800000|TngF_DangerFlee|TngF_Unkn00020000|TngF_TriggerUse|TngF_PersKeepPost);
 
     set_person_animmode_walk(p_person);
     p_person->U.UPerson.ComTimer = -1;
@@ -1196,7 +1680,7 @@ void set_person_persuaded(struct Thing *p_person, struct Thing *p_attacker, usho
     p_person->State = PerSt_BEING_PERSUADED;
     {
         ushort group;
-        group = p_person->U.UPerson.Group & 0x1F;
+        group = p_person->U.UPerson.Group & PEOPLE_GROUPS_INDEX_MASK;
         group_actions[group].Persuaded++;
     }
     if (!in_network_game && (p_attacker->Flag & TngF_PlayerAgent) &&
@@ -1217,6 +1701,15 @@ void set_person_persuaded(struct Thing *p_person, struct Thing *p_attacker, usho
                 p_agent->U.UPerson.Target2 = 0;
         }
     }
+}
+
+void stop_being_persuaded(struct Thing *p_person)
+{
+#if 1
+    asm volatile ("call ASM_stop_being_persuaded\n"
+        :  : "a" (p_person));
+    return;
+#endif
 }
 
 void unpersuade_my_peeps(struct Thing *p_owntng)
@@ -1249,6 +1742,17 @@ void unpersuade_my_peeps(struct Thing *p_owntng)
     }
     p_owntng->U.UPerson.PersuadePower = 0;
     word_1531DA = count;
+}
+
+void person_reset_default_anim_mode(struct Thing *p_person)
+{
+    ushort animode;
+
+    if (p_person->U.UPerson.CurrentWeapon != WEP_NULL)
+        animode = gun_out_anim(p_person, 0);
+    else
+        animode = ANIM_PERS_IDLE;
+    set_person_anim_mode(p_person, animode);
 }
 
 struct Thing *new_sim_person(int x, int y, int z, ubyte subtype)
@@ -1292,48 +1796,22 @@ struct Thing *new_sim_person(int x, int y, int z, ubyte subtype)
     p_person->U.UPerson.OnFace = 0;
     p_person->Type = TT_PERSON;
     p_person->Radius = calc_person_radius_type(p_person, ptype);
+    p_person->U.UPerson.CurrentWeapon = person_type_get_favourite_weapon(ptype);
     switch (ptype)
     {
     case SubTT_PERS_AGENT:
         p_person->U.UPerson.Angle = 0;
-        p_person->U.UPerson.CurrentWeapon = WEP_MINIGUN;
-        break;
-    case SubTT_PERS_ZEALOT:
-    case SubTT_PERS_HIGH_PRIEST:
-        p_person->U.UPerson.CurrentWeapon = WEP_ELLASER;
         break;
     case SubTT_PERS_PUNK_F:
-        p_person->U.UPerson.CurrentWeapon = WEP_UZI;
         p_person->U.UPerson.FrameId.Version[0] = rnd % 3;
-        break;
-    case SubTT_PERS_BRIEFCASE_M:
-    case SubTT_PERS_WHITE_BRUN_F:
-    case SubTT_PERS_MERCENARY:
-    case SubTT_PERS_SCIENTIST:
-    case SubTT_PERS_WHIT_BLOND_F:
-    case SubTT_PERS_LETH_JACKT_M:
-        p_person->U.UPerson.CurrentWeapon = WEP_NULL;
-        break;
-    case SubTT_PERS_MECH_SPIDER:
-        p_person->U.UPerson.CurrentWeapon = WEP_LASER;
-        break;
-    case SubTT_PERS_POLICE:
-        p_person->U.UPerson.CurrentWeapon = WEP_LASER;
-        break;
-    case SubTT_PERS_PUNK_M:
-        p_person->U.UPerson.CurrentWeapon = WEP_UZI;
-        break;
-    case SubTT_PERS_SHADY_M:
-        p_person->U.UPerson.CurrentWeapon = WEP_UZI;
         break;
     default:
         break;
     }
     p_person->SubType = ptype;
-    p_person->U.UPerson.Group = ptype + 4;
+    p_person->U.UPerson.Group = 4 + ptype;
     p_person->U.UPerson.EffectiveGroup = p_person->U.UPerson.Group;
-    p_person->U.UPerson.AnimMode = (p_person->U.UPerson.CurrentWeapon != WEP_NULL) ? ANIM_PERS_WEPLIGHT_IDLE : ANIM_PERS_IDLE;
-    reset_person_frame(p_person);
+    person_reset_default_anim_mode(p_person);
     init_person_thing(p_person);
     p_person->U.UPerson.WeaponsCarried = 0;
     if (p_person->U.UPerson.CurrentWeapon)
@@ -1347,25 +1825,321 @@ struct Thing *new_sim_person(int x, int y, int z, ubyte subtype)
     return p_person;
 }
 
+void should_i_get_item(struct Thing *p_person, struct SimpleThing *p_sthing)
+{
+    asm volatile ("call ASM_should_i_get_item\n"
+        : : "a" (p_person), "d" (p_sthing));
+}
+
+ThingIdx check_for_other_people_on_tile(int x, int y, int z,
+  short tile_x, short tile_z, struct Thing *p_person)
+{
+    ThingIdx thing;
+    ThingIdx found;
+    uint k;
+
+    thing = get_mapwho_thing_index(tile_x, tile_z);
+    k = 0;
+    while (thing != 0)
+    {
+        if (thing <= 0)
+        {
+            struct SimpleThing *p_sthing;
+
+            p_sthing = &sthings[thing];
+            if (p_sthing->Type == SmTT_DROPPED_ITEM)
+            {
+                if ((p_person->Flag & TngF_Persuaded) != 0)
+                    should_i_get_item(p_person, p_sthing);
+
+                {
+                    int tdy;
+
+                    tdy = PRCCOORD_TO_MAPCOORD(p_sthing->Y - y);
+                    if ((tdy < 25) && (tdy > -25))
+                    {
+                        int tdx, tdz, dist, radsum;
+
+                        tdx = PRCCOORD_TO_MAPCOORD(p_sthing->X - x);
+                        tdz = PRCCOORD_TO_MAPCOORD(p_sthing->Z - z);
+                        dist = map_distance_deltas_fast(tdx, tdy, tdz);
+                        radsum = p_sthing->Radius + p_person->Radius;
+                        if (dist < radsum)
+                        {
+                            p_person->Flag |= TngF_Unkn08000000;
+                            p_person->U.UPerson.StandOnThing = p_sthing->ThingOffset;
+                        }
+                    }
+                }
+            }
+            else if (p_sthing->Type == SmTT_STATIC)
+            {
+                if ((found == 0) && (p_sthing->SubType != 1) &&
+                  (p_person->U.UPerson.BumpCount < 2))
+                {
+                    int tdy;
+
+                    tdy = PRCCOORD_TO_MAPCOORD(p_sthing->Y - y);
+                    if ((tdy < 25) && (tdy > -25))
+                    {
+                        int tdx, tdz, dist, rad;
+
+                        tdx = PRCCOORD_TO_MAPCOORD(p_sthing->X - x);
+                        tdz = PRCCOORD_TO_MAPCOORD(p_sthing->Z - z);
+                        dist = map_distance_deltas_fast(tdx, tdy, tdz);
+                        rad = static_radii[p_sthing->StartFrame - 999] / 2;
+                        if (rad != 0)
+                        {
+                            int radsum;
+                            radsum = rad + p_person->Radius;
+                            if (dist < radsum)
+                                found = p_sthing->ThingOffset;
+                        }
+                    }
+                }
+            }
+            thing = p_sthing->Next;
+        }
+        else
+        {
+            struct Thing *p_thing;
+
+            p_thing = &things[thing];
+            if (p_thing->Type == TT_PERSON)
+            {
+                if (((p_thing->Flag & (TngF_Destroyed | TngF_PlayerAgent)) == 0) &&
+                  ((p_person->Flag & TngF_Persuaded) == (p_thing->Flag & TngF_Persuaded)) &&
+                  (p_person->State != PerSt_WANDER) &&
+                  ((p_person->Flag & TngF_PlayerAgent) == 0) &&
+                  (p_thing != p_person) &&
+                  (p_thing->State != PerSt_DEAD) &&
+                  (found == 0))
+                {
+                    int tdy;
+
+                    tdy = PRCCOORD_TO_MAPCOORD(p_thing->Y - y);
+                    if ((tdy < 25) && (tdy > -25))
+                    {
+                        int tdx, tdz, dist, radsum;
+
+                        tdx = PRCCOORD_TO_MAPCOORD(p_thing->X - x);
+                        tdz = PRCCOORD_TO_MAPCOORD(p_thing->Z - z);
+                        dist = 2 * map_distance_deltas_fast(tdx, tdy, tdz);
+                        radsum = p_thing->Radius + p_person->Radius;
+                        if ((dist < radsum) &&
+                          (((p_person->Flag & TngF_Persuaded) == 0) || (p_person >= p_thing)))
+                        {
+                            ubyte bump;
+
+                            bump = p_person->U.UPerson.BumpMode;
+                            if (bump == 0)
+                                bump = p_person->U.UPerson.Angle;
+                            bump++;
+                            p_thing->U.UPerson.BumpMode = bump;
+                            found = p_thing->ThingOffset;
+                        }
+                    }
+                }
+            }
+            else if (p_thing->Type == TT_VEHICLE)
+            {
+                if (p_thing->SubType != VehOM_CLAWTANK)
+                {
+                    int tdy;
+
+                    tdy = PRCCOORD_TO_MAPCOORD(p_thing->Y - y);
+                    if ((tdy < 25) && (tdy > -25))
+                    {
+                        int tdx, tdz, dist, radsum;
+
+                        tdx = PRCCOORD_TO_MAPCOORD(p_thing->X - x);
+                        tdz = PRCCOORD_TO_MAPCOORD(p_thing->Z - z);
+                        dist = map_distance_deltas_fast(tdx, tdy, tdz);
+                        radsum = p_person->Radius + (p_thing->Radius - (p_thing->Radius >> 2));
+                        if (dist < radsum)
+                        {
+                            p_person->Flag &= ~(TngF_Unkn08000000|TngF_Unkn02000000);
+                            p_person->U.UPerson.StandOnThing = p_thing->ThingOffset;
+                            p_person->Flag |= TngF_Unkn01000000;
+                            if (!can_i_enter_vehicle(p_person, p_thing))
+                                found = p_thing->ThingOffset;
+                        }
+                    }
+                }
+            }
+            thing = p_thing->Next;
+        }
+        k++;
+        if (k >= MAX_THINGS_ON_TILE) {
+            bad_mapwho_tl_x = tile_x;
+            bad_mapwho_tl_z = tile_z;
+            break;
+        }
+    }
+
+    return found;
+}
+
 short check_for_other_people(int x, int y, int z, struct Thing *p_person)
 {
-    short ret;
-    asm volatile (
-      "call ASM_check_for_other_people\n"
-        : "=r" (ret) : "a" (x), "d" (y), "b" (z), "c" (p_person));
-    return ret;
+    short tile_x_center, tile_z_center;
+    short dx, dz;
+    ThingIdx found;
+
+    p_person->Flag &= ~(TngF_StandOnVehicle | TngF_Unkn08000000);
+    found = 0;
+
+    if ((x < 0) || (x >= 0x800000) || (z < 0) || (z >= 0x800000))
+        return 1;
+
+    tile_x_center = MAPCOORD_TO_TILE(PRCCOORD_TO_MAPCOORD(x));
+    tile_z_center = MAPCOORD_TO_TILE(PRCCOORD_TO_MAPCOORD(z));
+
+    for (dx = -1; dx <= 1; dx++)
+    {
+        short cur_tile_x;
+
+        cur_tile_x = tile_x_center + dx;
+        if ((cur_tile_x <= 0) || (cur_tile_x >= MAP_TILE_WIDTH))
+            continue;
+
+        for (dz = -1; dz <= 1; dz++)
+        {
+            short cur_tile_z;
+            ThingIdx found_on_tl;
+
+            cur_tile_z = tile_z_center + dz;
+            if ((cur_tile_z <= 0) || (cur_tile_z >= MAP_TILE_HEIGHT))
+                continue;
+
+            found_on_tl = check_for_other_people_on_tile(x, y, z,
+              cur_tile_x, cur_tile_z, p_person);
+            if (found_on_tl != 0)
+                found = found_on_tl;
+        }
+    }
+    return found;
 }
 
 void check_persons_target(struct Thing *p_person)
 {
+#if 0
     asm volatile ("call ASM_check_persons_target\n"
         : : "a" (p_person));
+#endif
+    struct Thing *p_target;
+    int range;
+
+    range = get_weapon_range(p_person) + 256;
+    if (range < 1024) {
+        return;
+    }
+
+    p_target = p_person->PTarget;
+
+    // Handle shooting dead targets
+    if ((p_target == NULL) || ((p_target->Flag & TngF_Destroyed) != 0))
+    {
+        if (p_person->Type == TT_MINE)
+            p_person->PTarget = NULL;
+
+        if ((p_person->Flag & TngF_SelectedAgent) == 0)
+            p_person->Flag &= ~TngF_TriggerUse;
+    }
+
+    // If lost target, no need for any more checks
+    if (p_target == NULL) {
+        return;
+    }
+
+    // If stopped shooting, no need for any more checks
+    if (((p_person->Flag & TngF_TriggerUse) == 0) &&
+      ((p_person->Flag & TngF_WepCharging) == 0)) {
+        return;
+    }
+
+    // Handle shooting allies
+    if (things_check_same_group(p_person->ThingOffset, p_target->ThingOffset))
+    {
+        p_person->PTarget = NULL;
+        p_person->Flag &= ~TngF_TriggerUse;
+        return;
+    }
+
+    // Handle shooting out of range
+    if (!person_has_weapon_target_within_range(p_person, p_target->ThingOffset))
+    {
+        if (p_person->Type == TT_MINE)
+            p_person->PTarget = NULL;
+        // If the player wants to shoot toward an outranged target, he can.
+        // Other agents or people should release the trigger in such case.
+        if (!thing_is_player_agent_under_direct_control(p_person->ThingOffset))
+            p_person->Flag &= ~TngF_TriggerUse;
+        p_person->U.UPerson.Flag3 |= PrsF3_Unkn40;
+    }
 }
 
 void check_persons_target2(struct Thing *p_person)
 {
+#if 0
     asm volatile ("call ASM_check_persons_target2\n"
         : : "a" (p_person));
+#endif
+    struct Thing *p_target;
+    int range;
+
+    range = get_weapon_range(p_person) + 128;
+    if (range < 1024) {
+        return;
+    }
+
+    p_target = &things[p_person->U.UPerson.Target2];
+
+    if ((p_target == NULL) || ((p_target->Flag & TngF_Destroyed) != 0)) {
+        p_person->Flag &= ~TngF_TriggerUse;
+        return;
+    }
+
+    // Handle shooting allies
+    if (things_check_same_group(p_person->ThingOffset, p_target->ThingOffset))
+    {
+        p_person->U.UPerson.Target2 = 0;
+        p_person->Flag &= ~TngF_TriggerUse;
+        return;
+    }
+
+    if (!person_has_weapon_target_within_range(p_person, p_target->ThingOffset))
+    {
+        // If the player wants to shoot toward an outranged target, he can.
+        // Other agents or people should release the trigger in such case.
+        if (!thing_is_player_agent_under_direct_control(p_person->ThingOffset))
+            p_person->Flag &= ~TngF_TriggerUse;
+        p_person->U.UPerson.Flag3 |= PrsF3_Unkn40;
+    }
+}
+
+TbBool person_is_other_players_agent(struct Thing *p_person, PlayerIdx plyr)
+{
+    return (((p_person->Flag & TngF_PlayerAgent) != 0) && (p_person->U.UPerson.ComCur >> 2 != plyr));
+}
+
+short person_shield_glow_brightness(struct Thing *p_thing)
+{
+    short br_inc;
+
+    br_inc = 0;
+    if ((p_thing->Flag & TngF_Destroyed) == 0)
+    {
+        if ((p_thing->Flag & TngF_Unkn00200000) != 0)
+        {
+            br_inc += 16;
+            if (p_thing->U.UPerson.ShieldGlowTimer) {
+                br_inc += 16;
+            }
+        }
+    }
+
+    return br_inc;
 }
 
 void process_stamina(struct Thing *p_person)
@@ -1640,6 +2414,15 @@ void person_init_drop_special(struct Thing *p_person, ThingIdx item)
         : : "a" (p_person), "d" (item));
 }
 
+int build_tank_path(struct Thing *p_thing, int x, int z)
+{
+    int ret;
+    asm volatile (
+      "call ASM_build_tank_path\n"
+        : "=r" (ret) : "a" (p_thing), "d" (x), "b" (z));
+    return ret;
+}
+
 int start_goto_vehicle(struct Thing *p_vehicle, int x, int z)
 {
     int ret;
@@ -1660,8 +2443,45 @@ short find_peep_in_area(struct Thing *p_me, struct Command *p_cmd)
 
 void set_person_animmode_run(struct Thing *p_person)
 {
+#if 0
     asm volatile ("call ASM_set_person_animmode_run\n"
         : : "a" (p_person));
+#endif
+    if (p_person->State == PerSt_PERSON_BURNING) {
+        return;
+    }
+    if ((p_person->Flag & TngF_Destroyed) != 0 || (p_person->Flag2 & TgF2_KnockedOut) != 0) {
+        return;
+    }
+    if (p_person->U.UPerson.AnimMode != ANIM_PERS_Unkn19) {
+        set_person_anim_mode(p_person, ANIM_PERS_Unkn19);
+    }
+    p_person->Timer1 = 48;
+    p_person->StartTimer1 = 48;
+    p_person->Flag2 |= TgF2_Unkn00080000;
+    p_person->Speed = calc_person_speed(p_person);
+}
+
+void set_xz_for_tri(struct SingleObjectFace3 *p_face, int *x, int *z)
+{
+#if 0
+    asm volatile (
+      "call ASM_set_xz_for_tri\n"
+        :  : "a" (p_face), "d" (x), "b" (z));
+    return;
+#endif
+    struct SingleObject *p_obj;
+    struct SinglePoint *p_pt1;
+    struct SinglePoint *p_pt0;
+    struct SinglePoint *p_pt2;
+
+    p_obj = &game_objects[p_face->Object];
+    p_pt1 = &game_object_points[p_face->PointNo[1]];
+    p_pt0 = &game_object_points[p_face->PointNo[0]];
+    p_pt2 = &game_object_points[p_face->PointNo[2]];
+
+    *x = p_obj->MapX + (p_pt1->X + p_pt0->X + p_pt2->X) / 3;
+    *z = p_obj->MapZ + (p_pt1->Z + p_pt0->Z + p_pt2->Z) / 3;
 }
 
 ushort build_navigate_path(struct Thing *p_thing, int x, int z, int face)
@@ -1692,6 +2512,39 @@ void build_navigate_path_to_face_xz(struct Thing *p_thing, short face, int x, in
 {
     asm volatile ("call ASM_build_navigate_path_to_face_xz\n"
         : : "a" (p_thing), "d" (face), "b" (x), "c" (z));
+}
+
+/** Initialize drop item state.
+ *
+ * @param item The item to drop, SimpleThing if < 0 (mark in Flag2 required),
+ *   weapon type in hand if 0, carried weapon type if > 0
+ */
+void person_init_drop(struct Thing *p_person, ThingIdx item)
+{
+#if 0
+    asm volatile ("call ASM_person_init_drop\n"
+        : : "a" (p_person), "d" (item));
+#endif
+    ubyte PrevAnimMode;
+
+    if ((p_person->Flag & (TngF_Unkn40000000|TngF_WepRecoil|TngF_StationrSht|TngF_Destroyed)) != 0) {
+        return;
+    }
+
+    p_person->U.UPerson.TempWeapon = item;
+    p_person->Flag |= TngF_Unkn0001;
+    p_person->State = PerSt_DROP_ITEM;
+    p_person->U.UPerson.Timer2 = 3;
+
+    PrevAnimMode = p_person->U.UPerson.AnimMode;
+    set_person_anim_mode(p_person, ANIM_PERS_Unkn13);
+    p_person->U.UPerson.OldAnimMode = PrevAnimMode;
+}
+
+void person_init_pickup(struct Thing *p_person, ThingIdx item)
+{
+    asm volatile ("call ASM_person_init_pickup\n"
+        : : "a" (p_person), "d" (item));
 }
 
 void check_weapon(struct Thing *p_person, int range)
@@ -1754,7 +2607,7 @@ ushort person_command_until_check_condition(struct Thing *p_person, ushort cond_
                 char locstr[192];
                 snprint_command(cond_locstr, sizeof(cond_locstr), cond_cmd);
                 snprint_command(locstr, sizeof(locstr), cmd);
-                LOGSYNC("Person %s %d %s %d ends, met %s %d, state %d.%d",
+                LOGSYNC_F("Person %s %d %s %d ends, met %s %d, state %d.%d",
                   person_type_name(p_person->SubType), (int)p_person->ThingOffset,
                   cond_locstr, cond_cmd, locstr, cmd, p_person->State, p_person->SubState);
             }
@@ -1924,14 +2777,14 @@ StateChRes person_init_go_to_person(struct Thing *p_person, short target,
     return StCh_ACCEPTED;
 }
 
-StateChRes person_init_kill_person(struct Thing *p_person, short target)
+StateChRes person_init_kill_person(struct Thing *p_person, short targetng)
 {
     int weapon_range;
 
     p_person->Flag2 &= ~TgF2_IgnoreEnemies;
-    p_person->GotoThingIndex = target;
+    p_person->GotoThingIndex = targetng;
     // Command to kill target 0 is equivalent to taking out weapon
-    if (target == 0)
+    if (targetng == 0)
     {
         get_weapon_out(p_person);
         p_person->State = PerSt_NONE;
@@ -1939,7 +2792,7 @@ StateChRes person_init_kill_person(struct Thing *p_person, short target)
     }
     check_weapon(p_person, 1280);
     p_person->State = PerSt_KILL_PERSON;
-    p_person->PTarget = &things[target];
+    p_person->PTarget = &things[targetng];
     p_person->U.UPerson.ComTimer = -1;
     p_person->SubState = 0;
 
@@ -1969,17 +2822,17 @@ short person_get_command_range_for_persuade(struct Thing *p_person)
     return cmd_range;
 }
 
-StateChRes person_init_persuade_person(struct Thing *p_person, short target)
+StateChRes person_init_persuade_person(struct Thing *p_person, short targetng)
 {
-    if (target == 0)
+    if (targetng == 0)
     {
         p_person->State = PerSt_NONE;
         return StCh_UNATTAIN;
     }
-    p_person->GotoThingIndex = target;
+    p_person->GotoThingIndex = targetng;
     p_person->State = PerSt_PERSUADE_PERSON;
     p_person->U.UPerson.ComTimer = -1;
-    p_person->PTarget = &things[target];
+    p_person->PTarget = &things[targetng];
 
     p_person->U.UPerson.ComRange = person_get_command_range_for_persuade(p_person);
     p_person->SubState = 0;
@@ -1989,17 +2842,17 @@ StateChRes person_init_persuade_person(struct Thing *p_person, short target)
     return StCh_ACCEPTED;
 }
 
-StateChRes person_init_block_person(struct Thing *p_person, short target)
+StateChRes person_init_block_person(struct Thing *p_person, short targetng)
 {
-    if (target == 0)
+    if (targetng == 0)
     {
         p_person->State = PerSt_NONE;
         return StCh_UNATTAIN;
     }
-    p_person->GotoThingIndex = target;
+    p_person->GotoThingIndex = targetng;
     p_person->State = PerSt_BLOCK_PERSON;
     p_person->U.UPerson.ComTimer = -1;
-    p_person->PTarget = &things[target];
+    p_person->PTarget = &things[targetng];
     p_person->U.UPerson.ComRange = 2;
     p_person->U.UPerson.Timer2 = 20;
     p_person->U.UPerson.StartTimer2 = 20;
@@ -2007,18 +2860,18 @@ StateChRes person_init_block_person(struct Thing *p_person, short target)
     return StCh_ACCEPTED;
 }
 
-StateChRes person_init_scare_person(struct Thing *p_person, short target)
+StateChRes person_init_scare_person(struct Thing *p_person, short targetng)
 {
-    if (target == 0)
+    if (targetng == 0)
     {
         get_weapon_out(p_person);
         p_person->State = PerSt_NONE;
         return StCh_UNATTAIN;
     }
-    p_person->GotoThingIndex = target;
+    p_person->GotoThingIndex = targetng;
     p_person->State = PerSt_SCARE_PERSON;
     p_person->U.UPerson.ComTimer = -1;
-    p_person->PTarget = &things[target];
+    p_person->PTarget = &things[targetng];
     p_person->U.UPerson.ComRange = 2;
     p_person->U.UPerson.Timer2 = 50;
     p_person->U.UPerson.StartTimer2 = 50;
@@ -2034,15 +2887,15 @@ void person_init_follow_person(struct Thing *p_person, struct Thing *p_other)
         : : "a" (p_person), "d" (p_other));
 }
 
-StateChRes person_init_cmd_follow_person(struct Thing *p_person, short target)
+StateChRes person_init_cmd_follow_person(struct Thing *p_person, short targetng)
 {
     //TODO it would probably make sense to reuse person_init_follow_person() here
-    if (target == 0)
+    if (targetng == 0)
     {
         p_person->State = PerSt_NONE;
         return StCh_UNATTAIN;
     }
-    p_person->GotoThingIndex = target;
+    p_person->GotoThingIndex = targetng;
     p_person->State = PerSt_FOLLOW_PERSON;
     p_person->U.UPerson.ComTimer = -1;
     p_person->U.UPerson.ComRange = 1;
@@ -2052,14 +2905,14 @@ StateChRes person_init_cmd_follow_person(struct Thing *p_person, short target)
     return StCh_ACCEPTED;
 }
 
-StateChRes person_init_support_person(struct Thing *p_person, short target)
+StateChRes person_init_support_person(struct Thing *p_person, short targetng)
 {
-    if (target == 0)
+    if (targetng == 0)
     {
         p_person->State = PerSt_NONE;
         return StCh_UNATTAIN;
     }
-    p_person->GotoThingIndex = target;
+    p_person->GotoThingIndex = targetng;
     p_person->State = PerSt_SUPPORT_PERSON;
     p_person->U.UPerson.ComTimer = -1;
     p_person->U.UPerson.ComRange = 3;
@@ -2069,14 +2922,14 @@ StateChRes person_init_support_person(struct Thing *p_person, short target)
     return StCh_ACCEPTED;
 }
 
-StateChRes person_init_protect_person(struct Thing *p_person, short target, TbBool one_target)
+StateChRes person_init_protect_person(struct Thing *p_person, short targetng, TbBool one_target)
 {
-    if ((target == 0) && one_target)
+    if ((targetng == 0) && one_target)
     {
         p_person->State = PerSt_NONE;
         return StCh_UNATTAIN;
     }
-    p_person->GotoThingIndex = target;
+    p_person->GotoThingIndex = targetng;
     p_person->State = PerSt_PROTECT_PERSON;
     p_person->U.UPerson.ComTimer = -1;
     p_person->U.UPerson.ComRange = 8;
@@ -2084,7 +2937,7 @@ StateChRes person_init_protect_person(struct Thing *p_person, short target, TbBo
     p_person->U.UPerson.StartTimer2 = 50;
     p_person->SubState = 0;
     if (one_target)
-        p_person->Owner = target;
+        p_person->Owner = targetng;
     return StCh_ACCEPTED;
 }
 
@@ -2100,18 +2953,18 @@ void person_init_get_item_fast(struct Thing *p_person, short item, ushort plyr)
         : : "a" (p_person), "d" (item), "b" (plyr));
 }
 
-StateChRes person_init_cmd_get_item(struct Thing *p_person, short target)
+StateChRes person_init_cmd_get_item(struct Thing *p_person, short targetng)
 {
     short tgtng_x, tgtng_z;
 
     //TODO it would probably make sense to reuse person_init_get_item() here
-    if (target == 0)
+    if (targetng == 0)
     {
         p_person->State = PerSt_NONE;
         return StCh_UNATTAIN;
     }
-    get_thing_position_mapcoords(&tgtng_x, NULL, &tgtng_z, target);
-    p_person->GotoThingIndex = target;
+    get_thing_position_mapcoords(&tgtng_x, NULL, &tgtng_z, targetng);
+    p_person->GotoThingIndex = targetng;
     p_person->State = PerSt_GET_ITEM;
     p_person->U.UPerson.GotoX = tgtng_x;
     p_person->U.UPerson.GotoZ = tgtng_z;
@@ -2139,7 +2992,7 @@ StateChRes person_init_cmd_use_weapon(struct Thing *p_person, short x, short y,
     p_person->U.UPerson.WeaponDir = 32 * p_person->U.UPerson.Angle;
     thing_shoot_at_point(p_person, x, y, z, 0);
     process_weapon(p_person);
-    p_person->Flag &= ~TngF_Unkn0800;
+    p_person->Flag &= ~TngF_TriggerUse;
     return StCh_ACCEPTED;
 }
 
@@ -2157,14 +3010,14 @@ StateChRes person_init_wand_avoid_group(struct Thing *p_person, ushort group, ub
     return StCh_ACCEPTED;
 }
 
-StateChRes person_init_destroy_building(struct Thing *p_person, short x, short z, short target)
+StateChRes person_init_destroy_building(struct Thing *p_person, short x, short z, short targetng)
 {
     int weapon_range;
 
-    p_person->GotoThingIndex = target;
+    p_person->GotoThingIndex = targetng;
     p_person->State = PerSt_DESTROY_BUILDING;
     p_person->U.UPerson.ComTimer = -1;
-    p_person->PTarget = &things[target];
+    p_person->PTarget = &things[targetng];
     p_person->SubState = 0;
 
     p_person->U.UPerson.Timer2 = 10;
@@ -2278,6 +3131,49 @@ StateChRes person_close_dome(struct Thing *p_person, short dome)
     return StCh_ACCEPTED;
 }
 
+StateChRes person_init_drop_item_where_standing(struct Thing *p_person, ThingIdx item)
+{
+    StateChRes res;
+
+    if ((item >= 0) && (item < WEP_TYPES_COUNT))
+    {
+        person_init_drop(p_person, item);
+        res = (p_person->State == PerSt_DROP_ITEM) ? StCh_ACCEPTED : StCh_DENIED;
+    }
+    else if ((item < 0) && thing_is_pickup_item(item))
+    {
+        person_init_drop(p_person, item);
+        res = (p_person->State == PerSt_DROP_ITEM) ? StCh_ACCEPTED : StCh_DENIED;
+    }
+    else
+    {
+        LOGWARN("Drop called for unsupported item %d", (int)item);
+        res = StCh_UNATTAIN;
+    }
+    return res;
+}
+
+StateChRes person_init_plant_mine_where_standing(struct Thing *p_person, WeaponType wtype)
+{
+    struct WeaponDef *wdef;
+
+    if (!weapon_is_for_planting(wtype)) {
+        LOGWARN("Weapon %s is not desgined for planting",
+          weapon_codename(wtype));
+        return StCh_UNATTAIN;
+    }
+    person_init_drop(p_person, wtype);
+
+    if (p_person->State != PerSt_DROP_ITEM) {
+        return StCh_DENIED;
+    }
+    wdef = &weapon_defs[wtype];
+    p_person->Flag2 |= TgF2_DroppedActivate;
+    p_person->U.UPerson.Energy -= wdef->EnergyUsed;
+    p_person->U.UPerson.WeaponTurn = wdef->ReFireDelay;
+    return StCh_ACCEPTED;
+}
+
 StateChRes person_lock_building(struct Thing *p_person, short bldng)
 {
     struct Thing *p_building;
@@ -2288,7 +3184,7 @@ StateChRes person_lock_building(struct Thing *p_person, short bldng)
         return StCh_UNATTAIN;
     }
     p_building = &things[bldng];
-    p_building->Flag |= TngF_Unkn0800;
+    p_building->Flag |= TngF_PassageLocked;
     p_person->State = PerSt_NONE;
     return StCh_ACCEPTED;
 }
@@ -2303,7 +3199,7 @@ StateChRes person_unlock_building(struct Thing *p_person, short bldng)
         return StCh_UNATTAIN;
     }
     p_building = &things[bldng];
-    p_building->Flag &= ~TngF_Unkn0800;
+    p_building->Flag &= ~TngF_PassageLocked;
     p_person->State = PerSt_NONE;
     return StCh_ACCEPTED;
 }
@@ -2506,15 +3402,23 @@ StateChRes person_cmd_play_sample(struct Thing *p_person, short smptbl_id,
 
 void camera_track_thing(short thing, TbBool revert)
 {
+    PlayerInfo *p_locplayer;
+
+    p_locplayer = &players[local_player_no];
+
     if (revert)
     {
         ThingIdx dcthing;
-        dcthing = players[local_player_no].DirectControl[0];
+        dcthing = p_locplayer->DirectControl[0];
+        LOGDBG("Revert track to dcthing offs=%d", (int)dcthing);
         ingame.TrackThing = 0;
         game_set_cam_track_thing_xz(dcthing);
         return;
     }
+    LOGDBG("Begin track thing offs=%d", (int)thing);
     ingame.TrackThing = thing;
+    // Disallow camera movement being blocked by user modes like goto point
+    reset_user_input();
 }
 
 void camera_rotate_view(short ang1, short ang2, TbBool revert)
@@ -2534,6 +3438,12 @@ TbBool person_init_specific_command(struct Thing *p_person, ushort cmd)
     struct Thing *p_othertng;
     StateChRes res;
     short othertng;
+
+    if ((debug_log_things & 0x01) != 0) {
+        LOGSYNC_F("Thing %s %d inits %s %d",
+          thing_type_name(p_person->Type, p_person->SubType),
+          (int)p_person->ThingOffset, command_codename(cmd), (int)cmd);
+    }
 
     p_cmd = &game_commands[cmd];
     switch (p_cmd->Type)
@@ -2566,7 +3476,7 @@ TbBool person_init_specific_command(struct Thing *p_person, ushort cmd)
         break;
     case PCmd_KILL_ALL_GROUP:
         othertng = find_nearest_from_group(p_person, p_cmd->OtherThing, 0);
-        thing_group_set_kill_on_sight(p_person->U.UPerson.Group, p_cmd->OtherThing, true);
+        groups_set_kill_on_sight(p_person->U.UPerson.Group, p_cmd->OtherThing, true);
         res = person_init_kill_person(p_person, othertng);
         break;
     case PCmd_PERSUADE_PERSON:
@@ -2624,8 +3534,7 @@ TbBool person_init_specific_command(struct Thing *p_person, ushort cmd)
         res = person_close_dome(p_person, p_cmd->OtherThing);
         break;
     case PCmd_DROP_WEAPON:
-        person_init_drop(p_person, p_cmd->OtherThing);
-        res = StCh_ACCEPTED;
+        res = person_init_drop_item_where_standing(p_person, p_cmd->OtherThing);
         break;
     case PCmd_CATCH_FERRY:
         res = person_init_catch_ferry(p_person, p_cmd->X, p_cmd->Z, p_cmd->Arg1);
@@ -2750,7 +3659,7 @@ TbBool person_init_specific_command(struct Thing *p_person, ushort cmd)
         res = StCh_ACCEPTED;
         break;
     case PCmd_UNTRUCE_GROUP:
-        thing_group_set_truce(p_person->U.UPerson.Group, p_cmd->OtherThing, false);
+        groups_set_truce(p_person->U.UPerson.Group, p_cmd->OtherThing, false);
         p_person->State = PerSt_NONE;
         res = StCh_ACCEPTED;
         break;
@@ -2842,7 +3751,7 @@ TbBool person_init_specific_command(struct Thing *p_person, ushort cmd)
         snprint_command(locstr, sizeof(locstr), cmd);
 
         if (res <= StCh_ALREADY)
-            LOGSYNC("Person %s %d %s %d %s, state %d.%d",
+            LOGSYNC_F("Person %s %d %s %d %s, state %d.%d",
               person_type_name(p_person->SubType), (int)p_person->ThingOffset, locstr,
               cmd, state_change_result_name(res), p_person->State, p_person->SubState);
         else
@@ -2879,7 +3788,7 @@ TbBool person_init_specific_preplay_command(struct Thing *p_person, ushort cmd)
 
         snprint_command(locstr, sizeof(locstr), cmd);
 
-        LOGSYNC("Person %s %d %s %d %s, state %d.%d",
+        LOGSYNC_F("Person %s %d %s %d %s, state %d.%d",
           person_type_name(p_person->SubType), (int)p_person->ThingOffset, locstr,
           cmd, "pre-played", p_person->State, p_person->SubState);
     }
@@ -2915,7 +3824,7 @@ void person_init_command(struct Thing *p_person, ushort from)
 
     for (cmd = p_person->U.UPerson.ComCur; 1; )
     {
-        p_person->Flag &= ~TngF_Unkn0800;
+        p_person->Flag &= ~TngF_TriggerUse;
         p_person->U.UPerson.Target2 = 0;
 
         p_cmd = &game_commands[cmd];
@@ -3088,7 +3997,7 @@ void init_recoil(struct Thing *p_person, short vx, short vy, short vz, ushort ty
     asm volatile (
       "push %4\n"
       "call ASM_init_recoil\n"
-        :  : "a" (p_person), "d" (vx), "b" (vy), "c" (vz), "g" (type));
+        :  : "a" (p_person), "d" (vx), "b" (vy), "c" (vz), "g" ((u32)type));
 }
 
 void person_update_kill_stats(struct Thing *p_attacker, struct Thing *p_victim)
@@ -3161,16 +4070,33 @@ TbBool persons_have_truce(struct Thing *p_person1, struct Thing *p_person2)
         return false;
     }
 
-    pers1grp = p_person1->U.UPerson.EffectiveGroup;
+    // This function can be called for objects, vehicles, mguns, people, even effects/shots
+    assert(offsetof(struct Thing, U.UPerson.EffectiveGroup) == offsetof(struct Thing, U.UObject.EffectiveGroup));
+    assert(offsetof(struct Thing, U.UPerson.EffectiveGroup) == offsetof(struct Thing, U.UVehicle.EffectiveGroup));
+    assert(offsetof(struct Thing, U.UPerson.EffectiveGroup) == offsetof(struct Thing, U.UMGun.EffectiveGroup));
+    assert(offsetof(struct Thing, U.UPerson.EffectiveGroup) == offsetof(struct Thing, U.UEffect.EffectiveGroup));
+
+    pers1grp = p_person1->U.UPerson.EffectiveGroup & 0x7F;
     pers2grp = p_person2->U.UPerson.EffectiveGroup & 0x7F;
 
-    return thing_group_have_truce(pers1grp, pers2grp);
+    return groups_have_truce(pers1grp, pers2grp);
 }
 
-void persons_set_groups_kill_on_sight(struct Thing *p_attacker, struct Thing *p_victim)
+TbBool things_have_same_group(struct Thing *p_thing1, struct Thing *p_thing2)
 {
-    ubyte attack_grp, victim_grp;
+    if (p_thing1 == NULL) {
+        return false;
+    }
 
+    if (p_thing2 == NULL) {
+        return false;
+    }
+
+    return things_check_same_group(p_thing1->ThingOffset, p_thing2->ThingOffset);
+}
+
+void persons_set_groups_kill_on_sight_if_player_attacked(struct Thing *p_attacker, struct Thing *p_victim)
+{
     if ((p_attacker == NULL) || ((p_attacker->Flag & TngF_PlayerAgent) == 0)) {
         return;
     }
@@ -3179,14 +4105,11 @@ void persons_set_groups_kill_on_sight(struct Thing *p_attacker, struct Thing *p_
         return;
     }
 
-    attack_grp = p_attacker->U.UPerson.EffectiveGroup;
-    victim_grp = p_victim->U.UPerson.EffectiveGroup & 0x7F;
-
-    if (p_victim->SubType == SubTT_PERS_BRIEFCASE_M || p_victim->SubType == SubTT_PERS_WHITE_BRUN_F ||
-      p_victim->SubType == SubTT_PERS_WHIT_BLOND_F || p_victim->SubType == SubTT_PERS_LETH_JACKT_M) {
+    if (person_is_basic_civilian(p_victim, false)) {
         return;
     }
-    thing_group_set_kill_on_sight(attack_grp, victim_grp, true);
+
+    thing_groups_set_kill_on_sight_one_way(p_attacker->ThingOffset, p_victim->ThingOffset);
 }
 
 int mods_affect_hit_points(struct Thing *p_thing, ushort type, int hp)
@@ -3196,21 +4119,21 @@ int mods_affect_hit_points(struct Thing *p_thing, ushort type, int hp)
     case DMG_UZI:
     case DMG_MINIGUN:
     case DMG_LONGRANGE:
-        if (cybmod_skin_level(&p_thing->U.UPerson.UMod) == 1)
+        if (person_mod_skin_level(p_thing) == 1)
             hp >>= 1;
         break;
     case DMG_ELLASER:
     case DMG_BEAM:
     case DMG_LASER:
     case DMG_ELSTRAND:
-        if (cybmod_skin_level(&p_thing->U.UPerson.UMod) == 3)
+        if (person_mod_skin_level(p_thing) == 3)
             hp >>= 1;
         break;
     case DMG_UNKN5:
     case DMG_RAP:
         break;
     case DMG_UNKN9:
-        if (cybmod_skin_level(&p_thing->U.UPerson.UMod) == 1)
+        if (person_mod_skin_level(p_thing) == 1)
             hp = 3 * (hp >> 2);
         break;
     default:
@@ -3231,8 +4154,7 @@ int dead_person_hit_by_bullet(struct Thing *p_thing, short hp,
             p_thing->SubState = 26;
             p_thing->U.UPerson.FrameId.Version[4] = 0;
             p_thing->U.UPerson.FrameId.Version[3] = 0;
-            p_thing->U.UPerson.AnimMode = ANIM_PERS_Unkn10;
-            reset_person_frame(p_thing);
+            set_person_anim_mode(p_thing, ANIM_PERS_Unkn10);
             return 1;
         }
         if (type == DMG_UZI || type == DMG_MINIGUN || type == DMG_LONGRANGE || type == DMG_UNKN9)
@@ -3252,7 +4174,136 @@ int dead_person_hit_by_bullet(struct Thing *p_thing, short hp,
     return 1;
 }
 
+/** Returns if given agent holds a weapon different than weapon of selected agent.
+ *
+ * Very specific function, expected to be required in exactly one situation - to
+ * decide whether we should search around hit position for neutral factions to
+ * antagonize due to the shooting.
+ *
+ * Usually the selected agent will shoot as well as the rest, so we do not care
+ * for antagonizing check to be repeated. But if selected agent has shorter range
+ * weapon, or just different weapon - then we should repeat the search, as very
+ * likely it will be at different destination.
+ *
+ * Can the whole condition be removed instead, to always check all agents shot
+ * target - maybe. Not sure it it would have other consequences.
+ */
+TbBool player_agent_selected_holds_different_weapon_than(struct Thing *p_person)
+{
+    struct Thing *p_dcthing;
+    ThingIdx dcthing;
+    PlayerIdx plyr;
+
+    if ((p_person->Flag & TngF_PlayerAgent) == 0) {
+        return false;
+    }
+    if (p_person->U.UPerson.CurrentWeapon == WEP_NULL) {
+        return false;
+    }
+
+    plyr = p_person->U.UPerson.ComCur >> 2;
+    dcthing = (ThingIdx)players[plyr].DirectControl[0];
+    if (dcthing <= 0) {
+        return false;
+    }
+    p_dcthing = &things[dcthing];
+
+    return (p_dcthing->U.UPerson.CurrentWeapon != p_person->U.UPerson.CurrentWeapon);
+}
+
 int person_hit_by_bullet(struct Thing *p_thing, short hp,
+  int vx, int vy, int vz, struct Thing *p_attacker, ushort type)
+{
+    short hp1;
+    int energy_decr;
+
+    hp1 = hp;
+
+    if (persons_have_truce(p_attacker, p_thing)) {
+        return 1;
+    }
+    // Make attacker group aggressive toward the victim group, but under some conditions
+    persons_set_groups_kill_on_sight_if_player_attacked(p_attacker, p_thing);
+    hp1 = mods_affect_hit_points(p_thing, type, hp);
+
+    if ((p_attacker != NULL) && (type != DMG_ELSTRAND) && ((p_thing->Flag & TngF_SelectedAgent) == 0)
+      && ((p_thing->Flag & TngF_Destroyed) == 0) && ((p_attacker->Flag2 & TgF2_ExistsOffMap) == 0)
+      && ((p_thing->Flag2 & TgF2_KnockedOut) == 0))
+    {
+        set_interrupt_target(p_thing, p_attacker);
+    }
+
+    if ((p_thing->Flag & TngF_Destroyed) != 0) {
+        return 1;
+    }
+
+    if ((p_attacker == NULL) || (type == DMG_ELSTRAND)) {
+        // No action
+    } else if (things_have_same_group(p_attacker, p_thing) || persons_have_truce(p_attacker, p_thing)) {
+        // No action
+    } else if ((((p_attacker->Flag & TngF_SelectedAgent) != 0) || player_agent_selected_holds_different_weapon_than(p_attacker)) ||
+      ((p_thing == p_attacker->PTarget) && (p_attacker->Flag2 & TgF2_ExistsOffMap) == 0)) {
+        if ((p_thing->Flag & TngF_Persuaded) == 0)
+            // Make victim group aggressive back toward the attacker group
+            thing_groups_set_kill_on_sight_one_way(p_thing->ThingOffset, p_attacker->ThingOffset);
+
+        if (((p_thing->Flag & TngF_Persuaded) == 0) && thing_group_has_guardians(p_thing->ThingOffset))
+            find_and_alert_guardian(p_thing, p_attacker);
+    }
+
+    energy_decr = 0;
+    if ((p_thing->Flag & TngF_Unkn00200000) != 0)
+    {
+        p_thing->U.UPerson.ShieldEnergy -= hp1;
+        p_thing->U.UPerson.ShieldGlowTimer = 4;
+        if (p_thing->U.UPerson.ShieldEnergy >= 0)
+        {
+            if (p_thing->U.UPerson.ShieldEnergy > PERSON_MAX_SHIELD)
+                p_thing->U.UPerson.ShieldEnergy = PERSON_MAX_SHIELD;
+            return 0;
+        }
+        p_thing->Health += p_thing->U.UPerson.ShieldEnergy;
+        energy_decr = -p_thing->U.UPerson.ShieldEnergy;
+    }
+    else
+    {
+        if (p_thing->U.UPerson.RecoilTimer <= 1)
+        {
+            ushort smpl_no;
+
+            switch (person_sex(p_thing))
+            {
+            case PERSON_FEMALE:
+                smpl_no = sfx_woman_shot[(gameturn + p_thing->ThingOffset) & 1];
+                break;
+            case PERSON_MALE:
+            default:
+                smpl_no = sfx_man_shot[(gameturn + p_thing->ThingOffset) & 7];
+                break;
+            }
+            play_dist_sample(p_thing, smpl_no, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2);
+        }
+        p_thing->Health -= hp1;
+        p_thing->U.UPerson.ShieldEnergy -= hp1;
+    }
+
+    if (p_thing->Health <= 0)
+    {
+        int prev_health;
+        prev_health = p_thing->Health + hp1 + energy_decr;
+        person_start_dying(p_thing, hp1 + energy_decr, type);
+        person_update_kill_stats(p_attacker, p_thing);
+        return prev_health;
+    }
+
+    if ((p_thing->Flag2 & TgF2_KnockedOut) == 0)
+    {
+        init_recoil(p_thing, vx, vy, vz, type);
+    }
+    return 0;
+}
+
+int thing_hit_by_bullet(struct Thing *p_thing, short hp,
   int vx, int vy, int vz, struct Thing *p_attacker, ushort type)
 {
 #if 0
@@ -3261,15 +4312,10 @@ int person_hit_by_bullet(struct Thing *p_thing, short hp,
       "push %7\n"
       "push %6\n"
       "push %5\n"
-      "call ASM_person_hit_by_bullet\n"
+      "call ASM_thing_hit_by_bullet\n"
         : "=r" (ret) : "a" (p_thing), "d" (hp), "b" (vx), "c" (vy), "g" (vz), "g" (p_attacker), "g" (type));
     return ret;
 #endif
-    short hp1;
-    int energy_decr;
-
-    hp1 = hp;
-
     if ((p_thing->Flag & TngF_Unkn40000000) != 0)
         return 1;
 
@@ -3305,92 +4351,11 @@ int person_hit_by_bullet(struct Thing *p_thing, short hp,
     case TT_VEHICLE:
         return vehicle_hit_by_bullet(p_thing, hp, vx, vy, vz, p_attacker, type);
     case TT_PERSON:
-          if (persons_have_truce(p_attacker, p_thing)) {
-              return 1;
-          }
-          persons_set_groups_kill_on_sight(p_attacker, p_thing);
-          hp1 = mods_affect_hit_points(p_thing, type, hp);
-
-          if ((p_attacker != NULL) && (type != DMG_ELSTRAND) && ((p_thing->Flag & TngF_Unkn1000) == 0)
-            && ((p_thing->Flag & TngF_Destroyed) == 0) && ((p_attacker->Flag2 & TgF2_ExistsOffMap) == 0)
-            && ((p_thing->Flag2 & TgF2_KnockedOut) == 0))
-          {
-              set_interrupt_target(p_thing, p_attacker);
-          }
-          if ((p_thing->Flag & TngF_Destroyed) != 0) {
-              return 1;
-          }
-          if ((p_attacker != NULL) && (type != DMG_ELSTRAND)
-            && !thing_group_have_truce(p_attacker->U.UPerson.EffectiveGroup, p_thing->U.UPerson.EffectiveGroup & 0x7F)
-            && (((p_attacker->Flag & TngF_Unkn1000) != 0) || ((p_thing == p_attacker->PTarget) && (p_attacker->Flag2 & TgF2_ExistsOffMap) == 0)))
-          {
-              ubyte attack_grp, victim_grp;
-              victim_grp = p_thing->U.UPerson.EffectiveGroup;
-              attack_grp = p_attacker->U.UPerson.EffectiveGroup;
-              if ( victim_grp <= 0x63u && attack_grp <= 0x63u && victim_grp != attack_grp )
-              {
-                if ((p_thing->Flag & TngF_Persuaded) == 0)
-                    thing_group_set_kill_on_sight(victim_grp, attack_grp, true);
-                if (((p_thing->Flag & TngF_Persuaded) == 0) && war_flags[victim_grp].Guardians[0])
-                    find_and_alert_guardian(p_thing, p_attacker);
-              }
-          }
-          energy_decr = 0;
-          if ((p_thing->Flag & TngF_Unkn00200000) != 0)
-          {
-              p_thing->U.UPerson.ShieldEnergy -= hp1;
-              p_thing->U.UPerson.ShieldGlowTimer = 4;
-              if (p_thing->U.UPerson.ShieldEnergy >= 0)
-              {
-                  if (p_thing->U.UPerson.ShieldEnergy > PERSON_MAX_SHIELD)
-                      p_thing->U.UPerson.ShieldEnergy = PERSON_MAX_SHIELD;
-                  return 0;
-              }
-              p_thing->Health += p_thing->U.UPerson.ShieldEnergy;
-              energy_decr = -p_thing->U.UPerson.ShieldEnergy;
-          }
-          else
-          {
-              if (p_thing->U.UPerson.RecoilTimer <= 1)
-              {
-                  ushort smpl_no;
-
-                  switch (person_sex(p_thing))
-                  {
-                  case PERSON_FEMALE:
-                      smpl_no = sfx_woman_shot[(gameturn + p_thing->ThingOffset) & 1];
-                      break;
-                  case PERSON_MALE:
-                  default:
-                      smpl_no = sfx_man_shot[(gameturn + p_thing->ThingOffset) & 7];
-                      break;
-                  }
-                  play_dist_sample(p_thing, smpl_no, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 2);
-              }
-              p_thing->Health -= hp1;
-              p_thing->U.UPerson.ShieldEnergy -= hp1;
-          }
-
-        if (p_thing->Health <= 0)
-        {
-            int prev_health;
-            prev_health = p_thing->Health + hp1 + energy_decr;
-            person_start_dying(p_thing, hp1 + energy_decr, type);
-            person_update_kill_stats(p_attacker, p_thing);
-            return prev_health;
-        }
-
-        if ((p_thing->Flag2 & TgF2_KnockedOut) == 0)
-        {
-            init_recoil(p_thing, vx, vy, vz, type);
-            return 0;
-        }
-        break;
+        return person_hit_by_bullet(p_thing, hp, vx, vy, vz, p_attacker, type);
     case TT_BUILDING:
         return building_hit_by_bullet(p_thing, hp, vx, vy, vz, p_attacker, type);
     case TT_MINE:
         return mine_hit_by_bullet(p_thing, hp, vx, vy, vz, p_attacker, type);
-        break;
     default:
         break;
     }
@@ -3429,18 +4394,6 @@ void person_goto_point_rel(struct Thing *p_person)
 {
     asm volatile ("call ASM_person_goto_point_rel\n"
         : : "a" (p_person));
-}
-
-void person_init_drop(struct Thing *p_person, ThingIdx item)
-{
-    asm volatile ("call ASM_person_init_drop\n"
-        : : "a" (p_person), "d" (item));
-}
-
-void person_init_pickup(struct Thing *p_person, ThingIdx item)
-{
-    asm volatile ("call ASM_person_init_pickup\n"
-        : : "a" (p_person), "d" (item));
 }
 
 void vehicle_passenger_list_add_first(struct Thing *p_vehicle, ThingIdx passngr)
@@ -3489,6 +4442,42 @@ void vehicle_passenger_list_remove(struct Thing *p_vehicle, ThingIdx passngr)
     }
 }
 
+TbBool person_is_in_a_vehicle(struct Thing *p_person)
+{
+    return ((p_person->Flag & TngF_InVehicle) != 0);
+}
+
+TbBool person_is_in_a_train(struct Thing *p_person)
+{
+    struct Thing *p_vehicle;
+
+    if ((p_person->Flag & TngF_InVehicle) == 0)
+        return false;
+
+    p_vehicle = &things[p_person->U.UPerson.Vehicle];
+    return (p_vehicle->SubType == SubTT_VEH_TRAIN);
+}
+
+TbBool person_is_in_vehicle(struct Thing *p_person, ThingIdx vehicle)
+{
+    if ((p_person->Flag & TngF_InVehicle) == 0)
+        return false;
+    return (vehicle == p_person->U.UPerson.Vehicle);
+}
+
+TbBool person_is_standing_on_vehicle(struct Thing *p_person)
+{
+    struct Thing *p_standtng;
+
+    if (p_person->U.UPerson.StandOnThing <= 0)
+        return false;
+    if ((p_person->Flag & TngF_StandOnVehicle) == 0)
+        return false;
+    p_standtng = &things[p_person->U.UPerson.StandOnThing];
+
+    return (p_standtng->Type == TT_VEHICLE);
+}
+
 void person_enter_vehicle(struct Thing *p_person, struct Thing *p_vehicle)
 {
 #if 0
@@ -3502,7 +4491,7 @@ void person_enter_vehicle(struct Thing *p_person, struct Thing *p_vehicle)
     else if ((p_vehicle->State != VehSt_PARKED_PARAL) && (p_vehicle->State != VehSt_PARKED_PERPN) && (p_vehicle->State != VehSt_NONE))
     {
         if ((debug_log_things & 0x01) != 0) {
-            LOGSYNC("Person %s %d state %d.%d cannot enter %s %d state %d.%d",
+            LOGSYNC_F("Person %s %d state %d.%d cannot enter %s %d state %d.%d",
               person_type_name(p_person->SubType), (int)p_person->ThingOffset,
               p_person->State, p_person->SubState,
               vehicle_type_name(p_vehicle->SubType), (int)p_vehicle->ThingOffset,
@@ -3512,7 +4501,7 @@ void person_enter_vehicle(struct Thing *p_person, struct Thing *p_vehicle)
     }
 
     p_person->Flag |= TngF_InVehicle|TngF_Unkn02000000;
-    p_person->Flag &= ~TngF_Unkn01000000;
+    p_person->Flag &= ~TngF_StandOnVehicle;
     p_person->State = PerSt_DRIVING_VEHICLE;
 
     vehicle_passenger_list_add_first(p_vehicle, p_person->ThingOffset);
@@ -3549,22 +4538,21 @@ void person_go_sleep(struct Thing *p_person)
     else
     {
         ubyte PrevAnimMode;
-        p_person->Flag |= 0x0001;
+        p_person->Flag |= TngF_Unkn0001;
 
         PrevAnimMode = p_person->U.UPerson.AnimMode;
         if (PrevAnimMode != ANIM_PERS_PUSH_BACK)
             p_person->U.UPerson.OldAnimMode = PrevAnimMode;
-        p_person->U.UPerson.AnimMode = ANIM_PERS_LAY_DOWN;
-         // make sure to draw without blood
+         // make sure to draw frame without blood
         p_person->U.UPerson.FrameId.Version[4] = 0;
         p_person->U.UPerson.FrameId.Version[3] = 0;
-        reset_person_frame(p_person);
+        set_person_anim_mode(p_person, ANIM_PERS_LAY_DOWN);
 
         p_person->U.UPerson.RecoilTimer = 0;
         p_person->Timer1 = 48;
         p_person->StartTimer1 = 48;
         p_person->U.UPerson.BumpCount = 150;
-        p_person->Flag &= ~(TngF_Unkn0800|TngF_WepRecoil);
+        p_person->Flag &= ~(TngF_TriggerUse|TngF_WepRecoil);
         p_person->Flag2 |= TgF2_KnockedOut;
     }
 }
@@ -3701,6 +4689,21 @@ short check_col_collision_when_moved_by(struct Thing *p_person, short sh_x, shor
     return 0;
 }
 
+void person_protect_update_follow_distance(struct Thing *p_person, ThingIdx leadtng)
+{
+    struct Thing *p_leadtng;
+    short plagent, leadagnt;
+
+    if (leadtng > 0) {
+        p_leadtng = &things[leadtng];
+        leadagnt = p_leadtng->U.UPerson.ComCur & 3;
+    } else {
+        leadagnt = 0;
+    }
+    plagent = p_person->U.UPerson.ComCur & 3;
+    p_person->U.UPerson.ComRange = follow_dist[leadagnt][plagent];
+}
+
 ubyte person_leave_vehicle(struct Thing *p_person, struct Thing *p_vehicle)
 {
 #if 0
@@ -3818,11 +4821,7 @@ ubyte person_leave_vehicle(struct Thing *p_person, struct Thing *p_vehicle)
 
       if (((p_person->Flag & TngF_PlayerAgent) != 0) && (p_person->State == PerSt_PROTECT_PERSON))
       {
-          short plagent, owagent;
-
-          plagent = p_person->U.UPerson.ComCur & 3;
-          owagent = things[p_person->Owner].U.UPerson.ComCur & 3;
-          p_person->U.UPerson.ComRange = follow_dist[owagent][plagent];
+          person_protect_update_follow_distance(p_person, p_person->Owner);
       }
 
       if ((p_vehicle->Flag & TngF_Destroyed) != 0)
@@ -3912,10 +4911,71 @@ ubyte person_attempt_to_leave_vehicle(struct Thing *p_person)
     return 0;
 }
 
+void make_peep_protect_peep(struct Thing *p_protector, struct Thing *p_leader)
+{
+    asm volatile ("call ASM_make_peep_protect_peep\n"
+        : : "a" (p_protector), "d" (p_leader));
+}
+
 void player_change_person(short thing, ushort plyr)
 {
+#if 0
     asm volatile ("call ASM_player_change_person\n"
         : : "a" (thing), "d" (plyr));
+#endif
+    struct Thing *p_person;
+
+    {
+        struct Thing *p_dcthing;
+        short dcthing;
+        dcthing = players[plyr].DirectControl[0];
+        p_dcthing = &things[dcthing];
+        p_dcthing->Flag &= ~TngF_SelectedAgent;
+        // Avoid shooting a target not intended for that, set for previous state
+        p_dcthing->PTarget = NULL;
+    }
+
+    p_person = &things[thing];
+    if ((p_person->Flag2 & TgF2_Unkn10000000) != 0)
+    {
+        p_person->GotoThingIndex = p_person->Owner;
+        p_person->State = PerSt_PROTECT_PERSON;
+        person_protect_update_follow_distance(p_person, p_person->GotoThingIndex);
+        p_person->Flag2 &= ~TgF2_Unkn10000000;
+    }
+    players[plyr].DirectControl[0] = thing;
+    p_person->U.UPerson.Target2 = 0;
+    p_person->Flag |= TngF_SelectedAgent;
+
+    if (p_person->State == PerSt_PROTECT_PERSON)
+    {
+        struct Thing *p_protng;
+        ushort plagent;
+
+        p_protng = &things[p_person->GotoThingIndex];
+        if (((p_protng->Flag & (TngF_Unkn40000000|TngF_Destroyed)) == 0) &&
+          (p_protng->State != PerSt_PROTECT_PERSON))
+        {
+            make_peep_protect_peep(p_protng, p_person);
+        }
+        for (plagent = 0; plagent < playable_agents; plagent++)
+        {
+            struct Thing *p_agent;
+
+            p_agent = players[plyr].MyAgent[plagent];
+            if ((p_agent != p_person) && (p_agent->State == PerSt_PROTECT_PERSON) &&
+              (p_agent->GotoThingIndex == p_person->GotoThingIndex))
+            {
+                p_agent->GotoThingIndex = p_person->ThingOffset;
+                p_agent->Owner = p_person->ThingOffset;
+                person_protect_update_follow_distance(p_agent, p_agent->GotoThingIndex);
+                remove_path(p_agent);
+            }
+        }
+        p_person->State = PerSt_NONE;
+        p_person->Owner = 0;
+        p_person->GotoThingIndex = 0;
+    }
 }
 
 ThingIdx person_find_ferry_to_catch(struct Thing *p_person)
@@ -3955,19 +5015,136 @@ void person_catch_ferry(struct Thing *p_person)
     p_person->U.UPerson.Vehicle = veh;
 }
 
-void alert_peeps(int x, int y, int z, struct Thing *p_madman)
+void make_peep_flee(int b_x, int b_z, struct Thing *p_person)
 {
+#if 0
+    asm volatile ("call ASM_make_peep_flee\n"
+        : : "a" (b_x), "d" (b_z), "b" (p_person));
+#endif
+    short full_angle;
+
+    if ((p_person->Flag2 & (TgF2_Unkn0008|TgF2_KnockedOut)) != 0) {
+        return;
+    }
+    if (p_person->State == PerSt_PERSON_BURNING) {
+        return;
+    }
+    if ((p_person->Flag & (TngF_Persuaded|TngF_DangerFlee|TngF_WepRecoil)) != 0) {
+        return;
+    }
+    full_angle = LbArcTanAngle(b_x, -b_z);
+    change_person_angle_full(p_person, full_angle);
+    set_person_animmode_run(p_person);
+    p_person->U.UPerson.Mood = -64;
+    p_person->U.UPerson.RecoilTimer = 50;
+    p_person->Flag |= TngF_DangerFlee;
+    p_person->U.UPerson.RecoilDir = full_angle >> 3;
+    p_person->Flag &= ~TngF_WepRecoil;
+}
+
+void alert_person_to_madman(struct Thing *p_person, struct MapCoords *p_alert_pos, struct Thing *p_madman)
+{
+    if (p_person->Type != TT_PERSON ||
+      (p_person->Flag & (TngF_PlayerAgent|TngF_Destroyed)) != 0)
+        return;
+
+    if (person_is_basic_civilian(p_person, true))
+    {
+        if (((p_person->Flag2 & TgF2_IgnoreEnemies) == 0) &&
+          (person_mod_brain_level(p_person) < 3) &&
+          (!persons_have_truce(p_person, p_madman)))
+        {
+            short dx, dz;
+            dx = PRCCOORD_TO_MAPCOORD(p_person->X) - p_alert_pos->X;
+            dz = PRCCOORD_TO_MAPCOORD(p_person->Z) - p_alert_pos->Z;
+            // Make the escape direction slightly related to the direction the person was facing
+            dx += angle_direction[p_person->U.UPerson.Angle].DiX;
+            dz += angle_direction[p_person->U.UPerson.Angle].DiY;
+            make_peep_flee(dx, dz, p_person);
+        }
+    }
+    else
+    {
+        short check_grp, target_grp;
+        check_grp = p_person->U.UPerson.EffectiveGroup & PEOPLE_GROUPS_INDEX_MASK;
+        target_grp = p_madman->U.UPerson.EffectiveGroup & PEOPLE_GROUPS_INDEX_MASK;
+        if (check_grp != target_grp)
+        {
+            if (!groups_have_truce(check_grp, target_grp) &&
+              (groups_have_kill_on_sight(check_grp, target_grp) ||
+              groups_have_kill_if_armed(check_grp, target_grp) ||
+              groups_have_kill_if_weapon_out(check_grp, target_grp)))
+            {
+                set_interrupt_target(p_person, p_madman);
+            }
+        }
+    }
+}
+
+void alert_peeps_on_mapwho_tile(short tile_x, short tile_z,
+  struct MapCoords *p_alert_pos, struct Thing *p_madman)
+{
+    ThingIdx thing;
+    ulong k;
+
+    k = 0;
+    thing = get_mapwho_thing_index(tile_x, tile_z);
+    while (thing != 0)
+    {
+        if (thing <= 0)
+        {
+            struct SimpleThing *p_sthing;
+            p_sthing = &sthings[thing];
+            thing = p_sthing->Next;
+        }
+        else
+        {
+            struct Thing *p_thing;
+            p_thing = &things[thing];
+            // Per thing code start
+            alert_person_to_madman(p_thing, p_alert_pos, p_madman);
+            // Per thing code end
+            thing = p_thing->Next;
+        }
+        k++;
+        if (k >= STHINGS_LIMIT+THINGS_LIMIT) {
+            LOGERR("Infinite loop in mapwho (%d,%d) things list",
+              (int)tile_x, (int)tile_z);
+            bad_mapwho_tl_x = tile_x;
+            bad_mapwho_tl_z = tile_z;
+            break;
+        }
+    }
+    return;
+}
+
+void alert_peeps(int cor_x, int cor_y, int cor_z, struct Thing *p_madman)
+{
+#if 0
     asm volatile (
       "call ASM_alert_peeps\n"
-        : : "a" (x), "d" (y), "b" (z), "c" (p_madman));
+        : : "a" (cor_x), "d" (cor_y), "b" (cor_z), "c" (p_madman));
+#endif
+    struct MapCoords alert_pos;
+    short tile_x, tile_z;
+    short dx, dz;
+
+    alert_pos.X = cor_x;
+    alert_pos.Y = cor_y;
+    alert_pos.Z = cor_z;
+    tile_x = MAPCOORD_TO_TILE(cor_x);
+    tile_z = MAPCOORD_TO_TILE(cor_z);
+    for (dx = -ALERT_PEEPS_RANGE; dx <= ALERT_PEEPS_RANGE; dx++)
+    {
+        for (dz = -ALERT_PEEPS_RANGE; dz <= ALERT_PEEPS_RANGE; dz++)
+        {
+            alert_peeps_on_mapwho_tile(tile_x + dx, tile_z + dz, &alert_pos, p_madman);
+        }
+    }
 }
 
 void person_attempt_to_leave_ferry(struct Thing *p_person)
 {
-#if 0
-    asm volatile ("call ASM_person_attempt_to_leave_ferry\n"
-        : : "a" (p_person));
-#endif
     struct Command *p_cmd;
     struct Thing *p_vehicle;
     int radius_sqr;
@@ -3976,14 +5153,11 @@ void person_attempt_to_leave_ferry(struct Thing *p_person)
     p_cmd = &game_commands[p_person->U.UPerson.ComCur];
     radius_sqr = (p_cmd->Arg1 << 6) * (p_cmd->Arg1 << 6);
     p_vehicle = &things[p_person->U.UPerson.Vehicle];
-    func_6fd1c(PRCCOORD_TO_MAPCOORD(p_person->X),
-      PRCCOORD_TO_MAPCOORD(p_person->Y),
-      PRCCOORD_TO_MAPCOORD(p_person->Z),
-      p_cmd->X, p_cmd->Y, p_cmd->Z, colour_lookup[ColLU_RED]);
-    func_6fd1c(PRCCOORD_TO_MAPCOORD(p_vehicle->X),
-      PRCCOORD_TO_MAPCOORD(p_vehicle->Y),
-      PRCCOORD_TO_MAPCOORD(p_vehicle->Z),
-      p_cmd->X, p_cmd->Y, p_cmd->Z, colour_lookup[ColLU_BLUE]);
+    //TODO do not draw from thing state update
+    enlist_hud_draw_line_from_thing_ptr_to_mapcoord(p_person,
+      p_cmd->X, p_cmd->Y, p_cmd->Z, 0, ColLU_RED);
+    enlist_hud_draw_line_from_thing_ptr_to_mapcoord(p_vehicle,
+      p_cmd->X, p_cmd->Y, p_cmd->Z, 0, ColLU_BLUE);
 
     if ((p_vehicle->U.UVehicle.LeisurePlace == 0) || (p_vehicle->Speed != 0)) {
         return;
@@ -4022,7 +5196,6 @@ void thing_shoot_at_point(struct Thing *p_thing, short x, short y, short z, uint
     short face;
     PlayerIdx plyr;
     ushort plagent;
-    ushort angle;
 
     face = 0;
     if ((fast_flag & 0x02) != 0)
@@ -4037,31 +5210,39 @@ void thing_shoot_at_point(struct Thing *p_thing, short x, short y, short z, uint
         y = (height >> 8) + 20;
     }
 
-    p_thing->Flag |= TngF_Unkn0800;
+    p_thing->Flag |= TngF_TriggerUse;
     if ((p_thing->Flag & TngF_InVehicle) != 0) {
         struct Thing *p_vehicle;
         p_vehicle = &things[p_thing->U.UPerson.Vehicle];
         p_vehicle->Flag |= TngF_Unkn01000000;
     }
 
-    if ((p_thing->Flag & (TngF_Unkn40000000|TngF_StationrSht|TngF_Destroyed)) != 0)
+    if ((p_thing->Flag & (TngF_Unkn40000000|TngF_StationrSht|TngF_Destroyed)) != 0) {
         return;
+    }
 
-    if ((p_thing->Flag2 & TgF2_Unkn0001) != 0)
+    if ((p_thing->Flag2 & TgF2_Unkn0001) != 0) {
         finalise_razor_wire(p_thing);
+    }
 
     if (p_thing->State == PerSt_DROP_ITEM || p_thing->State == PerSt_PICKUP_ITEM ||
-      p_thing->State == PerSt_DEAD || p_thing->State == PerSt_DIEING)
+      p_thing->State == PerSt_DEAD || p_thing->State == PerSt_DIEING) {
         return;
-    if ((p_thing->Flag & TngF_Destroyed) != 0)
+    }
+    if ((p_thing->Flag & TngF_Destroyed) != 0) {
         return;
+    }
 
-    angle = angle_between_points(PRCCOORD_TO_MAPCOORD(p_thing->X),
-      PRCCOORD_TO_MAPCOORD(p_thing->Z), x, z);
-    change_player_angle(p_thing, (((angle + 128) >> 8) + 8) & 7);
+    {
+        short full_angle;
 
-    p_thing->PTarget = 0;
-    p_thing->Flag |= TngF_Unkn20000000|TngF_Unkn0800;
+        full_angle = angle_between_points(PRCCOORD_TO_MAPCOORD(p_thing->X),
+          PRCCOORD_TO_MAPCOORD(p_thing->Z), x, z);
+        change_person_angle_full(p_thing, full_angle);
+    }
+
+    p_thing->PTarget = NULL;
+    p_thing->Flag |= TngF_ShootAtPos|TngF_TriggerUse;
 
     plyr = p_thing->U.UPerson.ComCur >> 2;
     plagent = p_thing->U.UPerson.ComCur & 3;
@@ -4081,14 +5262,9 @@ void thing_shoot_at_point(struct Thing *p_thing, short x, short y, short z, uint
     map_limit_distance_to_target_fast(src_x, src_y, src_z,
       &x, &y, &z, weapon_range);
 
-    if ((p_thing->Flag2 & TgF2_ExistsOffMap) == 0)
-        alert_peeps(x, y, z, p_thing);
-
     if ((p_thing->Flag & TngF_PlayerAgent) != 0)
     {
-        p_player->UserVX[plagent] = x;
-        p_player->UserVZ[plagent] = z;
-        p_player->UserVY[plagent] = y;
+        player_agent_set_user_vect(plyr, plagent, x, y, z);
     }
     else
     {
@@ -4158,18 +5334,183 @@ void call_unprotect(struct Thing *p_thing, ushort plyr, ubyte flag)
         : : "a" (p_thing), "d" (plyr), "b" (flag));
 }
 
+TbBool weapon_can_target_enemy_thing(WeaponType wtype)
+{
+    switch (wtype)
+    {
+    case WEP_ELEMINE:
+    case WEP_EXPLMINE:
+    case WEP_MEDI1:
+    case WEP_MEDI2:
+    case WEP_RAZORWIRE:
+    case WEP_EXPLWIRE:
+        return false;
+
+    case WEP_NULL:
+    case WEP_NUCLGREN:
+    case WEP_H2HTASER:
+    case WEP_CRAZYGAS:
+    case WEP_KOGAS:
+    case WEP_NAPALMMINE:
+    case WEP_AIRSTRIKE:
+    case WEP_ENERGYSHLD:
+    case WEP_CEREBUSIFF:
+    case WEP_CLONESHLD:
+    default:
+        return true;
+    }
+}
+
+void thing_shoot_at_target_position(struct Thing *p_thing, ThingIdx target)
+{
+    struct Thing *p_targetng;
+    MapCoord cor_x, cor_y, cor_z;
+
+    p_targetng = &things[target];
+    cor_x = PRCCOORD_TO_MAPCOORD(p_targetng->X);
+    cor_y = PRCCOORD_TO_MAPCOORD(p_targetng->Y);
+    cor_z = PRCCOORD_TO_MAPCOORD(p_targetng->Z);
+    thing_shoot_at_point(p_thing, cor_x, cor_y, cor_z, 0);
+}
+
 void thing_shoot_at_thing(struct Thing *p_thing, short target)
 {
+#if 0
     asm volatile ("call ASM_thing_shoot_at_thing\n"
         : : "a" (p_thing), "d" (target));
+#endif
+    struct Thing *p_targetng;
+
+    if ((p_thing->Flag & (TngF_Unkn40000000|TngF_Destroyed)) != 0)
+        return;
+    p_targetng = &things[target];
+
+    if (!weapon_can_target_enemy_thing(p_thing->U.UPerson.CurrentWeapon))
+    {
+        thing_shoot_at_target_position(p_thing, target);
+        return;
+    }
+
+    p_thing->Flag |= TngF_TriggerUse;
+    if ((p_thing->Flag & TngF_InVehicle) != 0) {
+        struct Thing *p_vehicle;
+        p_vehicle = &things[p_thing->U.UPerson.Vehicle];
+        p_vehicle->Flag |= TngF_Unkn01000000;
+    }
+    if ((p_thing->Flag2 & TgF2_Unkn0001) != 0) {
+        finalise_razor_wire(p_thing);
+    }
+
+    if (p_thing->State == PerSt_DROP_ITEM || p_thing->State == PerSt_PICKUP_ITEM ||
+      p_thing->State == PerSt_DEAD || p_thing->State == PerSt_DIEING) {
+        return;
+    }
+    if ((p_thing->Flag & TngF_Destroyed) != 0) {
+        return;
+    }
+
+    if (((p_thing->Flag & TngF_InVehicle) != 0) &&
+      (p_targetng->ThingOffset == p_thing->U.UPerson.Vehicle)) {
+        struct Thing *p_vehicle;
+        p_vehicle = &things[p_thing->U.UPerson.Vehicle];
+        p_vehicle->Flag &= ~TngF_ShootAtPos;
+        return;
+    }
+
+    {
+        int dist_x, dist_y, dist_z, range;
+        dist_x = PRCCOORD_TO_MAPCOORD(p_targetng->X) - PRCCOORD_TO_MAPCOORD(p_thing->X);
+        dist_y = PRCCOORD_TO_MAPCOORD(p_targetng->Y) - PRCCOORD_TO_MAPCOORD(p_thing->Y);
+        dist_z = PRCCOORD_TO_MAPCOORD(p_targetng->Z) - PRCCOORD_TO_MAPCOORD(p_thing->Z);
+        range = get_weapon_range(p_thing);
+        if (dist_x * dist_x + dist_y * dist_y + dist_z * dist_z > range * range) {
+            thing_shoot_at_target_position(p_thing, target);
+            return;
+        }
+    }
+    p_thing->Flag &= ~(TngF_ShootAtPos|TngF_TriggerUse);
+
+    p_thing->Flag |= TngF_TriggerUse;
+    p_thing->PTarget = &things[target];
+
+    p_targetng = p_thing->PTarget;
+    if ((p_targetng->Flag & TngF_Destroyed) != 0)
+    {
+        if (weapon_can_be_charged(p_thing->U.UPerson.CurrentWeapon))
+            p_thing->Flag2 |= TngF_Unkn00200000;
+    }
+    if ((p_thing->Flag & TngF_PlayerAgent) != 0)
+        p_thing->U.UPerson.ComTimer = -1;
+    else
+        p_thing->State = PerSt_NONE;
+
+    if (p_targetng != NULL)
+    {
+        short full_angle;
+
+        full_angle = angle_between_points(
+          PRCCOORD_TO_MAPCOORD(p_thing->X), PRCCOORD_TO_MAPCOORD(p_thing->Z),
+          PRCCOORD_TO_MAPCOORD(p_targetng->X), PRCCOORD_TO_MAPCOORD(p_targetng->Z));
+        change_person_angle_full(p_thing, full_angle);
+    }
 }
 
 void person_init_plant_mine(struct Thing *p_person, short x, short y, short z, int face)
 {
+#if 0
     asm volatile (
       "push %4\n"
       "call ASM_person_init_plant_mine\n"
         : : "a" (p_person), "d" (x), "b" (y), "c" (z), "g" (face));
+#endif
+    if ((p_person->Flag & TngF_Unkn0001) != 0) {
+        return;
+    }
+    if ((p_person->Flag & (TngF_StationrSht|TngF_Destroyed)) != 0) {
+        return;
+    }
+
+    p_person->Flag2 &= ~(TgF2_Unkn00020000|TgF2_Unkn0040);
+
+    if (p_person->U.UPerson.PathIndex != 0)
+        remove_path(p_person);
+    if (face != 0) {
+        build_navigate_path_to_face_xz(p_person, -face, x, z);
+    } else {
+        build_navigate_path(p_person, x, z, 0);
+    }
+
+    if ((p_person->Flag2 & TgF2_Unkn0040) == 0)
+    {
+        p_person->State = PerSt_GO_PLANT_MINE;
+        p_person->U.UPerson.ComTimer = -1;
+        p_person->SubState = 0;
+        p_person->U.UPerson.ComRange = 1;
+        // The flag is raised again when planting, so this is just for early hint
+        p_person->Flag2 |= TgF2_DroppedActivate;
+        p_person->U.UPerson.GotoX = x;
+        p_person->U.UPerson.GotoZ = z;
+    }
+}
+
+void person_init_plant_mine_fast(struct Thing *p_thing, short x, short y, short z, int face)
+{
+#if 0
+    asm volatile (
+      "push %4\n"
+      "call ASM_person_init_plant_mine_fast\n"
+        : : "a" (p_thing), "d" (x), "b" (y), "c" (z), "g" (face));
+#endif
+    if ((p_thing->Flag & TngF_Unkn0001) != 0) {
+        return;
+    }
+
+    person_init_plant_mine(p_thing, x, y, z, face);
+
+    if ((p_thing->Flag2 & TgF2_Unkn0040) == 0)
+    {
+        set_person_animmode_run(p_thing);
+    }
 }
 
 ubyte thing_select_specific_weapon(struct Thing *p_person, WeaponType wtype, ubyte flag)
@@ -4222,7 +5563,7 @@ ubyte thing_select_specific_weapon(struct Thing *p_person, WeaponType wtype, uby
         if ((p_person->Flag & TngF_PlayerAgent) != 0 &&
           (p_person->Flag2 & TgF2_Unkn0800) == 0 &&
           p_person->U.UPerson.CurrentWeapon != WEP_NULL) {
-            player_agent_update_prev_weapon(p_person);
+            person_weapons_update_previous(p_person);
         }
         p_person->U.UPerson.CurrentWeapon = WEP_NULL;
 
@@ -4243,8 +5584,7 @@ ubyte thing_select_specific_weapon(struct Thing *p_person, WeaponType wtype, uby
 ubyte thing_select_best_weapon_for_range(struct Thing *p_person, int range)
 {
     choose_best_weapon_for_range(p_person, range);
-    p_person->U.UPerson.AnimMode = gun_out_anim(p_person, 0);
-    reset_person_frame(p_person);
+    set_person_anim_mode(p_person, gun_out_anim(p_person, 0));
     p_person->Speed = calc_person_speed(p_person);
 
     return (p_person->U.UPerson.CurrentWeapon != WEP_NULL) ? WepSel_SELECT : WepSel_HIDE;
@@ -4252,10 +5592,9 @@ ubyte thing_select_best_weapon_for_range(struct Thing *p_person, int range)
 
 ubyte thing_deselect_weapon(struct Thing *p_person)
 {
-    player_agent_update_prev_weapon(p_person);
+    person_weapons_update_previous(p_person);
     p_person->U.UPerson.CurrentWeapon = WEP_NULL;
-    p_person->U.UPerson.AnimMode = gun_out_anim(p_person, 0);
-    reset_person_frame(p_person);
+    set_person_anim_mode(p_person, gun_out_anim(p_person, 0));
     p_person->Speed = calc_person_speed(p_person);
 
     return WepSel_HIDE;
@@ -4373,14 +5712,6 @@ int limit_mood(struct Thing *p_thing, short mood)
     return ret;
 }
 
-void person_init_plant_mine_fast(struct Thing *p_thing, short x, short y, short z, int face)
-{
-    asm volatile (
-      "push %4\n"
-      "call ASM_person_init_plant_mine_fast\n"
-        : : "a" (p_thing), "d" (x), "b" (y), "c" (z), "g" (face));
-}
-
 void person_self_destruct(struct Thing *p_person)
 {
     asm volatile (
@@ -4401,7 +5732,7 @@ void person_scare_person(struct Thing *p_person)
         range = get_weapon_range(p_person);
         if (can_i_see_thing(p_person, p_person->PTarget, range, 0) > 0)
         {
-            p_person->Flag |= TngF_Unkn0800;
+            p_person->Flag |= TngF_TriggerUse;
             if ((p_person->Flag & TngF_InVehicle) != 0)
             {
                 struct Thing *p_vehicle;
@@ -4431,7 +5762,7 @@ void person_block_person(struct Thing *p_person)
         range = get_weapon_range(p_person);
         if (can_i_see_thing(p_person, p_person->PTarget, range * range, 0) > 0)
         {
-            p_person->Flag |= TngF_Unkn0800;
+            p_person->Flag |= TngF_TriggerUse;
             if ((p_person->Flag & TngF_InVehicle) != 0)
             {
                 struct Thing *p_vehicle;
@@ -4452,7 +5783,7 @@ void process_stationary_shot(struct Thing *p_person)
 {
     if (p_person->U.UPerson.WeaponTurn == 0)
     {
-        if ((p_person->Flag & TngF_Unkn0800) == 0)
+        if ((p_person->Flag & TngF_TriggerUse) == 0)
             p_person->Flag &= ~TngF_StationrSht;
     }
 }
@@ -4490,15 +5821,9 @@ void person_go_plant_mine(struct Thing *p_person)
     person_goto_point(p_person);
     if (p_person->State == PerSt_NONE)
     {
-        WeaponType wtype;
-
-        wtype = p_person->U.UPerson.CurrentWeapon;
-        if (weapon_is_for_planting(wtype)) {
-            person_init_drop(p_person, wtype);
-        } else {
-            LOGWARN("Weapon %s is not desgined for planting",
-              weapon_codename(wtype));
-        }
+        person_init_plant_mine_where_standing(p_person, p_person->U.UPerson.CurrentWeapon);
+        if ((p_person->Flag & TngF_PlayerAgent) != 0)
+            set_player_weapon_turn(p_person, p_person->U.UPerson.WeaponTurn);
     }
 }
 
@@ -4525,12 +5850,11 @@ void process_knocked_out(struct Thing *p_person)
     p_person->U.UPerson.BumpCount--;
     if (p_person->U.UPerson.BumpCount == 0)
     {
-        p_person->U.UPerson.AnimMode = p_person->U.UPerson.OldAnimMode;
-        reset_person_frame(p_person);
+        set_person_anim_mode(p_person, p_person->U.UPerson.OldAnimMode);
 
         p_person->Flag2 &= ~TgF2_KnockedOut;
         p_person->Timer1 = 48;
-        p_person->Flag &= ~TngF_Unkn01000000;
+        p_person->Flag &= ~TngF_StandOnVehicle;
     }
 }
 
@@ -4552,10 +5876,266 @@ void process_im_shoved(struct Thing *p_person)
         : : "a" (p_person));
 }
 
+void try_and_kill_target(struct Thing *p_person)
+{
+    asm volatile ("call ASM_try_and_kill_target\n"
+        : : "a" (p_person));
+}
+
+ubyte protect_person_simultaneous_fire(struct Thing *p_person, struct Thing *p_protng)
+{
+    return weapon_simultaneous_fire_in_group(p_protng->U.UPerson.CurrentWeapon,
+      p_person->U.UPerson.CurrentWeapon);
+}
+
 void process_protect_person(struct Thing *p_person)
 {
+#if 0
     asm volatile ("call ASM_process_protect_person\n"
         : : "a" (p_person));
+    return;
+#endif
+    struct Thing *p_leadtng;
+
+    p_leadtng = &things[p_person->GotoThingIndex];
+    if ((p_leadtng->Flag & TngF_PersSupShld) != 0)
+        p_person->Flag |= TngF_Unkn00200000 | TngF_PersSupShld;
+    else
+        p_person->Flag &= ~TngF_PersSupShld;
+    if ((p_person->Flag & TngF_PlayerAgent) != 0)
+    {
+        if (p_person->GotoThingIndex != p_person->Owner)
+            p_person->GotoThingIndex = p_person->Owner;
+        if (((p_leadtng->Flag & TngF_PlayerAgent) == 0) &&
+          ((p_person->Flag2 & TgF2_Unkn0800) == 0) && in_network_game)
+            p_person->State = PerSt_NONE;
+    }
+    if ((p_person->U.UPerson.Flag3 & PrsF3_Unkn04) != 0)
+    {
+        if ((p_leadtng->U.UPerson.Flag3 & PrsF3_Unkn04) == 0)
+        {
+            p_person->U.UPerson.Flag3 &= ~PrsF3_Unkn04;
+            p_person->Flag2 &= ~TgF2_IgnoreEnemies;
+        }
+        if ((p_leadtng->State == PerSt_WAIT) &&
+          ((p_person->Flag2 & TgF2_Unkn00080000) != 0))
+        {
+            set_person_anim_mode(p_person, gun_out_anim(p_person, 0));
+            p_person->Timer1 = 48;
+            p_person->StartTimer1 = 48;
+            p_person->Flag2 &= ~TgF2_Unkn00080000;
+            p_person->Speed = calc_person_speed(p_person);
+        }
+        p_person->Flag2 &= TgF2_Unkn00080000;
+        if ((p_person->Flag2 & TgF2_Unkn00080000) != 0)
+            return;
+    }
+
+    if ((p_leadtng->Flag & TngF_Unkn4000) == 0)
+    {
+        p_person->Flag2 &= ~TgF2_Unkn4000;
+    }
+    else if (((p_person->Flag & TngF_Unkn4000) == 0) &&
+      ((p_person->Flag2 & TgF2_Unkn4000) == 0))
+    {
+        remove_path(p_person);
+        p_person->U.UPerson.ComTimer = -1;
+        p_person->Flag2 |= TgF2_Unkn4000;
+    }
+    if ((p_person->Flag & TngF_Unkn4000) != 0)
+    {
+        p_person->Flag2 &= ~TgF2_Unkn4000;
+    }
+
+    if ((p_leadtng->Flag2 & (TgF2_Unkn8000|TgF2_Unkn00080000)) != 0)
+    {
+        if (((p_leadtng->Flag2 & TgF2_Unkn00080000) != 0)
+          && ((p_person->Flag2 & TgF2_Unkn00080000) == 0)
+          && (p_person->U.UPerson.Stamina > (p_person->U.UPerson.MaxStamina >> 2) + 64))
+        {
+            p_person->Flag2 |= TgF2_IgnoreEnemies;
+            set_person_animmode_run(p_person);
+        }
+        if ((p_leadtng->Flag2 & TgF2_Unkn8000) != 0)
+        {
+            remove_path(p_person);
+            p_person->U.UPerson.ComTimer = -1;
+        }
+    }
+
+    if ( (p_person->Flag & TngF_InVehicle) != 0 )
+    {
+        if ((p_leadtng->Flag & TngF_InVehicle) != 0)
+        {
+            p_person->Flag2 &= ~TgF2_IgnoreEnemies;
+        }
+        else
+        {
+            person_attempt_to_leave_vehicle(p_person);
+            if ((p_person->Flag & TngF_PlayerAgent) != 0)
+                person_protect_update_follow_distance(p_person, p_leadtng->ThingOffset);
+            else
+                p_person->U.UPerson.ComRange = 8;
+            p_person->State = PerSt_PROTECT_PERSON;
+        }
+    }
+    else if ((p_leadtng->Flag & TngF_InVehicle) != 0)
+    {
+        p_person->U.UPerson.ComRange = 0;
+        if (((p_person->Flag & TngF_Unkn01000000) != 0) && (p_person->U.UPerson.Vehicle == p_leadtng->U.UPerson.Vehicle))
+        {
+            person_enter_vehicle(p_person, &things[p_person->U.UPerson.Vehicle]);
+            if (p_person->U.UPerson.PathIndex != 0)
+                remove_path(p_person);
+            p_person->State = PerSt_PROTECT_PERSON;
+            return;
+        }
+    }
+    if ((p_leadtng->Flag & TngF_Destroyed) != 0)
+    {
+        p_person->State = PerSt_NONE;
+        return;
+    }
+
+    if ((((p_leadtng->Flag & (TngF_TriggerUse|TngF_WepCharging)) == 0) && ((p_leadtng->Flag2 & TgF2_Unkn0400) == 0)) ||
+      ((p_person->Flag2 & TgF2_IgnoreEnemies) != 0))
+    {
+        // no action
+    }
+    else if ((p_leadtng->PTarget == NULL) || (p_person->U.UPerson.CurrentWeapon == WEP_NULL))
+    {
+        if (((p_person->Flag & TngF_PlayerAgent) == 0) || ((p_leadtng->Flag & TngF_ShootAtPos) == 0))
+        {
+            // no action
+        }
+        else if (protect_person_simultaneous_fire(p_person, p_leadtng) == 0)
+        {
+            // no action
+        }
+        else if ((p_leadtng->PTarget == NULL) && (p_person->U.UPerson.Target2 == 0))
+        {
+            short face_cor_X, face_cor_Y, face_cor_Z; // store both full positions and delta pos on map
+            int weapon_range;
+            PlayerIdx prot_plyr;
+
+            p_person->Flag |= TngF_ShootAtPos;
+            prot_plyr = p_leadtng->U.UPerson.ComCur >> 2;
+            face_cor_X = players[prot_plyr].SpecialItems[0];
+            face_cor_Y = players[prot_plyr].SpecialItems[1];
+            face_cor_Z = players[prot_plyr].SpecialItems[2];
+
+            weapon_range = get_weapon_range(p_person);
+            map_limit_distance_to_target_fast(
+              PRCCOORD_TO_MAPCOORD(p_person->X),
+              PRCCOORD_TO_MAPCOORD(p_person->Y),
+              PRCCOORD_TO_MAPCOORD(p_person->Z),
+              &face_cor_X, &face_cor_Y, &face_cor_Z, weapon_range);
+
+            if ((p_person->Flag & TngF_PlayerAgent) != 0)
+            {
+                PlayerIdx plyr;
+                short plagent;
+
+                plyr = p_person->U.UPerson.ComCur >> 2;
+                plagent = p_person->U.UPerson.ComCur & 3;
+                player_agent_set_user_vect(plyr, plagent, face_cor_X, face_cor_Y, face_cor_Z);
+            }
+            p_person->Flag |= TngF_TriggerUse;
+            if ((p_person->Flag & TngF_InVehicle) != 0) {
+                things[p_person->U.UPerson.Vehicle].Flag |= TngF_Unkn01000000;
+            }
+
+            {
+                short full_angle;
+
+                full_angle = angle_between_points(PRCCOORD_TO_MAPCOORD(p_person->X),
+                  PRCCOORD_TO_MAPCOORD(p_person->Z), face_cor_X, face_cor_Z);
+                change_person_angle_full(p_person, full_angle);
+            }
+        }
+    }
+    else
+    {
+        if (protect_person_simultaneous_fire(p_person, p_leadtng) == 0)
+        {
+            // no action
+        }
+        else if (persons_have_truce(p_leadtng, p_leadtng->PTarget))
+        {
+            // no action
+        }
+        else
+        {
+            int weapon_range;
+            int see_range;
+
+            weapon_range = get_weapon_range(p_person);
+            see_range = can_i_see_thing(p_person, p_leadtng->PTarget, weapon_range * weapon_range + 1280 * 1280, 1);
+            if (see_range != 0)
+            {
+                if (see_range * see_range <= weapon_range * weapon_range)
+                {
+                    p_person->U.UPerson.Flag3 &= ~PrsF3_Unkn08;
+                }
+                else if ((p_person->Flag & TngF_PlayerAgent) == 0)
+                {
+                    p_person->U.UPerson.Flag3 |= PrsF3_Unkn08;
+                }
+                p_person->PTarget = p_leadtng->PTarget;
+            }
+        }
+    }
+
+    if ((p_person->Flag & TngF_ShootAtPos) != 0 && (p_person->Flag & (TngF_TriggerUse|TngF_WepCharging)) == 0)
+        p_person->Flag &= ~TngF_ShootAtPos;
+    if ((p_person->Flag & TngF_ShootAtPos) != 0)
+    {
+        if ((p_leadtng->Flag & TngF_TriggerUse) == 0) {
+            p_person->Flag &= ~TngF_TriggerUse;
+        }
+    }
+    else if (p_person->PTarget != NULL)
+    {
+        struct Thing *p_target;
+        p_target = p_person->PTarget;
+        if ((p_target->Flag & TngF_Destroyed) != 0) {
+            p_person->PTarget = NULL;
+            p_person->Flag &= ~TngF_TriggerUse;
+        }
+    }
+    else
+    {
+        p_person->Flag &= ~TngF_TriggerUse;
+    }
+    if ((p_person->PTarget != NULL) && (p_person->Flag2 & TgF2_IgnoreEnemies) != 0) {
+        p_person->PTarget = NULL;
+    }
+    if (((p_person->Flag & TngF_PlayerAgent) == 0) && ((p_leadtng->Flag & TngF_InVehicle) == 0)) {
+        p_person->U.UPerson.ComRange = 8;
+    }
+    if (((p_person->Flag & TngF_InVehicle) == 0)
+      && ((p_person->U.UPerson.Flag3 & PrsF3_Unkn04) == 0)
+      && person_goto_person_nav(p_person) < (p_person->U.UPerson.ComRange * p_person->U.UPerson.ComRange) << 12
+      && ((p_person->Flag2 & TgF2_Unkn00080000) != 0)
+      && ((p_leadtng->Flag2 & TgF2_Unkn00080000) == 0))
+    {
+        set_person_animmode_walk(p_person);
+    }
+    if ((p_person->PTarget == NULL)
+      && (p_person->U.UPerson.Target2 == 0)
+      && ((p_person->Flag & TngF_ShootAtPos) == 0))
+    {
+        if ((p_person->Flag & TngF_TriggerUse) != 0)
+            p_person->Flag &= ~TngF_TriggerUse;
+    }
+    if (p_person->PTarget != NULL)
+    {
+        p_person->Flag &= ~TngF_ShootAtPos;
+        try_and_kill_target(p_person);
+    }
+    if (p_person->State == 0) {
+        p_person->State = PerSt_PROTECT_PERSON;
+    }
 }
 
 void process_wander(struct Thing *p_person)
@@ -4588,10 +6168,323 @@ void process_danger(struct Thing *p_person)
         : : "a" (p_person));
 }
 
+void peep_return_to_point(struct Thing *p_person)
+{
+    asm volatile ("call ASM_peep_return_to_point\n"
+        : : "a" (p_person));
+}
+
 void person_kill_target2(struct Thing *p_person)
 {
-    asm volatile ("call ASM_person_kill_target2\n"
-        : : "a" (p_person));
+    struct Thing *p_target;
+    int wep_range;
+
+    if (((gameturn + p_person->ThingOffset) & 0x7F) == 0)
+    {
+        ushort rnd;
+        rnd = LbRandomAnyShort();
+        // Only police taunt their target with a speech sample while attacking.
+        if (p_person->SubType == SubTT_PERS_POLICE) {
+            play_dist_speech(p_person, 54 + (rnd % 3), 0x7Fu, 0x40u, 100, 0, 3);
+        }
+    }
+    if ((p_person->Flag & TngF_ShootAtPos) != 0)
+    {
+        p_person->Flag &= ~TngF_ShootAtPos;
+    }
+
+    p_target = &things[p_person->U.UPerson.Target2];
+    if (p_person->State == PerSt_PROTECT_PERSON)
+    {
+        struct Thing *p_prottng;
+
+        // A bodyguard currently protecting someone usually keeps attacking
+        // its own target2, but may instead take over the protected person's
+        // target, effectively delegating target selection to the protectee.
+        p_prottng = &things[p_person->GotoThingIndex];
+        if ((p_prottng->Flag2 & TgF2_IgnoreEnemies) != 0)
+        {
+            p_person->U.UPerson.Target2 = 0;
+            p_person->PTarget = NULL;
+            p_prottng->Flag2 |= TgF2_IgnoreEnemies;
+            return;
+        }
+        if ((p_prottng->Flag & TngF_PersSupShld) != 0)
+        {
+            p_person->U.UPerson.Target2 = 0;
+            p_person->PTarget = NULL;
+            p_prottng->Flag |= TngF_Unkn00200000|TngF_PersSupShld;
+            return;
+        }
+        if ((abs(p_person->U.UPerson.Mood) < 32) &&
+          (p_prottng->PTarget != NULL) &&
+          (p_prottng->U.UPerson.WeaponTurn != 0))
+        {
+            p_person->U.UPerson.Target2 = p_prottng->PTarget->ThingOffset;
+            p_person->PTarget = p_prottng->PTarget;
+        }
+    }
+    if ((p_person->U.UPerson.EffectiveGroup == p_target->U.UPerson.EffectiveGroup) ||
+      (p_person->Flag2 & TgF2_IgnoreEnemies) != 0)
+    {
+        p_person->U.UPerson.Target2 = 0;
+        return;
+    }
+
+    ushort bkp_State;
+    short bkp_GotoThingIndex;
+    TbBool person_in_ground_veh;
+    TbBool target_within_range;
+
+    person_in_ground_veh = false;
+    bkp_State = p_person->State;
+    bkp_GotoThingIndex = p_person->GotoThingIndex;
+
+    p_person->GotoThingIndex = p_person->U.UPerson.Target2;
+    wep_range = get_weapon_range(p_person);
+    if ((p_person->Flag & TngF_InVehicle) != 0)
+    {
+        struct Thing *p_vehicle;
+        p_vehicle = &things[p_person->U.UPerson.Vehicle];
+        if (p_vehicle->SubType == SubTT_VEH_GROUND)
+        {
+            person_in_ground_veh = true;
+            // only the driver gets to steer the vehicle towards the target
+            if ((p_vehicle->U.UVehicle.PassengerHead == p_person->ThingOffset) &&
+              ((gameturn + p_person->ThingOffset) & 0x7F) == 0) {
+                start_goto_vehicle(p_vehicle, p_target->X >> 8, p_target->Z >> 8);
+            }
+        }
+    }
+    if ((p_person->U.UPerson.Flag3 & PrsF3_Unkn01) != 0)
+    {
+        ushort grp;
+        ushort brain_lv;
+
+        grp = p_target->U.UPerson.EffectiveGroup & 0x1F;
+        if (((gameturn & 0xFF) != 0) && (group_actions[grp].Storming <= 5))
+        {
+            p_person->Flag &= ~TngF_Unkn0004;
+        }
+        else
+        {
+            p_person->U.UPerson.Flag3 &= ~(PrsF3_Unkn02|PrsF3_Unkn01);
+            p_person->U.UPerson.Flag3 |= PrsF3_Unkn02;
+            brain_lv = person_mod_brain_level(p_person);
+            if ((LbRandomAnyShort() & 3) < brain_lv + 1)
+                set_person_animmode_run(p_person);
+            if ((p_target->Flag & TngF_PlayerAgent) != 0)
+                ingame.fld_unkC8B = 1;
+        }
+    }
+    if ((p_person->U.UPerson.Flag3 & PrsF3_Unkn02) != 0)
+    {
+        p_person->Flag |= TngF_Unkn0004;
+    }
+
+    int target_dist_sq;
+
+    if ((((p_person->Flag & TngF_PlayerAgent) != 0) && ((p_person->U.UPerson.Flag3 & PrsF3_Unkn08) == 0))
+      || person_in_ground_veh || ((p_person->U.UPerson.Flag3 & PrsF3_Unkn01) != 0))
+    {
+        int dx, dy;
+
+        dx = (p_person->X - p_target->X) >> 8;
+        dy = (p_person->Z - p_target->Z) >> 8;
+        target_dist_sq = dy * dy + dx * dx;
+        if ((wep_range * wep_range < target_dist_sq) &&
+          ((p_person->Flag & TngF_Unkn00800000) == 0))
+        {
+            p_person->U.UPerson.Target2 = 0;
+            p_person->State = bkp_State;
+            p_person->GotoThingIndex = bkp_GotoThingIndex;
+            if ((p_person->Flag & TngF_PersKeepPost) != 0)
+                peep_return_to_point(p_person);
+            return;
+        }
+    }
+    else
+    {
+        struct Thing *p_vehicle;
+
+        p_vehicle = &things[p_person->U.UPerson.Vehicle];
+        target_dist_sq = 0;
+        if (((p_person->Flag & TngF_InVehicle) == 0) ||
+          (p_vehicle->U.UVehicle.PassengerHead == p_person->ThingOffset))
+        {
+            //TODO separate drawing from state update
+            if (p_person->U.UPerson.Target2 != p_person->GotoThingIndex) {
+                draw_map_flat_circle(p_person->X >> 8,
+                  p_person->Y >> 8, p_person->Z >> 8, 320, colour_lookup[0]);
+            }
+            target_dist_sq = person_goto_person_nav(p_person);
+        }
+        if ((p_person->U.UPerson.Within) && ((p_person->Flag2 & TgF2_Unkn0080) != 0))
+        {
+            p_person->Flag2 &= ~TgF2_Unkn0080;
+            p_person->U.UPerson.Target2 = 0;
+            p_person->State = bkp_State;
+            p_person->GotoThingIndex = bkp_GotoThingIndex;
+            if ((p_person->Flag & TngF_PersKeepPost) != 0)
+                peep_return_to_point(p_person);
+            return;
+        }
+    }
+    if ((p_person->Flag & TngF_Destroyed) != 0) {
+        return;
+    }
+
+    target_within_range = false;
+    if ((target_dist_sq != 0) && (wep_range * wep_range > target_dist_sq))
+        target_within_range = true;
+    else
+        p_person->Flag &= ~TngF_TriggerUse;
+
+    if (target_within_range && (p_person->U.UPerson.WeaponTurn <= 1) &&
+      (p_target->State != PerSt_DIEING) && ((p_target->Flag & TngF_Destroyed) == 0))
+    {
+        wep_range = get_weapon_range(p_person);
+        target_dist_sq = can_i_see_thing(p_person, p_target, wep_range * wep_range, 1u);
+        if (target_dist_sq > 0)
+        {
+            p_person->Flag &= ~(TngF_Unkn00200000|TngF_TriggerUse|TngF_PersSupShld);
+            p_person->Flag |= TngF_TriggerUse;
+            if ((p_person->Flag & TngF_InVehicle) != 0) {
+                struct Thing *p_vehicle;
+                p_vehicle = &things[p_person->U.UPerson.Vehicle];
+                p_vehicle->Flag |= TngF_Unkn01000000;
+            }
+            if ((p_person->U.UPerson.Flag3 & PrsF3_Unkn10) != 0) {
+                ushort grp;
+                grp = p_target->U.UPerson.EffectiveGroup & 0x1F;
+                group_actions[grp].Storming |= GrpAF_UnderAttack;
+                p_person->U.UPerson.Flag3 &= ~PrsF3_Unkn10;
+            }
+            if ((p_person->Flag & TngF_PlayerAgent) == 0) {
+                short range;
+                range = p_person->U.UPerson.ComRange + 2;
+                if (range > 20)
+                    range = 20;
+                p_person->U.UPerson.ComRange = range;
+            }
+        }
+        else
+        {
+            target_within_range = false;
+            p_person->Flag &= ~TngF_TriggerUse;
+        }
+
+        if ((p_person->Flag & TngF_PlayerAgent) != 0)
+        {
+          if (!target_within_range && ((gameturn & 0xF) == 0))
+            p_person->U.UPerson.Target2 = 0;
+        }
+        else if (((p_person->U.UPerson.Flag3 & PrsF3_Unkn40) != 0) ||
+          (!target_within_range && (p_person->U.UPerson.Flag3 & PrsF3_Unkn01) == 0))
+        {
+            if ((p_person->U.UPerson.Flag3 & PrsF3_Unkn02) != 0)
+            {
+                short range;
+                range = p_person->U.UPerson.ComRange - 2;
+                if (range < 2)
+                    range = 2;
+                p_person->U.UPerson.ComRange = range;
+            }
+            else
+            {
+                ushort path;
+                short pc;
+
+                path = p_person->U.UPerson.PathIndex;
+                pc = my_paths[path].Flag - p_person->PathOffset;
+                if ((pc == 2) || (pc == 3 && (gameturn & 7) == 0))
+                {
+                    ushort grp;
+                    p_person->U.UPerson.Flag3 |= PrsF3_Unkn01;
+                    grp = p_target->U.UPerson.EffectiveGroup & 0x1F;
+                    group_actions[grp].Storming++;
+                    p_person->Flag |= TngF_Unkn0004;
+                    set_person_animmode_walk(p_person);
+                }
+                else
+                {
+                    short range;
+                    range = p_person->U.UPerson.ComRange - 2;
+                    if (range < 2)
+                        range = 2;
+                    p_person->U.UPerson.ComRange = range;
+                }
+            }
+        }
+    }
+
+    if (p_person->State == PerSt_NONE) {
+        p_person->Flag &= ~TngF_TriggerUse;
+    }
+
+    if (((p_target->Flag & TngF_Destroyed) == 0) &&
+      ((p_person->Flag2 & (TgF2_Unkn00020000|TgF2_Unkn0040)) == 0) &&
+      ((3 * wep_range * wep_range >= target_dist_sq) || (bkp_State == PerSt_KILL_PERSON))) {
+        if ((p_person->Flag & TngF_Destroyed) == 0)
+            p_person->State = bkp_State;
+        p_person->GotoThingIndex = bkp_GotoThingIndex;
+        return;
+    }
+    if ((p_person->U.UPerson.Flag3 & (PrsF3_Unkn02|PrsF3_Unkn01)) != 0)
+    {
+        ushort grp;
+        p_person->U.UPerson.Flag3 &= ~(PrsF3_Unkn02|PrsF3_Unkn01);
+        grp = p_target->U.UPerson.EffectiveGroup & 0x1F;
+        group_actions[grp].Storming--;
+    }
+
+    p_target = NULL;
+    p_person->Flag2 &= ~TgF2_Unkn0040;
+    p_person->U.UPerson.Target2 = 0;
+
+    // We are giving up on Target2: if the person was mid-kill-mission on
+    // its PTarget, keep chasing it unless that target has since been destroyed.
+    // Otherwise, fall back to whatever target was being pursued before this
+    // kill-mission started (OldTarget).
+    if (bkp_State == PerSt_KILL_PERSON)
+    {
+        p_target = p_person->PTarget;
+        if (p_target != NULL)
+        {
+            if ((p_target->Flag & TngF_Destroyed) != 0) {
+                bkp_State = PerSt_NONE;
+                p_person->State = PerSt_NONE;
+            }
+        }
+    }
+    if (bkp_State != PerSt_KILL_PERSON)
+    {
+        struct Thing *p_ntarget;
+
+        p_ntarget = NULL;
+        if (p_person->OldTarget != 0)
+            p_ntarget = &things[p_person->OldTarget];
+        p_person->PTarget = p_ntarget;
+    }
+
+    p_person->Flag &= ~TngF_TriggerUse;
+    remove_path(p_person);
+
+    if (((p_person->Flag & TngF_PlayerAgent) == 0) &&
+      (p_person->U.UPerson.ComCur != 0))
+    {
+        if ((p_person->Flag & TngF_PersKeepPost) != 0) {
+            peep_return_to_point(p_person);
+            return;
+        }
+        person_init_command(p_person, PerSt_DROP_ITEM);
+    }
+    else
+    {
+        if ((p_person->Flag & TngF_Destroyed) == 0)
+            p_person->State = bkp_State;
+        p_person->GotoThingIndex = bkp_GotoThingIndex;
+    }
 }
 
 void person_wait(struct Thing *p_person)
@@ -4602,8 +6495,7 @@ void person_wait(struct Thing *p_person)
 #endif
     if ((p_person->Flag2 & TgF2_Unkn00080000) != 0)
     {
-        p_person->U.UPerson.AnimMode = gun_out_anim(p_person, 0);
-        reset_person_frame(p_person);
+        set_person_anim_mode(p_person, gun_out_anim(p_person, 0));
         p_person->Timer1 = 48;
         p_person->StartTimer1 = 48;
         p_person->Flag2 &= ~TgF2_Unkn00080000;
@@ -4611,8 +6503,7 @@ void person_wait(struct Thing *p_person)
     }
     if ((p_person->U.UPerson.AnimMode != ANIM_PERS_Unkn21) && (p_person->U.UPerson.CurrentWeapon == WEP_NULL))
     {
-        p_person->U.UPerson.AnimMode = ANIM_PERS_Unkn21;
-        reset_person_frame(p_person);
+        set_person_anim_mode(p_person, ANIM_PERS_Unkn21);
     }
     p_person->Flag &= ~TngF_Unkn0001;
     if (((p_person->Flag & TngF_WepCharging) != 0) || (p_person->U.UPerson.WeaponTurn != 0))
@@ -4643,7 +6534,7 @@ void person_wait(struct Thing *p_person)
         if ((debug_log_things & 0x01) != 0) {
             char locstr[192];
             snprint_command(locstr, sizeof(locstr), p_person->U.UPerson.ComCur);
-            LOGSYNC("Person %s %d %s %d condition met, state %d.%d",
+            LOGSYNC_F("Person %s %d %s %d condition met, state %d.%d",
               person_type_name(p_person->SubType), (int)p_person->ThingOffset,
               locstr, (int)p_person->U.UPerson.ComCur, p_person->State, p_person->SubState);
         }
@@ -4657,6 +6548,42 @@ void person_pickup(struct Thing *p_person)
 {
     asm volatile ("call ASM_person_pickup\n"
         : : "a" (p_person));
+}
+
+void plant_mine(struct Thing *p_person)
+{
+#if 0
+    asm volatile ("call ASM_plant_mine\n"
+        : : "a" (p_person));
+#else
+    struct SimpleThing *p_item;
+
+    p_item = create_item(PRCCOORD_TO_MAPCOORD(p_person->X),
+      PRCCOORD_TO_MAPCOORD(p_person->Y),
+      PRCCOORD_TO_MAPCOORD(p_person->Z),
+      1004, p_person->U.UPerson.TempWeapon);
+    if (p_item == NULL) {
+        return;
+    }
+
+    p_item->Timer1 = 140;
+    p_item->StartTimer1 = 140;
+    p_item->Owner2 = p_person->ThingOffset;
+    p_item->U.UWeapon.Ammo = 7;
+    p_item->U.UWeapon.OnFace = p_person->U.UPerson.OnFace;
+
+    give_take_me_weapon(p_person, p_person->U.UPerson.TempWeapon, -1, p_item->ThingOffset);
+
+    if (!person_carries_weapon(p_person, p_person->U.UPerson.CurrentWeapon))
+    {
+      if (((p_person->Flag & TngF_PlayerAgent) != 0) &&
+        ((p_person->Flag2 & TgF2_Unkn0800) == 0)) {
+          person_weapons_reset_previous(p_person);
+      }
+      p_person->U.UPerson.CurrentWeapon = WEP_NULL;
+    }
+    p_item->Radius = 50;
+#endif
 }
 
 void person_drop_item(struct Thing *p_person)
@@ -4715,17 +6642,17 @@ void person_persuade_person(struct Thing *p_person)
 #endif
     struct Thing *p_target;
     int dist_sq;
-    short weapon_range;
+    short wep_range;
     TbBool reached_target;
 
     if (person_carries_weapon(p_person, WEP_PERSUADER2))
-        weapon_range = get_hand_weapon_range(p_person, WEP_PERSUADER2);
+        wep_range = get_hand_weapon_range(p_person, WEP_PERSUADER2);
     else
-        weapon_range = get_hand_weapon_range(p_person, WEP_PERSUADRTRN);
+        wep_range = get_hand_weapon_range(p_person, WEP_PERSUADRTRN);
 
-    if (((p_person->Flag & (TngF_Unkn0800|TngF_WepCharging)) != 0) &&
+    if (((p_person->Flag & (TngF_TriggerUse|TngF_WepCharging)) != 0) &&
       (p_person->U.UPerson.WeaponTimer > 5)) {
-        p_person->Flag &= ~TngF_Unkn0800;
+        p_person->Flag &= ~TngF_TriggerUse;
     }
 
     p_target = &things[p_person->GotoThingIndex];
@@ -4743,7 +6670,7 @@ void person_persuade_person(struct Thing *p_person)
     dist_sq = person_goto_person_nav(p_person);
 
     reached_target = 0;
-    if ((dist_sq != 0) && (dist_sq < weapon_range * weapon_range))
+    if ((dist_sq != 0) && (dist_sq < wep_range * wep_range))
         reached_target = 1;
 
     if (reached_target)
@@ -4772,13 +6699,13 @@ void person_persuade_person(struct Thing *p_person)
     }
     if (p_person->State == 0) {
         p_person->State = PerSt_PERSUADE_PERSON;
-        p_person->Flag &= ~TngF_Unkn0800;
+        p_person->Flag &= ~TngF_TriggerUse;
     }
 
     p_target = p_person->PTarget;
     if ((p_target != NULL) && ((p_target->Flag & TngF_Destroyed) != 0)) {
         p_person->State = PerSt_NONE;
-        p_person->Flag &= ~TngF_Unkn0800;
+        p_person->Flag &= ~TngF_TriggerUse;
     }
 }
 
@@ -4799,7 +6726,7 @@ void person_use_vehicle(struct Thing *p_person)
     if ((p_person->Flag & TngF_InVehicle) != 0)
     {
         if ((debug_log_things & 0x01) != 0) {
-            LOGSYNC("Person %s %d has finished state %d.%d",
+            LOGSYNC_F("Person %s %d has finished state %d.%d",
               person_type_name(p_person->SubType), (int)p_person->ThingOffset,
               p_person->State, p_person->SubState);
         }
@@ -4808,9 +6735,9 @@ void person_use_vehicle(struct Thing *p_person)
     }
 
     person_goto_point(p_person);
-    if ((p_person->Flag & TngF_Unkn01000000) == 0) {
+    if ((p_person->Flag & TngF_StandOnVehicle) == 0) {
         if ((debug_log_things & 0x01) != 0) {
-            LOGSYNC("Person %s %d has wrong flags to enter, state %d.%d",
+            LOGSYNC_F("Person %s %d has wrong flags to enter, state %d.%d",
               person_type_name(p_person->SubType), (int)p_person->ThingOffset,
               p_person->State, p_person->SubState);
         }
@@ -4819,7 +6746,7 @@ void person_use_vehicle(struct Thing *p_person)
 
     if (p_person->U.UPerson.Vehicle != p_person->GotoThingIndex) {
         if ((debug_log_things & 0x01) != 0) {
-            LOGSYNC("Person %s %d went to wrong thing, state %d.%d",
+            LOGSYNC_F("Person %s %d went to wrong thing, state %d.%d",
               person_type_name(p_person->SubType), (int)p_person->ThingOffset,
               p_person->State, p_person->SubState);
         }
@@ -4830,7 +6757,7 @@ void person_use_vehicle(struct Thing *p_person)
 
     if (!can_i_enter_vehicle(p_person, p_vehicle)) {
         if ((debug_log_things & 0x01) != 0) {
-            LOGSYNC("Person %s %d state %d.%d cannot enter %s %d state %d.%d",
+            LOGSYNC_F("Person %s %d state %d.%d cannot enter %s %d state %d.%d",
               person_type_name(p_person->SubType), (int)p_person->ThingOffset,
               p_person->State, p_person->SubState,
               vehicle_type_name(p_vehicle->SubType), (int)p_vehicle->ThingOffset,
@@ -4845,8 +6772,75 @@ void person_use_vehicle(struct Thing *p_person)
 
 void person_wait_vehicle(struct Thing *p_person)
 {
+#if 0
     asm volatile ("call ASM_person_wait_vehicle\n"
         : : "a" (p_person));
+#endif
+    struct Thing *p_vehicle;
+    TbBool next_cmd_is_goto;
+
+    p_vehicle = &things[p_person->U.UPerson.Vehicle];
+
+    next_cmd_is_goto = false;
+    if ((p_person->Flag & TngF_PlayerAgent) == 0)
+    {
+        struct Command *p_cmd;
+        short cmd;
+
+        cmd = p_person->U.UPerson.ComCur;
+        p_cmd = &game_commands[cmd];
+        while (1)
+        {
+            cmd = p_cmd->Next;
+            p_cmd = &game_commands[cmd];
+            if ((p_cmd->Flags & PCmdF_IsUntil) == 0)
+                break;
+        }
+
+        if (p_cmd->Type == PCmd_GO_TO_POINT)
+        {
+            next_cmd_is_goto = true;
+        }
+        else if (p_cmd->Type == PCmd_LOOP_COM)
+        {
+            struct Command *p_nxcmd;
+            p_nxcmd = &game_commands[p_cmd->OtherThing];
+            if (p_nxcmd->Type == PCmd_GO_TO_POINT) {
+                next_cmd_is_goto = true;
+            }
+        }
+    }
+    if (next_cmd_is_goto)
+    {
+        short cmd;
+
+        if ((p_vehicle->State == VehSt_UNKN_33)
+          || (p_vehicle->State == VehSt_NONE)
+          || (p_vehicle->State == VehSt_UNKN_3C)
+          || (p_vehicle->State == VehSt_UNKN_41)
+          || (p_vehicle->State == VehSt_FLY_LANDING))
+        {
+            cmd = p_person->U.UPerson.ComCur;
+            cmd = game_commands[cmd].Next;
+            p_person->U.UPerson.ComCur = cmd;
+            person_init_command(p_person, PCmd_FOLLOW_PERSON);
+        }
+    }
+    else
+    {
+        short cmd;
+
+        if ((p_vehicle->State == VehSt_PARKED_PARAL)
+          || (p_vehicle->State == VehSt_PARKED_PERPN)
+          || (p_vehicle->State == VehSt_NONE)
+          || (p_vehicle->State == VehSt_UNKN_41))
+        {
+            cmd = p_person->U.UPerson.ComCur;
+            cmd = game_commands[cmd].Next;
+            p_person->U.UPerson.ComCur = cmd;
+            person_init_command(p_person, PCmd_SUPPORT_PERSON);
+        }
+    }
 }
 
 void person_destroy_building(struct Thing *p_person)
@@ -4858,9 +6852,9 @@ void person_destroy_building(struct Thing *p_person)
     struct Thing *p_target;
     TbBool in_range;
 
-    if (((p_person->Flag & (TngF_Unkn0800|TngF_WepCharging)) != 0) &&
+    if (((p_person->Flag & (TngF_TriggerUse|TngF_WepCharging)) != 0) &&
       (p_person->U.UPerson.WeaponTimer > 5))
-        p_person->Flag &= ~TngF_Unkn0800;
+        p_person->Flag &= ~TngF_TriggerUse;
 
     {
         int dist_x, dist_z, range;
@@ -4881,25 +6875,25 @@ void person_destroy_building(struct Thing *p_person)
     if (p_target == NULL)
     {
         p_person->State = PerSt_NONE;
-        p_person->Flag &= ~TngF_Unkn0800;
+        p_person->Flag &= ~TngF_TriggerUse;
         return;
     }
 
     if (in_range && (p_person->U.UPerson.WeaponTurn == 0) && ((p_target->Flag & TngF_Destroyed) == 0))
     {
         struct Thing *p_building;
-        int weapon_range;
-        weapon_range = get_weapon_range(p_person);
+        int wep_range;
+        wep_range = get_weapon_range(p_person);
         p_building = &things[p_person->GotoThingIndex];
-        if (can_i_see_building(p_person, p_building, weapon_range * weapon_range, 1) <= 0)
+        if (can_i_see_building(p_person, p_building, wep_range * wep_range, 1) <= 0)
         {
             in_range = 0;
-            p_person->Flag &= ~TngF_Unkn0800;
+            p_person->Flag &= ~TngF_TriggerUse;
         }
         else
         {
-            p_person->Flag &= ~(TngF_Unkn00200000|TngF_Unkn0800|TngF_PersSupShld);
-            p_person->Flag |= TngF_Unkn0800;
+            p_person->Flag &= ~(TngF_Unkn00200000|TngF_TriggerUse|TngF_PersSupShld);
+            p_person->Flag |= TngF_TriggerUse;
             if ((p_person->Flag & TngF_InVehicle) != 0) {
                 struct Thing *p_vehicle;
                 p_vehicle = &things[p_person->U.UPerson.Vehicle];
@@ -4921,12 +6915,12 @@ void person_destroy_building(struct Thing *p_person)
     if (p_person->State == PerSt_NONE)
     {
         p_person->State = PerSt_DESTROY_BUILDING;
-        p_person->Flag &= ~TngF_Unkn0800;
+        p_person->Flag &= ~TngF_TriggerUse;
     }
     if ((p_target->Flag & TngF_Destroyed) != 0)
     {
         p_person->State = PerSt_NONE;
-        p_person->Flag &= ~TngF_Unkn0800;
+        p_person->Flag &= ~TngF_TriggerUse;
     }
 }
 
@@ -4953,12 +6947,135 @@ ubyte check_person_within(struct Command *p_cmd, int x, int z)
     return ret;
 }
 
+/** Finds a collision blocking move of a thing by given shift.
+ *
+ * Finds a collision vector within the given map element, which
+ * blocks the move of a person by the given speed vector (dx,dz).
+ *
+ * Also updates globals used for intelligent door handling.
+ *
+ * @return Returns index in `game_col_vects` of the blocking vector, 0 if
+ *     move is not blocked, or -1 if something is out of map range.
+ */
 short do_move_colide(struct Thing *p_person, int dx, int dz, struct MyMapElement *p_mapel)
 {
+    int tl_x, tl_z, tl_idx;
+    ushort cur_colv;
+    int iter;
+    int dx_full, dz_full, dx_half, dz_half;
+    int per_cor_x, per_cor_y_m8, per_cor_z;
     short ret;
-    asm volatile (
-      "call ASM_do_move_colide\n"
-        : "=r" (ret) : "a" (p_person), "d" (dx), "b" (dz), "c" (p_mapel));
+
+    tl_idx = p_mapel - game_my_big_map;
+    tl_z = tl_idx / MAP_TILE_WIDTH;
+    tl_x = tl_idx % MAP_TILE_WIDTH;
+    if ((tl_z >= MAP_TILE_HEIGHT) || (tl_x >= MAP_TILE_WIDTH))
+        return -1;
+
+    cur_colv = p_mapel->ColHead;
+    word_1AA394 = 0;
+    per_cor_x = PRCCOORD_TO_MAPCOORD(p_person->X);
+    per_cor_y_m8 = PRCCOORD_TO_YCOORD(p_person->Y);
+    per_cor_z = PRCCOORD_TO_MAPCOORD(p_person->Z);
+
+    if ((cur_colv != 0) && (debug_hud_collision))
+    {
+        int xc, zc;
+
+        xc = TILE_TO_MAPCOORD(tl_x, 128);
+        zc = TILE_TO_MAPCOORD(tl_z, 128);
+        draw_mapcoord_line_at_ground(xc, zc, per_cor_x, per_cor_z, 0x4F);
+        draw_mark_over_tile_with_number(tl_x, tl_z, -1, cur_colv);
+    }
+
+    ret = 0;
+    if (cur_colv == 0)
+        return ret;
+
+    //TODO half is usually less than full; investigate
+    dz_full = dz >> 8;
+    dx_full = dx >> 8;
+    dx_half = dx >> 7;
+    dz_half = dz >> 7;
+
+    for (iter = 0; iter < 30; iter++)
+    {
+        struct ColVectList *p_cvl;
+        struct ColVect *p_cv;
+
+        p_cvl = &game_col_vects_list[cur_colv];
+        p_cv = &game_col_vects[p_cvl->Vect];
+
+        if ((p_cvl->NextColList & 0x8000) != 0)
+            goto next_vect;
+
+        {
+            int dy;
+
+            dy = p_cv->Y1 - per_cor_y_m8;
+            if (dy < 0)
+                dy = -dy;
+            if (dy >= 0xD0)
+                goto next_vect;
+        }
+
+        if ((per_cor_x == p_cv->X1) && (per_cor_z == p_cv->Z1)) {
+            goto next_vect;
+        }
+        if ((per_cor_x == p_cv->X2) && (per_cor_z == p_cv->Z2)) {
+            goto next_vect;
+        }
+
+        if (!two4_line_intersection(p_cv->X1, p_cv->Z1, p_cv->X2, p_cv->Z2,
+              per_cor_x, per_cor_z, per_cor_x + dx_half, per_cor_z + dz_half)) {
+            goto next_vect;
+        }
+
+        word_1AA38E = cur_colv;
+        ret = p_cvl->Vect;
+
+        if ((p_cvl->Object >= 0) && (p_cv->Face < 0))
+        {
+            struct SingleObjectFace4 *p_face;
+
+            p_face = &game_object_faces4[-p_cv->Face];
+            if ((p_face->GFlags & FGFlg_Unkn10) != 0)
+            {
+                int pt2_x, pt2_z;
+                s32 cross;
+
+                if ((p_person->Flag2 & TgF2_InsideBuilding) != 0)
+                {
+                    pt2_x = per_cor_x + dx_half;
+                    pt2_z = per_cor_z + dz_half;
+                    cross = (pt2_z - p_cv->Z2) * (p_cv->X2 - p_cv->X1)
+                          - (pt2_x - p_cv->X2) * (p_cv->Z2 - p_cv->Z1);
+                    if (cross < 0)
+                        word_1AA394 = 1;
+                }
+                else if (two4_line_intersection(p_cv->X1, p_cv->Z1, p_cv->X2, p_cv->Z2,
+                  per_cor_x, per_cor_z, per_cor_x + dx_full, per_cor_z + dz_full))
+                {
+                    pt2_x = PRCCOORD_TO_MAPCOORD(p_person->X) + dx_half;
+                    pt2_z = PRCCOORD_TO_MAPCOORD(p_person->Z) + dz_half;
+                    cross = (p_cv->X2 - p_cv->X1) * (pt2_z - p_cv->Z2)
+                          - (p_cv->Z2 - p_cv->Z1) * (pt2_x - p_cv->X2);
+                    word_1AA394 = (cross < 0) ? 1 : -1;
+                }
+                word_1AA392 = ret;
+                word_1AA390 = cur_colv;
+            }
+        }
+
+        if ((ret != 0) && (word_1AA392 != 0) && (ret != word_1AA392))
+            break;
+
+    next_vect:
+        cur_colv = p_cvl->NextColList & 0x7FFF;
+        if (cur_colv == 0)
+            break;
+    }
+
     return ret;
 }
 
@@ -4977,43 +7094,6 @@ ubyte create_intelligent_door(short col)
     asm volatile (
       "call ASM_create_intelligent_door\n"
         : "=r" (ret) : "a" (col));
-    return ret;
-}
-
-ushort set_thing_height_on_face_tri(struct Thing *p_thing, int x, int z, short face)
-{
-    ushort ret;
-    asm volatile (
-      "call ASM_set_thing_height_on_face_tri\n"
-        : "=r" (ret) : "a" (p_thing), "d" (x), "b" (z), "c" (face));
-    return ret;
-}
-
-ushort set_thing_height_on_face_quad(struct Thing *p_thing, int x, int z, short face)
-{
-    ushort ret;
-    asm volatile (
-      "call ASM_set_thing_height_on_face_quad\n"
-        : "=r" (ret) : "a" (p_thing), "d" (x), "b" (z), "c" (face));
-    return ret;
-}
-
-ushort set_thing_height_on_face(struct Thing *p_thing, int x, int z, short face)
-{
-    if (face > 0) {
-        return set_thing_height_on_face_tri(p_thing, x, z, face);
-    } else if (face < 0) {
-        return set_thing_height_on_face_quad(p_thing, x, z, -face);
-    }
-    return 0;
-}
-
-short find_and_set_connected_face(struct Thing *p_thing, int x, int z, short face)
-{
-    short ret;
-    asm volatile (
-      "call ASM_find_and_set_connected_face\n"
-        : "=r" (ret) : "a" (p_thing), "d" (x), "b" (z), "c" (face));
     return ret;
 }
 
@@ -5078,9 +7158,15 @@ void adjust_speed_for_colvect_collision(int *p_speed_x, int *p_speed_z, struct T
     ldt = (s64)(p_colvect->Z2 - p_colvect->Z1) << 24;
     norm_z = ldt / dvdr;
 
+#if 0 // original implementation
+    dist_sum = mul_shift16_sign_pad_lo(*p_speed_x, norm_x) + mul_shift16_sign_pad_lo(*p_speed_z, norm_z);
+    speed_x2 = mul_shift16_sign_pad_lo(norm_x, dist_sum);
+    speed_z2 = mul_shift16_sign_pad_lo(norm_z, dist_sum);
+#else // easier to read version, seem to produce the same results as original implementation? verify!
     dist_sum = (((*p_speed_x) * norm_x) >> 16) + (((*p_speed_z) * norm_z) >> 16);
     speed_x2 = (norm_x * dist_sum) >> 16;
     speed_z2 = (norm_z * dist_sum) >> 16;
+#endif
 
     chk_z = (p_person->Z - (p_colvect->Z1 << 8)) * norm_x;
     chk_x = (p_person->X - (p_colvect->X1 << 8)) * norm_z;
@@ -5138,12 +7224,6 @@ void set_thing_height_on_ground_mesh(struct Thing *p_person, int x, int z)
 
 short person_move(struct Thing *p_person)
 {
-#if 0
-    short ret;
-    asm volatile ("call ASM_person_move\n"
-        : "=r" (ret) : "a" (p_person));
-    return ret;
-#endif
     int speed_x, speed_z;
     int x, y, z;
     short colvect;
@@ -5157,8 +7237,7 @@ short person_move(struct Thing *p_person)
         play_dist_sample(p_person, 79, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_4EVER, 3);
     }
     if (p_person->U.UPerson.AnimMode == ANIM_PERS_Unkn21) {
-        p_person->U.UPerson.AnimMode = ANIM_PERS_IDLE;
-        reset_person_frame(p_person);
+        set_person_anim_mode(p_person, ANIM_PERS_IDLE);
     }
     if ((p_person->Flag & (TngF_InVehicle|TngF_Unkn4000)) != 0) {
         return 1;
@@ -5178,8 +7257,7 @@ short person_move(struct Thing *p_person)
             p_person->U.UPerson.Stamina = p_person->U.UPerson.Stamina - (7 - 2 * cybmod_legs_level(&p_person->U.UPerson.UMod));
         }
         if ((p_person->U.UPerson.Stamina < p_person->U.UPerson.MaxStamina >> 2) && (p_person->State != PerSt_PERSON_BURNING)) {
-            p_person->U.UPerson.AnimMode = gun_out_anim(p_person, 0);
-            reset_person_frame(p_person);
+            set_person_anim_mode(p_person, gun_out_anim(p_person, 0));
             p_person->Timer1 = 48;
             p_person->StartTimer1 = 48;
             p_person->Flag2 &= ~TgF2_Unkn00080000;
@@ -5217,7 +7295,7 @@ short person_move(struct Thing *p_person)
             thing = check_for_other_people(x, y, z, p_person);
             if (thing != 0) {
                 p_person->U.UPerson.BumpCount++;
-                if (((p_person->Flag & TngF_Unkn0010) == 0) && ((p_person->Flag & TngF_Unkn01000000) != 0))
+                if (((p_person->Flag & TngF_Unkn0010) == 0) && ((p_person->Flag & TngF_StandOnVehicle) != 0))
                     return 1;
             } else {
                 p_person->Flag &= ~(TngF_Unkn0004|TngF_Unkn0010);
@@ -5317,7 +7395,7 @@ short person_move(struct Thing *p_person)
     }
 
     if (debug_hud_collision || byte_1C844F) {
-        draw_line_transformed_at_ground(PRCCOORD_TO_MAPCOORD(p_person->X), PRCCOORD_TO_MAPCOORD(p_person->Z),
+        draw_mapcoord_line_at_ground(PRCCOORD_TO_MAPCOORD(p_person->X), PRCCOORD_TO_MAPCOORD(p_person->Z),
           PRCCOORD_TO_MAPCOORD(p_person->X) + PRCCOORD_TO_MAPCOORD(2 * speed_x),
           PRCCOORD_TO_MAPCOORD(p_person->Z) + PRCCOORD_TO_MAPCOORD(2 * speed_z),
           0xE6u);
@@ -5435,13 +7513,13 @@ void process_avoid_group(struct Thing *p_person)
 
     if (person_move(p_person))
     {
-        ubyte oangle;
+        ubyte angl;
         sbyte change;
         // Select changed, but not to opposite direction - only one of: -2,-1,1,2
         change = (LbRandomAnyShort() & 3) - 2;
         if (change >= 0) change++;
-        oangle = (p_person->U.UPerson.Angle + change) & 7;
-        change_player_angle(p_person, oangle);
+        angl = (p_person->U.UPerson.Angle + change) & 7;
+        change_person_angle(p_person, angl);
     }
 
     p_person->Timer1 -= fifties_per_gameturn;
@@ -5468,8 +7546,9 @@ void person_burning(struct Thing *p_person)
         : : "a" (p_person));
     return;
 #endif
-    p_person->U.UPerson.Brightness = 32;
-    apply_super_quick_light(p_person->X >> 8, p_person->Z >> 8, 16 + (LbRandomAnyShort() & 0xF));
+    p_person->U.UPerson.Brightness = PALETTE_FADE_LEVELS / 2;
+    apply_super_quick_light(PRCCOORD_TO_MAPCOORD(p_person->X),
+      PRCCOORD_TO_MAPCOORD(p_person->Z), 16 + (LbRandomAnyShort() & 0xF));
 
     if (((gameturn + p_person->ThingOffset) & 0xF) == 0)
     {
@@ -5493,7 +7572,7 @@ void person_burning(struct Thing *p_person)
     if ((p_person->Flag & TngF_PlayerAgent) != 0)
         p_person->U.UPerson.RecoilTimer--;
     else
-        p_person->U.UPerson.RecoilTimer -= byte_154F6C[LbRandomAnyShort() & 3];
+        p_person->U.UPerson.RecoilTimer -= burning_timer_delatas[LbRandomAnyShort() & 3];
 
     if (p_person->U.UPerson.RecoilTimer != 0)
     {
@@ -5517,7 +7596,7 @@ void person_burning(struct Thing *p_person)
             p_person->U.UPerson.Timer2--;
             if (p_person->U.UPerson.Timer2 < 0)
             {
-                ushort angle;
+                short angle;
 
                 p_person->U.UPerson.Timer2 = (LbRandomAnyShort() & 7) + p_person->U.UPerson.StartTimer2;
                 angle = p_person->U.UPerson.Angle;
@@ -5525,8 +7604,7 @@ void person_burning(struct Thing *p_person)
                     angle++;
                 else
                     angle--;
-                angle = (angle + 8) & 7;
-                change_player_angle(p_person,angle);
+                change_person_angle(p_person, (angle + 8) & 7);
             }
         }
     }
@@ -5539,20 +7617,127 @@ void person_burning(struct Thing *p_person)
 
 void person_being_persuaded(struct Thing *p_person)
 {
+#if 0
     asm volatile ("call ASM_person_being_persuaded\n"
         : : "a" (p_person));
+    return;
+#endif
+    ushort nxframe;
+
+    p_person->Timer1 -= fifties_per_gameturn;
+    if (p_person->Timer1 < 0)
+    {
+        p_person->Timer1 = p_person->StartTimer1;
+        nxframe = frame[p_person->Frame].Next;
+
+        if ((frame[nxframe].Flags & 0x01) != 0)
+        {
+            p_person->State = PerSt_WAIT;
+            p_person->Flag &= ~(TngF_Persuaded | TngF_Unkn40000000);
+            p_person->Flag |= TngF_Persuaded;
+            reset_person_frame(p_person);
+        }
+        else
+        {
+            p_person->Frame = nxframe;
+        }
+    }
 }
 
 void process_wander_and_fly(struct Thing *p_person, struct Thing *p_vehicle)
 {
+#if 0
     asm volatile ("call ASM_process_wander_and_fly\n"
         : : "a" (p_person), "d" (p_vehicle));
+#endif
+    int cor_base_x, cor_base_z;
+    int cor_nxt_x, cor_nxt_z;
+    int i;
+    ushort angl;
+
+    if (p_vehicle->State != VehSt_PARKED_PARAL &&
+      p_vehicle->State != VehSt_NONE &&
+      p_vehicle->State != VehSt_FLY_LANDING)
+    {
+        short timer;
+
+        timer = p_person->U.UPerson.Timer2;
+        p_person->U.UPerson.Timer2--;
+        if ((timer >= 0) && p_vehicle->State != VehSt_UNKN_41)
+            return;
+    }
+
+    angl = LbRandomAnyShort() & LbFPMath_AngleMask;
+    cor_base_z = PRCCOORD_TO_MAPCOORD(p_person->Z);
+    cor_base_x = PRCCOORD_TO_MAPCOORD(p_person->X);
+
+    for (i = 0; i < 8; i++)
+    {
+        cor_nxt_x = cor_base_x + (lbSinTable[angl + LbFPMath_PI/2] >> 4);
+        cor_nxt_z = cor_base_z + (lbSinTable[angl] >> 4);
+        //TODO avoid running into buildings as well?
+        if (cor_nxt_x >= TILE_TO_MAPCOORD(1,0)/2 &&
+          cor_nxt_x < MAP_COORD_WIDTH - TILE_TO_MAPCOORD(1,0)/2)
+            if (cor_nxt_z >= TILE_TO_MAPCOORD(1,0)/2 &&
+              cor_nxt_z < MAP_COORD_HEIGHT - TILE_TO_MAPCOORD(1,0)/2)
+                break;
+        angl = (angl + LbFPMath_PI/4) & LbFPMath_AngleMask;
+    }
+    if (i < 8)
+    {
+        start_goto_vehicle(p_vehicle, cor_nxt_x, cor_nxt_z);
+        p_person->U.UPerson.Timer2 = 1500;
+    }
+}
+
+void unkn_update_thing_to_light(ushort light_id, struct Thing *p_thing, ubyte a3)
+{
+#if 0
+    asm volatile ("call ASM_unkn_update_thing_to_light\n"
+        : : "a" (light_id), "d" (p_thing), "b" (a3));
+    return;
+#endif
+    struct FullLight *p_fulight;
+    int dx, dz;
+    short len1, len2;
+
+    p_fulight = &game_full_lights[light_id];
+    dx = p_fulight->X - PRCCOORD_TO_MAPCOORD(p_thing->X);
+    dz = p_fulight->Z - PRCCOORD_TO_MAPCOORD(p_thing->Z);
+    len1 = arctan(dx, -dz) + 4;
+    len2 = LbSqrL(dz * dz + dx * dx);
+    p_thing->U.UPerson.Shadows[a3 + 0] = len1 >> 3;
+    p_thing->U.UPerson.Shadows[a3 + 1] = len2 >> 3;
 }
 
 void process_lighting_unkn1(struct Thing *p_person)
 {
+#if 0
     asm volatile ("call ASM_process_lighting_unkn1\n"
         : : "a" (p_person));
+    return;
+#endif
+    struct MyMapElement *p_mapel;
+    MapCoord cor_x, cor_z;
+    ushort qlight;
+
+    if ((p_person->Flag & TngF_Destroyed) != 0)
+        return;
+
+    p_person->U.UPerson.Shadows[0] = 0;
+    p_person->U.UPerson.Shadows[1] = 0;
+    p_person->U.UPerson.Shadows[2] = 0;
+    p_person->U.UPerson.Shadows[3] = 0;
+
+    cor_x = PRCCOORD_TO_MAPCOORD(p_person->X);
+    cor_z = PRCCOORD_TO_MAPCOORD(p_person->Z);
+    p_mapel = &game_my_big_map[MAP_TILE_WIDTH * MAPCOORD_TO_TILE(cor_z) + MAPCOORD_TO_TILE(cor_x)];
+
+    qlight = get_brightest_quick_light(p_mapel->Shade);
+
+    if (qlight != 0) {
+        unkn_update_thing_to_light(quick_light_to_full_light(qlight), p_person, 0);
+    }
 }
 
 void person_find_next_state(struct Thing *p_person)
@@ -5603,12 +7788,6 @@ void person_find_next_state(struct Thing *p_person)
     person_init_command(p_person, PCmd_USE_WEAPON);
 }
 
-void make_peep_protect_peep(struct Thing *p_protector, struct Thing *p_leader)
-{
-    asm volatile ("call ASM_make_peep_protect_peep\n"
-        : : "a" (p_protector), "d" (p_leader));
-}
-
 void people_intel(ubyte flag)
 {
     asm volatile ("call ASM_people_intel\n"
@@ -5617,13 +7796,8 @@ void people_intel(ubyte flag)
 
 void process_person(struct Thing *p_person)
 {
-#if 0
-    asm volatile ("call ASM_process_person\n"
-        : : "a" (p_person));
-    return;
-#endif
-    struct MyMapElement *p_mapel;
     short state;
+    ushort ccol;
 
     if ( (p_person->Flag & TngF_PlayerAgent) != 0 && (p_person->Flag2 & TgF2_Unkn10000000) != 0 )
     {
@@ -5632,18 +7806,15 @@ void process_person(struct Thing *p_person)
           && ((p_person->Flag & (TngF_Unkn40000000|TngF_Destroyed)) == 0)
           && ((p_person->Flag2 & (TgF2_KnockedOut|TgF2_Unkn0008)) == 0))
         {
-            struct Thing *p_target;
-
             p_person->GotoThingIndex = p_person->Owner;
-            p_target = &things[p_person->GotoThingIndex];
             p_person->State = PerSt_PROTECT_PERSON;
-            p_person->U.UPerson.ComRange = follow_dist[p_target->U.UPerson.ComCur & 3][p_person->U.UPerson.ComCur & 3];
+            person_protect_update_follow_distance(p_person, p_person->GotoThingIndex);
             p_person->Flag2 &= ~TgF2_Unkn10000000;
         }
     }
     p_person->Flag2 &= ~TgF2_Unkn8000;
-    p_mapel = &game_my_big_map[MAP_TILE_WIDTH * (p_person->Z >> 16) + (p_person->X >> 16)];
-    if (((p_person->Flag2 & TgF2_InsideBuilding) != 0) && (p_mapel->ColumnHead == 0))
+    ccol = get_mapel_col_column_head(p_person->X >> 16, p_person->Z >> 16);
+    if (((p_person->Flag2 & TgF2_InsideBuilding) != 0) && (ccol == 0))
         p_person->Flag2 &= ~TgF2_InsideBuilding;
 
     if ( ((gameturn + p_person->ThingOffset) & 0x7F) == 0)
@@ -5663,8 +7834,10 @@ void process_person(struct Thing *p_person)
         {
             short pstng_x, pstng_y, pstng_z;
             make_peep_protect_peep(p_person, &things[p_person->Owner]);
+            //TODO separate drawing from state update
             get_thing_position_mapcoords(&pstng_x, &pstng_y, &pstng_z, p_person->ThingOffset);
-            draw_map_flat_circle(pstng_x, pstng_y, pstng_z, 200, colour_lookup[ColLU_WHITE]);
+            enlist_hud_draw_mapcoord_flat_circle(pstng_x, pstng_y, pstng_z,
+              200, 0, 1, colour_lookup[ColLU_WHITE]);
         }
     }
     if ((p_person->Flag2 & TgF2_Unkn0020) != 0)
@@ -5702,7 +7875,7 @@ void process_person(struct Thing *p_person)
             p_person->PTarget = NULL;
             p_person->State = PerSt_NONE;
             p_person->Flag |= TngF_Unkn0040;
-            calc_person_speed(p_person);
+            p_person->Speed = calc_person_speed(p_person);
         }
     }
     else
@@ -5729,7 +7902,7 @@ void process_person(struct Thing *p_person)
         if ((state != PerSt_WAIT) && (state != 0))
         {
             p_person->Flag &= ~TngF_Unkn08000000;
-            p_person->Flag &= ~TngF_Unkn01000000;
+            p_person->Flag &= ~TngF_StandOnVehicle;
         }
     }
     if ((p_person->U.UPerson.BumpMode != 0) && ((p_person->Flag & TngF_Destroyed) == 0))
@@ -5740,41 +7913,42 @@ void process_person(struct Thing *p_person)
             process_im_shoved(p_person);
     }
     if (((p_person->Flag & TngF_Unkn40000000) == 0) || (((p_person->Flag & TngF_Destroyed) == 0)
-        && ((p_person->Flag & (TngF_Persuaded|TngF_Unkn00040000|TngF_WepRecoil|TngF_Unkn4000|TngF_StationrSht)) != 0)))
+        && ((p_person->Flag & (TngF_Persuaded|TngF_DangerFlee|TngF_WepRecoil|TngF_Unkn4000|TngF_StationrSht)) != 0)))
     {
-
         if ((p_person->Flag & TngF_Unkn4000) != 0)
-          return;
+        {
+            return;
+        }
         if ((p_person->Flag & TngF_WepRecoil) != 0)
         {
-          stop_looped_weapon_sample(p_person, p_person->U.UPerson.CurrentWeapon);
-          person_recoil(p_person);
-          calc_lighting(p_person);
-          process_weapon(p_person);
-          return;
+            stop_looped_weapon_sample(p_person, p_person->U.UPerson.CurrentWeapon);
+            person_recoil(p_person);
+            calc_lighting(p_person);
+            process_weapon(p_person);
+            return;
         }
         if (((p_person->Flag & TngF_Persuaded) != 0) && ((p_person->Flag & TngF_Destroyed) == 0))
         {
-          process_persuaded(p_person);
-          calc_lighting(p_person);
-          process_weapon(p_person);
-          return;
+            process_persuaded(p_person);
+            calc_lighting(p_person);
+            process_weapon(p_person);
+            return;
         }
-        if (((p_person->Flag & TngF_Unkn00040000) != 0) && ((p_person->Flag & (TngF_Unkn1000|TngF_Destroyed)) == 0))
+        if (((p_person->Flag & TngF_DangerFlee) != 0) && ((p_person->Flag & (TngF_SelectedAgent|TngF_Destroyed)) == 0))
         {
-          person_run_away(p_person);
-          calc_lighting(p_person);
-          return;
+            person_run_away(p_person);
+            calc_lighting(p_person);
+            return;
         }
 
         if ((p_person->Flag & TngF_StationrSht) != 0)
         {
-          if ((p_person->U.UPerson.WeaponTurn == 0) && ((p_person->Flag & TngF_Unkn0800) == 0))
-          {
-              p_person->Flag &= ~TngF_StationrSht;
-          }
-          process_weapon(p_person);
-          return;
+            if ((p_person->U.UPerson.WeaponTurn == 0) && ((p_person->Flag & TngF_TriggerUse) == 0))
+            {
+                p_person->Flag &= ~TngF_StationrSht;
+            }
+            process_weapon(p_person);
+            return;
         }
     }
 
@@ -5783,14 +7957,8 @@ void process_person(struct Thing *p_person)
       && ((gameturn + p_person->ThingOffset) & 3) == 0
       && (p_person->Flag & TngF_Destroyed) == 0)
     {
-        ushort subType;
-
-        subType = p_person->SubType;
-        if (subType == SubTT_PERS_BRIEFCASE_M
-          || subType == SubTT_PERS_WHITE_BRUN_F
-          || subType == SubTT_PERS_WHIT_BLOND_F
-          || subType == SubTT_PERS_LETH_JACKT_M
-          || subType == SubTT_PERS_SCIENTIST)
+        if (person_is_basic_civilian(p_person, false)
+          || person_is_scientist(p_person, false))
         {
             process_danger(p_person);
         }
@@ -5820,11 +7988,12 @@ void process_person(struct Thing *p_person)
     }
 
     if ((p_person->Flag & (TngF_Unkn40000000|TngF_Destroyed)) != 0)
-        p_person->Flag &= ~TngF_Unkn0800;
+        p_person->Flag &= ~TngF_TriggerUse;
     else
         process_weapon(p_person);
 
-    if ((debug_hud_collision == 1) && (p_person->Y != 0))
+    //TODO separate drawing from state update
+    if ((debug_hud_collision) && (p_person->Y != 0))
     {
         char locstr[150];
         short pstng_x, pstng_y, pstng_z;
@@ -5855,13 +8024,12 @@ void process_person(struct Thing *p_person)
               break;
         case PerSt_GOTO_POINT:
               person_goto_point(p_person);
-              if ((p_person->State == 0) && ((p_person->U.UPerson.Flag3 & PrsF3_Unkn04) != 0) && ((p_person->Flag & TngF_Unkn1000) == 0))
+              if ((p_person->State == 0) &&
+                ((p_person->U.UPerson.Flag3 & PrsF3_Unkn04) != 0) &&
+                ((p_person->Flag & TngF_SelectedAgent) == 0))
               {
-                  struct Thing *p_target;
-
-                  p_target = &things[p_person->GotoThingIndex];
                   p_person->State = PerSt_PROTECT_PERSON;
-                  p_person->U.UPerson.ComRange = follow_dist[p_target->U.UPerson.ComCur & 3][p_person->U.UPerson.ComCur & 3];
+                  person_protect_update_follow_distance(p_person, p_person->GotoThingIndex);
               }
               break;
         case PerSt_WANDER:

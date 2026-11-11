@@ -29,6 +29,7 @@ extern "C" {
 #pragma pack(1)
 
 struct Thing;
+struct SimpleThing;
 
 typedef struct {
     short Arg1;
@@ -52,6 +53,8 @@ typedef s32 (*ThingMinFilter)(ThingIdx thing, short X, short Z, ThingFilterParam
 
 #pragma pack()
 /******************************************************************************/
+extern short bad_mapwho_tl_x;
+extern short bad_mapwho_tl_z;
 
 /** Unified function to find a thing of given type within given circle and matching bool filter.
  *
@@ -114,6 +117,11 @@ ThingIdx search_things_for_any_including_offmap_nearest_within_circle(short X, s
 
 struct Thing *check_for_radius_hit_person(int prc_x, int prc_y, int prc_z,
         int radius, struct Thing *p_owner, int flag, int skip);
+
+short find_nearest_person_min(int x, int y, int z,
+  int n_dist, int *a_dist, int angle1, u32 group_bits);
+
+struct Thing *check_for_people(int x, int y, int z, ushort radius);
 
 /******************************************************************************/
 #ifdef __cplusplus

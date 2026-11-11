@@ -17,10 +17,27 @@ the DOS-specific parts with platform-independent code, using [SDL](https://www.l
 for input and video display, [Vorbis](https://xiph.org/vorbis/) for music and
 [OpenAL](https://www.openal.org/) for sound.
 
+## Completeness
+
+### In term of game files
+
 An executable and some, but not all, neccessary data files are provided with this
 port. This means that some of game data are not included. To install the
 **SyndWarsFX**, you will need to have the original data from either
 *Syndicate Wars CD*, or digital distribution.
+
+The file packages provided with this port do contain new resources, which
+were not part of the original game. This includes extra sounds and higher
+resolution graphics assets.
+
+### In term of gameplay
+
+Nothing is missing from the single player gameplay, since the port uses original
+code for parts which are not remade yet. In fact, some cut and beta features were
+revived.
+
+Multiplayer is not working though - network code is missing. It will allow to
+start a new MP game, but with one player only and no real network connection.
 
 ## Community
 
@@ -38,14 +55,20 @@ as american release, were tested and will definitely work; other version were
 not fully tested. Only releases for PC can be used. Releases from popular
 digital distribution platforms all include one of the tested images.
 
-The CD version which you use narrows the range of available languages.
+The CD version which you use narrows the range of languages available during
+installation.
 
 * Multi-lingual CD contains `eng` `fre` `ita` `spa` `swe`,
 * German release is required to use `ger`,
 * Japaneses "SW Premium" release contains `eng` `fre` `jap`, but asian fonts
   are not supported by the port.
 
-The steps you need to take vary depending on your operating system.
+After installing, you can change the language manually by editing `config.ini`.
+Some fanmade translations can be actually only enabled this way. However,
+several media files which are not packaged with **SyndWarsFX** will stay
+at the language version chosen during installation, so it still matters.
+
+The steps you need to take for installation vary depending on your operating system.
 
 ### Installing on GNU or UNIX
 
@@ -253,17 +276,17 @@ it. To even allow installing packages for a different architecture, it needs
 to be added:
 
 ```
-dpkg --add-architecture i386
+sudo dpkg --add-architecture i386
 ```
 
 Now install the dependencies - remember that some must be 32-bit (i386):
 
 ```
-sudo apt install gcc-multilib g++-multilib lib32z1
+sudo apt install gcc-multilib g++-multilib lib32z1 autoconf
 sudo apt install python3 python3-polib
 sudo apt install vorbis-tools
 sudo apt install cdparanoia
-sudo apt install libsdl2-dev:i386
+sudo apt install libsdl2-dev:i386 libpng-dev:i386
 sudo apt install libopenal-dev:i386
 sudo apt install libvorbis-dev:i386 libvorbisfile3:i386
 sudo apt install libogg-dev:i386
@@ -271,9 +294,10 @@ sudo apt install libwildmidi-dev:i386
 ```
 
 Be warned - your package manager may assume you want to replace the architecture
-if you did not explicitly added it. If the information on screen suggests
-that the installation would remove a group of currently installed packages,
-do not proceed with the changes and find another way.
+if you either did not explicitly added it, or even if you did but there are bugs
+in dependency solving. If the information on screen suggests that the installation
+would remove a group of currently installed packages, do not proceed with
+the changes and find another way, like using a newer apt solver.
 
 Now as our host is ready, we can start working on the actual `syndwarsfx` sources.
 Go to that folder, and generate build scripts from templates using autotools:
@@ -286,7 +310,7 @@ Next, proceed with the build steps; we will do that in a separate folder.
 
 ```
 mkdir -p release; cd release
-PKG_CONFIG_PATH="/usr/lib/i386-linux-gnu/pkgconfig" CFLAGS="-m32" CXXFLAGS="-m32" LDFLAGS="-m32" ../configure --enable-lb-mouse-wheel
+PKG_CONFIG_PATH="/usr/lib/i386-linux-gnu/pkgconfig" CFLAGS="-m32 -fno-PIC -fno-PIE" CXXFLAGS="-m32 -fno-PIC -fno-PIE" LDFLAGS="-m32 -fno-PIC -fno-PIE" ../configure --disable-lb-wscreen-control
 make V=1
 ```
 
@@ -299,12 +323,16 @@ In case you also want a debug build:
 
 ```
 mkdir -p debug; cd debug
-PKG_CONFIG_PATH="/usr/lib/i386-linux-gnu/pkgconfig" CPPFLAGS="-DDEBUG -D__DEBUG" CFLAGS="-m32 -g -O0 -Wall" CXXFLAGS="-m32 -g -O0 -Wall" LDFLAGS="-m32 -g -O0 -Wall" ../configure --enable-lb-mouse-wheel
+PKG_CONFIG_PATH="/usr/lib/i386-linux-gnu/pkgconfig" CPPFLAGS="-DDEBUG -D__DEBUG" CFLAGS="-m32 -fno-PIC -fno-PIE -g -O0 -Wall" CXXFLAGS="-m32 -fno-PIC -fno-PIE -g -O0 -Wall" LDFLAGS="-m32 -fno-PIC -fno-PIE -g -O0 -Wall" ../configure --disable-lb-wscreen-control
 make V=1
 ```
 
 Explanation of the parameters:
 
+* The `-fno-PIC -fno-PIE` are disabling compiling Position Independent Code
+  and generating Position Independent Executable. These features are not
+  compatible with the assembly code within this project, especially with
+  the way assembly code calls back to remade C functions.
 * The `-g -O0` flags make it easier to use a debugger like _GDB_ with the
   binary, by storing symbols and disabling code optimizations.
 * The `-Wall` flags enable displaying more warnings during compilation.
@@ -343,11 +371,11 @@ The WildMIDI library is not available as MSYS2 pacman package, install manually:
 
 ```
 pacman -S unzip
-wget https://github.com/Mindwerks/wildmidi/releases/download/wildmidi-0.4.5/wildmidi-0.4.5-win32.zip
-unzip wildmidi-0.4.5-win32.zip
-cp wildmidi-0.4.5-win32/*.h /mingw32/include/
-cp wildmidi-0.4.5-win32/*.a /mingw32/lib/
-cp wildmidi-0.4.5-win32/*.dll /mingw32/bin/
+wget https://github.com/Mindwerks/wildmidi/releases/download/wildmidi-0.5.0/wildmidi-0.5.0-windows.zip
+unzip wildmidi-0.5.0-windows.zip
+cp wildmidi-0.5.0-windows/include/*.h /mingw32/include/
+cp wildmidi-0.5.0-windows/x86/*.a /mingw32/lib/
+cp wildmidi-0.5.0-windows/x86/*.dll /mingw32/bin/
 ```
 
 The Python interpeter needs to have an additional module installed:
@@ -374,7 +402,7 @@ folders with data for 64-bit building.
 Go to the `syndwarsfx` folder, and generate build scripts from templates using autotools:
 
 ```
-autoreconf -ivf --include=/mingw32/share/aclocal/
+PATH="/mingw32/bin:$PATH" autoreconf -ivf --include=/mingw32/share/aclocal/
 ```
 
 Next, proceed with the build steps; we will do that in a separate folder.
@@ -384,7 +412,7 @@ the default mingw64 ones:
 
 ```
 mkdir -p release; cd release
-PATH="/mingw32/bin:$PATH" PKG_CONFIG_PATH="/mingw32/lib/pkgconfig" CFLAGS="-m32" CXXFLAGS="-m32" LDFLAGS="-m32" ../configure --prefix=/mingw32 --enable-lb-mouse-wheel
+PATH="/mingw32/bin:$PATH" PKG_CONFIG_PATH="/mingw32/lib/pkgconfig" CFLAGS="-m32 -fno-PIC -fno-PIE" CXXFLAGS="-m32 -fno-PIC -fno-PIE" LDFLAGS="-m32 -fno-PIC -fno-PIE" ../configure --prefix=/mingw32 --disable-lb-wscreen-control
 PATH="/mingw32/bin:$PATH" make V=1
 ```
 
@@ -414,7 +442,7 @@ When you configure your compilation toolchain and location of libraries,
 you will need to pass `CFLAGS="-arch i386"`, like so:
 
 ```
-./configure --enable-lb-mouse-wheel CFLAGS="-arch i386"
+./configure --disable-lb-wscreen-control CFLAGS="-arch i386"
 ```
 
 If you are planning to create [Mac OS app bundle](#making-a-mac-os-app-bundle),
@@ -422,7 +450,7 @@ you will also need to pass `data-path`, so your final command will be:
 
 
 ```
-./configure --with-data-path="SyndWarsFX.app/Contents/Resources" --enable-lb-mouse-wheel CFLAGS="-arch i386"
+./configure --with-data-path="SyndWarsFX.app/Contents/Resources" --disable-lb-wscreen-control CFLAGS="-arch i386"
 ```
 
 Then, do `make` as the [general building instructions](#general-building-instructions) tell.

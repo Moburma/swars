@@ -28,6 +28,10 @@
 #include "swlog.h"
 /******************************************************************************/
 
+struct ScreenTextBox system_screen_shared_header_box = {0};
+
+/******************************************************************************/
+
 void init_sys_scr_shared_header_box(void)
 {
     short scr_w, start_x, content_box_width;
@@ -35,7 +39,7 @@ void init_sys_scr_shared_header_box(void)
     scr_w = lbDisplay.GraphicsWindowWidth;
 
     init_screen_text_box(&system_screen_shared_header_box, 213u, 25u, 420u, 38, 6, big_font, 1);
-    system_screen_shared_header_box.DrawTextFn = ac_show_title_box;
+    system_screen_shared_header_box.DrawTextFn = show_title_box;
 
     content_box_width = 420;
     start_x = (scr_w - unkn13_SYSTEM_button.Width - 16 - content_box_width - 7) / 2;
@@ -63,9 +67,7 @@ ubyte show_sys_scr_shared_header(void)
 {
     ubyte drawn;
 
-    //drawn = system_screen_shared_header_box.DrawFn(&system_screen_shared_header_box); -- incompatible calling convention
-    asm volatile ("call *%2\n"
-        : "=r" (drawn) : "a" (&system_screen_shared_header_box), "g" (system_screen_shared_header_box.DrawFn));
+    drawn = system_screen_shared_header_box.DrawFn(&system_screen_shared_header_box);
     return drawn;
 }
 

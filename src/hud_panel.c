@@ -19,7 +19,7 @@
 #include "hud_panel.h"
 
 #include <assert.h>
-#include "bfbox.h"
+#include "bfanywnd.h"
 #include "bffont.h"
 #include "bfgentab.h"
 #include "bfline.h"
@@ -32,11 +32,18 @@
 #include "bfutility.h"
 #include "ssampply.h"
 
+#include "app_line.h"
 #include "app_sprite.h"
-#include "app_text_sf.h"
-#include "bflib_render_drspr.h"
+#include "app_text_ba.h"
+#include "engincam.h"
+#include "engincolour.h"
+#include "enginpeff.h"
+#include "enginprops.h"
+#include "engintxtrmap.h"
+#include "render_gpoly.h"
+#include "huddrwlstm.h"
+
 #include "bigmap.h"
-#include "display.h"
 #include "engintrns.h"
 #include "game_data.h"
 #include "game_options.h"
@@ -47,16 +54,21 @@
 #include "hud_panecfg.h"
 #include "keyboard.h"
 #include "lvobjctv.h"
+#include "misstat.h"
 #include "mouse.h"
 #include "mydraw.h"
 #include "packet.h"
+#include "pepgroup.h"
 #include "player.h"
 #include "scandraw.h"
 #include "sound.h"
 #include "thing.h"
 #include "swlog.h"
 /******************************************************************************/
-extern long dword_1DC36C;
+char player_message_text[PLAYERS_LIMIT][128];
+ubyte player_message_timer[PLAYERS_LIMIT];
+
+extern char panel_objective_text[360];
 
 /** Over which agent weapon the cursor is currently placed.
  *
@@ -65,6 +77,17 @@ extern long dword_1DC36C;
 sbyte agent_with_mouse_over_weapon = -1;
 
 ubyte byte_153198 = 1;
+
+int scrollinfo_vel = 0;
+
+/** Scrolling info text position, scaled to resolution.
+ *
+ * Range of the position is related to actual width of the text on screen,
+ * so switching resolution changes the range of this value.
+ */
+int scrollinfo_pos = 90;
+
+const char *conclusion_text = NULL;
 
 /** Momentary flags - filled and used only while updating the panel, then forgitten.
  */
@@ -76,6 +99,7 @@ enum PanelMomentaryFlags {
 };
 
 struct GamePanel *game_panel;
+struct PanelStyle *game_panel_style;
 struct TbPoint *game_panel_shifts;
 
 TbBool panel_exists(short panel)
@@ -86,7 +110,15 @@ TbBool panel_exists(short panel)
     return (p_panel->Spr[0] != -1);
 }
 
-TbBool panel_for_speciifc_agent(short panel)
+TbBool panel_any_visible(void)
+{
+    if ((ingame.TrackThing != 0) && !game_cam_tracked_thing_is_player_agent())
+        return false;
+
+    return ((ingame.Flags & GamF_HUDPanel) != 0);
+}
+
+TbBool panel_for_specific_agent(short panel)
 {
     struct GamePanel *p_panel;
 
@@ -127,8 +159,11 @@ TbResult load_pop_sprites_for_current_mode(void)
         name = "pop";
     }
     ret = load_pop_sprites_up_to(pinfo->directory, name, styleno, max_detail);
-    setup_pop_sprites();
-    size_panels_for_detail(pop1_sprites_scale - 1);
+    if (ret != Lb_FAIL)
+    {
+        setup_pop_sprites();
+        size_panels_for_detail(pop1_sprites_scale - 1);
+    }
     return ret;
 }
 
@@ -167,77 +202,68 @@ void update_dropped_item_under_agent_exists(short agent)
     }
 }
 
-void SCANNER_unkn_func_203(int a1, int a2, int a3, int a4, ubyte a5, int a6, int a7)
+/** Set scanner size to given panel size, but limit both to what the scanner supports.
+ */
+void srm_scanner_set_size_to_panel_with_limit(struct GamePanel *p_panel)
 {
-    asm volatile (
-      "push %6\n"
-      "push %5\n"
-      "push %4\n"
-      "call ASM_SCANNER_unkn_func_203\n"
-        : : "a" (a1), "d" (a2), "b" (a3), "c" (a4), "g" (a5), "g" (a6), "g" (a7));
+    short hlimit;
+
+    // Limit the height here, to make sure reduced rectangle is still put at bottom
+    hlimit = sizeof(ingame.Scanner.Width)/sizeof(ingame.Scanner.Width[0]);
+    if (p_panel->dyn.Height >= hlimit) {
+        short delta_d, delta_p;
+
+        delta_d = p_panel->dyn.Height - hlimit;
+        delta_p = p_panel->dyn.Y - p_panel->pos.Y;
+        p_panel->dyn.Y += delta_d;
+        p_panel->dyn.Height = hlimit - 1;
+        p_panel->pos.Y = p_panel->dyn.Y - delta_p;
+        p_panel->pos.Height -= delta_d;
+    }
+
+    SCANNER_set_screen_box(p_panel->dyn.X, p_panel->dyn.Y,
+        p_panel->dyn.Width, p_panel->dyn.Height, 24);
 }
 
-int SCANNER_text_draw(const char *text, int start_x, int height)
+void srm_scanner_size_update(void)
 {
-    const ubyte *str;
-    int x, y;
-    short fnt_height, height_base;
-    ubyte sel_c1;
+    short panel;
+    struct GamePanel *p_panel;
 
-    lbFontPtr = small_font;
-    fnt_height = font_height('A');
-     // detail 0 font has height equal 6
-    height_base = 9 * fnt_height / 6;
-    y = 0;
-    str = (const ubyte *)text;
-    sel_c1 = SCANNER_colour[0];
-    x = start_x;
-    if (height != height_base)
+    for (panel = 0; panel < GAME_PANELS_LIMIT; panel++)
     {
-        while (*str != '\0')
-        {
-            const struct TbSprite *p_spr;
-            int chr_width, chr_height;
-            ubyte ch;
-            TbPixel col;
-
-            if (*str == '\1') {
-              str++;
-              sel_c1 = *str;
-            } else {
-              ch = my_char_to_upper(*str);
-              col = pixmap.fade_table[56 * PALETTE_8b_COLORS + sel_c1];
-              p_spr = LbFontCharSprite(lbFontPtr, ch);
-              chr_width = p_spr->SWidth * height / height_base;
-              chr_height = p_spr->SHeight * height / height_base;
-              LbSpriteDrawScaledOneColour(x, y, p_spr, chr_width, chr_height, col);
-              x += chr_width;
-            }
-            str++;
-        }
+        p_panel = &game_panel[panel];
+        if (p_panel->Type == PanT_Scanner)
+            break;
     }
-    else
-    {
-        while (*str != '\0')
-        {
-            const struct TbSprite *p_spr;
-            ubyte ch;
-            TbPixel col;
 
-            if (*str == '\1') {
-              str++;
-              sel_c1 = *str;
-            } else {
-              ch = my_char_to_upper(*str);
-              col = pixmap.fade_table[56 * PALETTE_8b_COLORS + sel_c1];
-              p_spr = LbFontCharSprite(lbFontPtr, ch);
-              LbSpriteDrawOneColour(x, y, p_spr, col);
-              x += p_spr->SWidth;
-            }
-            str++;
-        }
+    if (panel >= GAME_PANELS_LIMIT) {
+        SCANNER_set_screen_box(0, 0, 0, 0, 0);
+        return;
     }
-    return x;
+
+    p_panel = &game_panel[panel];
+    srm_scanner_set_size_to_panel_with_limit(p_panel);
+}
+
+void init_scanner_colour(void)
+{
+    SCANNER_set_colours(game_panel_style);
+    SCANNER_fill_in();
+}
+
+void init_scanner(void)
+{
+    LOGDBG("Begin");
+    init_scanner_colour();
+    redo_scanner_init();
+    ingame.Scanner.Brightness = 8;
+    ingame.Scanner.Contrast = 5;
+    SCANNER_width = ingame.Scanner.Width;
+    ingame.Scanner.Zoom = 128;
+    ingame.Scanner.Angle = 0;
+    srm_scanner_size_update();
+    SCANNER_init();
 }
 
 short panel_state_to_player_agent(ushort panstate)
@@ -247,7 +273,83 @@ short panel_state_to_player_agent(ushort panstate)
     return -1;
 }
 
-void SCANNER_move_objective_info(int width, int height, int end_pos)
+short font_hud_message_text_scale(struct TbSprite *p_font)
+{
+    int tx_height;
+    int units_per_px;
+
+    lbFontPtr = p_font;
+    tx_height = my_char_height('A');
+    // For window width=320, expect text height=5; so that should
+    // produce unscaled sprite, which is 16 units per px.
+    units_per_px = (lbDisplay.GraphicsWindowWidth * 5 / tx_height)  / (320 / 16);
+    // Do not allow any scale, only n * 50%
+    units_per_px = (units_per_px + 4) & ~0x07;
+
+    return units_per_px;
+}
+
+void panel_conclusion_info_draw(void)
+{
+    int scr_x, scr_y;
+    int width, height;
+    short units_per_px;
+
+    if (conclusion_text == NULL)
+        return;
+
+    // TODO the text position should be computed based on position of panels loaded from file
+    scr_x = 11 * pop1_sprites_scale;
+    scr_y = 26 * pop1_sprites_scale;
+
+    units_per_px = font_hud_message_text_scale(small_font);
+    width = lbTextJustifyWindow.x + lbTextJustifyWindow.width - scr_x;
+    height = lbTextJustifyWindow.y + lbTextJustifyWindow.height - scr_y;
+
+    enlist_hud_draw_colour_wave_wrapped_text(scr_x, scr_y, width, height,
+      small_font, conclusion_text, units_per_px,
+      SCANNER_colour[ScnClr_Text], colour_lookup[ColLU_BLACK]);
+}
+
+void panel_conclusion_info_set(const char *text)
+{
+    conclusion_text = text;
+}
+
+void panel_objective_info_start(void)
+{
+    scrollinfo_vel = 0;
+    scrollinfo_pos = 0;
+}
+
+short panel_objective_text_scale(int height)
+{
+    short fnt_height, height_base;
+    short units_per_px;
+
+    fnt_height = my_char_height('A');
+    // detail 0 font has height equal 6
+    height_base = 9 * fnt_height / 6;
+    units_per_px = 16 * height / height_base;
+    return units_per_px;
+}
+
+int panel_objective_text_width(const char *text, int height)
+{
+    char loc_text[256];
+    short units_per_px;
+
+    strncpy(loc_text, text, sizeof(loc_text)-1);
+    loc_text[sizeof(loc_text)-1] = '\0';
+    my_str_to_upper(loc_text);
+
+    lbFontPtr = small_font;
+    units_per_px = panel_objective_text_scale(height);
+
+    return LbTextStringWidthResized(text, units_per_px);
+}
+
+void panel_objective_info_move(int width, int height, int end_pos)
 {
     PlayerInfo *p_locplayer;
 
@@ -255,28 +357,263 @@ void SCANNER_move_objective_info(int width, int height, int end_pos)
     if (in_network_game && p_locplayer->PanelState[mouser] == PANEL_STATE_SEND_MESSAGE)
     {
       if ( end_pos < lbDisplay.PhysicalScreenWidth - (lbDisplay.PhysicalScreenWidth >> 2) )
-          scanner_unkn370 = -20;
+          scrollinfo_vel = -20;
       if (end_pos > lbDisplay.PhysicalScreenWidth - 16)
-          scanner_unkn370 = 10;
-      if (scanner_unkn370 > 0)
+          scrollinfo_vel = 10;
+      if (scrollinfo_vel > 0)
       {
-          scanner_unkn370--;
-          scanner_unkn3CC -= 1 * height / 9;
+          scrollinfo_vel--;
+          scrollinfo_pos -= 1 * height / 9;
       }
-      if (scanner_unkn370 < 0)
+      if (scrollinfo_vel < 0)
       {
-          scanner_unkn370++;
-          scanner_unkn3CC += 1 * height / 9;
-          if (scanner_unkn3CC > 0)
-              scanner_unkn3CC = 0;
+          scrollinfo_vel++;
+          scrollinfo_pos += 1 * height / 9;
+          if (scrollinfo_pos > 0)
+              scrollinfo_pos = 0;
       }
     }
     else
     {
-        if (end_pos < 0)
-            scanner_unkn3CC = width;
-        scanner_unkn3CC -= 2 * height / 9;
+        if (end_pos <= 0)
+            scrollinfo_pos = width;
+        scrollinfo_pos -= 2 * height / 9;
     }
+}
+
+static void draw_objective_info_background(int scr_x, int scr_y, int width, int height)
+{
+    ushort drwflags;
+
+    drwflags = Lb_SPRITE_TRANSPAR4;
+    enlist_hud_draw_low_trans_grey_box(scr_x, scr_y, width, height,
+      drwflags, ingame.Scanner.Contrast, SCANNER_colour[ScnClr_Text]);
+}
+
+static void draw_objective_info_text(int scr_x, int scr_y, int width, int height)
+{
+    char loc_text[256];
+    short units_per_px;
+
+    strncpy(loc_text, scrollinfo_text, sizeof(loc_text)-1);
+    loc_text[sizeof(loc_text)-1] = '\0';
+    my_str_to_upper(loc_text);
+
+    units_per_px = panel_objective_text_scale(height);
+
+    enlist_hud_draw_clipped_text(scr_x + 1, scr_y, width - 2, height,
+      scrollinfo_pos, 0, small_font, loc_text,
+      units_per_px, 56, SCANNER_colour[ScnClr_Text]);
+}
+
+/** Objective text, or net players list.
+ */
+void draw_panel_objective_info(short panel)
+{
+    struct GamePanel *p_panel;
+    short bkgd_x, text_x;
+    short bkgd_w, text_w;
+
+    p_panel = &game_panel[panel];
+
+    if (in_network_game) {
+        bkgd_x = 0;
+        text_x = bkgd_x + 1;
+        bkgd_w = lbDisplay.GraphicsScreenWidth;
+        text_w = bkgd_w - 2;
+    } else {
+        // original width 67 low res, 132 high res
+        bkgd_x = p_panel->pos.X;
+        text_x = p_panel->dyn.X;
+        bkgd_w = p_panel->pos.Width;
+        text_w = p_panel->dyn.Width;
+    }
+
+    draw_objective_info_background(bkgd_x, p_panel->pos.Y, bkgd_w, p_panel->pos.Height);
+    draw_objective_info_text(text_x, p_panel->dyn.Y, text_w, p_panel->dyn.Height);
+}
+
+void panel_objective_info_mp_update(void)
+{
+#if 0
+    asm volatile ("call ASM_panel_objective_info_mp_update\n"
+        :  :  : "eax" );
+    return;
+#endif
+    char locstr[32];
+    int player_unkn2[8];
+    ushort teams_unun1[8];
+    char *text;
+    PlayerIdx plyr;
+
+    if (players[local_player_no].PanelState[mouser] == 17)
+    {
+        char sep;
+
+        if ((gameturn & 1) != 0)
+            sep = '-';
+        else
+            sep = ' ';
+        sprintf(panel_objective_text, "%c%c%s%c",
+          1, net_player_colours[local_player_no],
+          player_message_text[local_player_no], sep);
+        scrollinfo_text = panel_objective_text;
+        return;
+    }
+
+    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
+    {
+        ubyte t;
+
+        t = net_player_teams[plyr];
+        teams_unun1[t] = 0;
+    }
+
+    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
+    {
+        struct Thing *p_agent;
+        struct MissionStatus *p_mistat;
+        PlayerIdx plyr2;
+        ubyte t;
+
+        if ((ingame.InNetGame_UNSURE & (1 << plyr)) == 0) {
+            continue;
+        }
+        p_agent = players[plyr].MyAgent[0];
+        plyr2 = p_agent->U.UPerson.ComCur >> 2;
+        p_mistat = &mission_status[plyr2];
+
+        player_unkn2[plyr] = 0;
+        for (plyr2 = 0; plyr2 < PLAYERS_LIMIT; plyr2++)
+        {
+          if (net_player_colours[plyr] == net_player_colours[plyr2])
+              player_unkn2[plyr] -= p_mistat->MP.AgentsKilled[plyr2];
+          else
+              player_unkn2[plyr] += p_mistat->MP.AgentsKilled[plyr2];
+        }
+
+        t = net_player_teams[plyr];
+        if (t != 0) {
+            teams_unun1[t] += player_unkn2[plyr];
+        }
+    }
+
+    text = panel_objective_text;
+    memcpy(text, " - ", 3);
+    text += 3;
+    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
+    {
+        ubyte t;
+
+        if ((ingame.InNetGame_UNSURE & (1 << plyr)) == 0) {
+            continue;
+        }
+        if (net_player_names[plyr][0] == '\0') {
+            continue;
+        }
+        *text = '\14';
+        text++;
+        *text = net_player_colours[plyr];
+        text++;
+
+        strcpy(text, net_player_names[plyr]);
+        text += strlen(text);
+
+        *text = ' ';
+        text++;
+
+        t = net_player_teams[plyr];
+        if (t != 0)
+            sprintf(locstr, "[%d/%d]", (int)player_unkn2[plyr], (int)teams_unun1[t]);
+        else
+            sprintf(locstr, "%d", (int)player_unkn2[plyr]);
+
+        if ((group_actions[level_def.PlayableGroups[plyr]].Alive)
+          || ((net_game_play_flags & 0x04) != 0) || ((gameturn & 8) == 0)) {
+            strcpy(text, locstr);
+            text += strlen(text);
+        } else {
+            int i;
+            for (i = strlen(locstr); i > 0; i--) {
+                *text = '-';
+                text++;
+            }
+        }
+
+        *text = '\14';
+        text++;
+        *text = SCANNER_colour[0];
+        text++;
+
+        memcpy(text, " - ", 3);
+        text += 3;
+    }
+    *text = '\0';
+    scrollinfo_text = panel_objective_text;
+}
+
+void panel_objective_info_process_turn(short panel)
+{
+    struct GamePanel *p_panel;
+    int end_pos;
+    short bkgd_w, text_w;
+
+    p_panel = &game_panel[panel];
+
+    if (in_network_game) {
+        panel_objective_info_mp_update();
+        bkgd_w = lbDisplay.GraphicsScreenWidth;
+        text_w = bkgd_w - 2;
+    } else {
+        bkgd_w = p_panel->pos.Width;
+        text_w = p_panel->dyn.Width;
+    }
+
+    end_pos = scrollinfo_pos + panel_objective_text_width(scrollinfo_text, p_panel->dyn.Height);
+    panel_objective_info_move(text_w, p_panel->dyn.Height, end_pos);
+}
+
+void player_message_clear(PlayerIdx plyr)
+{
+    player_message_timer[plyr] = 0;
+    player_message_text[plyr][0] =  '\0';
+}
+
+void player_chat_clear(void)
+{
+    PlayerIdx plyr;
+
+    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
+    {
+        player_message_clear(plyr);
+    }
+}
+
+void player_message_timer_tick(PlayerIdx plyr)
+{
+    player_message_timer[plyr]--;
+    if (player_message_timer[plyr] == 0) {
+        player_message_text[plyr][0] = '\0';
+    }
+}
+
+TbBool player_message_add_allowed(PlayerIdx plyr)
+{
+    return player_message_timer[plyr] <= 140;
+}
+
+static void player_message_fmt_va(PlayerIdx plyr, const char *fmt, va_list arg)
+{
+    vsnprintf(player_message_text[plyr], sizeof(player_message_text[0]), fmt, arg);
+    player_message_timer[plyr] = 150;
+}
+
+void player_message_fmt(PlayerIdx plyr, const char *fmt, ...)
+{
+    va_list val;
+    va_start(val, fmt);
+    player_message_fmt_va(plyr, fmt, val);
+    va_end(val);
 }
 
 void draw_players_chat_talk(int x, int y)
@@ -284,228 +621,215 @@ void draw_players_chat_talk(int x, int y)
     char locstr[164];
     int plyr;
     int base_x, pos_y;
+    int width, height;
+    short units_per_px;
 
     base_x = x;
     pos_y = y;
+    units_per_px = font_hud_message_text_scale(small_font);
 
     for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
     {
         char *plname;
 
-        if (player_unkn0C9[plyr] == 0)
+        if (player_message_timer[plyr] == 0)
             continue;
 
-        plname = unkn2_names[plyr];
-        if (player_unknCC9[plyr][0] != '\0')
+        plname = net_player_names[plyr];
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+        if (player_message_text[plyr][0] != '\0')
         {
             if (plname[0] != '\0')
-                sprintf(locstr, "%s: %s", plname, player_unknCC9[plyr]);
+                snprintf(locstr, sizeof(locstr)-1, "%s: %s", plname, player_message_text[plyr]);
             else
-                sprintf(locstr, "%s", player_unknCC9[plyr]);
+                snprintf(locstr, sizeof(locstr)-1, "%s", player_message_text[plyr]);
         }
         else
         {
-            sprintf(locstr, "%s said nothing.", plname);
+            snprintf(locstr, sizeof(locstr)-1, "%s said nothing.", plname);
         }
+        locstr[sizeof(locstr)-1] = '\0';
+#pragma GCC diagnostic pop
         LbStringToUpper(locstr);
 
-        lbDisplay.DrawColour = net_player_colours[plyr];
-        AppTextDrawMissionChatMessage(base_x, &pos_y, plyr, locstr);
+        width = lbTextJustifyWindow.x + lbTextJustifyWindow.width - base_x;
+        height = get_width_shad_cl_flash_wrapped_text(base_x, pos_y,
+          small_font, locstr, units_per_px);
 
-        if ( !--player_unkn0C9[plyr] ) {
-            player_unknCC9[plyr][0] = '\0';
-        }
+        enlist_hud_draw_shad_cl_flash_wrapped_text(base_x, pos_y, width, height,
+          small_font, locstr, units_per_px, player_message_timer[plyr],
+          net_player_colours[plyr], colour_lookup[ColLU_GREYLT]);
+
+
+        pos_y += height;
     }
 }
 
-void SCANNER_draw_objective_info(int x, int y, int width)
+void players_chat_talk_process_turn(void)
 {
-#if 0
-    asm volatile (
-      "call ASM_SCANNER_draw_objective_info\n"
-        : : "a" (x), "d" (y), "b" (width));
-#endif
-    int v48;
-    int end_pos;
-    struct TbAnyWindow bkpwnd;
-    int height;
-    int i;
+    int plyr;
 
-    height = panel_get_objective_info_height(lbDisplay.GraphicsScreenHeight);
-    v48 = y;
-    for (i = 0; i < height; i++)
+    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
     {
-        SCANNER_unkn_func_203(x, v48, x + width - 1, v48, SCANNER_colour[0],
-          ingame.Scanner.Brightness, ingame.Scanner.Contrast);
-        ++v48;
-    }
+        if (player_message_timer[plyr] == 0)
+            continue;
 
-    LbScreenStoreGraphicsWindow(&bkpwnd);
-    LbScreenSetGraphicsWindow(x + 1, y, width - 2, height);
-
-    end_pos = SCANNER_text_draw(scroll_text, scanner_unkn3CC, height);
-
-    SCANNER_move_objective_info(width, height, end_pos);
-
-    LbScreenLoadGraphicsWindow(&bkpwnd);
-
-    // TODO it would make sense to move this to higher level function
-    if (in_network_game)
-    {
-        short x, y;
-
-        if (lbDisplay.GraphicsScreenHeight >= 400) {
-            x = 22;
-            y = 51;
-        } else {
-            x = 11;
-            y = 26;
-        }
-        draw_players_chat_talk(x, y);
+        player_message_timer_tick(plyr);
     }
 }
 
-void SCANNER_unkn_func_205(void)
+void draw_players_chat(void)
 {
-    asm volatile ("call ASM_SCANNER_unkn_func_205\n"
-        :  :  : "eax" );
+    int scr_x, scr_y;
+
+    if (!in_network_game)
+        return;
+
+    // TODO the text position should be computed based on position of panels loaded from file
+    scr_x = 11 * pop1_sprites_scale;
+    scr_y = 26 * pop1_sprites_scale;
+
+    draw_players_chat_talk(scr_x, scr_y);
 }
 
 TbBool check_scanner_input(void)
 {
-    int map_x, map_y, map_z;
+    PlayerInfo *p_locplayer;
+    int cor_x, cor_y, cor_z;
 
-    SCANNER_find_position(lbDisplay.MouseX, lbDisplay.MouseY, &map_z, &map_x);
-    if (MAPCOORD_TO_TILE(map_x) >= 0 && MAPCOORD_TO_TILE(map_x) < 128
-      && MAPCOORD_TO_TILE(map_z) >= 0 && MAPCOORD_TO_TILE(map_z) < 128)
+    SCANNER_find_position(lbDisplay.MouseX, lbDisplay.MouseY, &cor_z, &cor_x);
+    if (MAPCOORD_TO_TILE(cor_x) < 0 || MAPCOORD_TO_TILE(cor_x) >= MAP_TILE_WIDTH)
+        return false;
+
+    if (MAPCOORD_TO_TILE(cor_z) < 0 || MAPCOORD_TO_TILE(cor_z) >= MAP_TILE_HEIGHT)
+        return false;
+
+    p_locplayer = &players[local_player_no];
+
+    if (lbDisplay.LeftButton)
     {
-        PlayerInfo *p_locplayer;
+        struct SpecialUserInput *p_usrinp;
+        struct Packet *p_pckt;
+        TbBool can_control;
+        short dcthing;
 
-        p_locplayer = &players[local_player_no];
+        dcthing = p_locplayer->DirectControl[mouser];
+        can_control = person_can_accept_control(dcthing);
+        p_usrinp = &p_locplayer->UserInput[mouser];
+        p_pckt = &packets[local_player_no];
 
-        if (lbDisplay.LeftButton)
+        lbDisplay.LeftButton = 0;
+        user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_LBtnDown);
+        if ((p_locplayer->DoubleMode) || (user_input_control_mode_get(local_player_no, mouser) == UInpCtr_Mouse))
         {
-            struct SpecialUserInput *p_usrinp;
-            struct Packet *p_pckt;
-            TbBool can_control;
-            short dcthing;
+            cor_y = (alt_at_point(cor_x, cor_z) >> 8) + 20;
+            if ((gameturn & 0x7FFF) - p_usrinp->Turn >= 7)
+            {
+                p_usrinp->Turn = gameturn & 0x7FFF;
+                if (can_control)
+                    my_build_packet(p_pckt, PAct_AGENT_GOTO_GND_PT_ABS, dcthing, cor_x, cor_y, cor_z);
+            }
+            else
+            {
+                p_usrinp->Turn = 0;
+                if (can_control)
+                    my_build_packet(p_pckt, PAct_AGENT_GOTO_GND_PT_ABS_FF, dcthing, cor_x, cor_y, cor_z);
+            }
+        }
+        else
+        {
+            do_change_mouse(8);
+            build_packet(p_pckt, PAct_CONTROL_MODE, UInpCtr_Mouse, 0, 0, 0);
+        }
+        return true;
+    }
 
+    if (lbDisplay.RightButton)
+    {
+        struct SpecialUserInput *p_usrinp;
+        struct Packet *p_pckt;
+        TbBool can_control;
+        short dcthing;
+        short cwep;
+
+        dcthing = p_locplayer->DirectControl[mouser];
+        can_control = person_can_accept_control(dcthing);
+        p_usrinp = &p_locplayer->UserInput[mouser];
+
+        lbDisplay.RightButton = 0;
+        user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_RBtnDown);
+        if (!p_locplayer->DoubleMode)
+        {
+            cor_y = (alt_at_point(cor_x, cor_z) >> 8) + 20;
             dcthing = p_locplayer->DirectControl[mouser];
-            can_control = person_can_accept_control(dcthing);
-            p_usrinp = &p_locplayer->UserInput[mouser];
+            cwep = things[dcthing].U.UPerson.CurrentWeapon;
             p_pckt = &packets[local_player_no];
 
-            lbDisplay.LeftButton = 0;
-            p_usrinp->ControlMode |= UInpCtrF_Unkn8000;
-            if ((p_locplayer->DoubleMode) || ((p_usrinp->ControlMode & ~UInpCtr_AllFlagsMask) == UInpCtr_Mouse))
+            if ((cwep == WEP_ELEMINE) || (cwep == WEP_EXPLMINE))
             {
-                map_y = (alt_at_point(map_x, map_z) >> 8) + 20;
                 if ((gameturn & 0x7FFF) - p_usrinp->Turn >= 7)
                 {
                     p_usrinp->Turn = gameturn & 0x7FFF;
                     if (can_control)
-                        my_build_packet(p_pckt, PAct_AGENT_GOTO_GND_PT_ABS, dcthing, map_x, map_y, map_z);
+                    {
+                        if (p_locplayer->TargetType == TrgTp_Unkn3)
+                            my_build_packet(p_pckt, PAct_PLANT_MINE_AT_FACE_PT, dcthing, cor_x, p_locplayer->Target, cor_z);
+                        else
+                            my_build_packet(p_pckt, PAct_PLANT_MINE_AT_GND_PT, dcthing, cor_x, cor_y, cor_z);
+                    }
                 }
                 else
                 {
                     p_usrinp->Turn = 0;
                     if (can_control)
-                        my_build_packet(p_pckt, PAct_AGENT_GOTO_GND_PT_ABS_FF, dcthing, map_x, map_y, map_z);
-                }
-            }
-            else
-            {
-                do_change_mouse(8);
-                build_packet(p_pckt, PAct_CONTROL_MODE, UInpCtr_Mouse, 0, 0, 0);
-            }
-            return true;
-        }
-
-        if (lbDisplay.RightButton)
-        {
-            struct SpecialUserInput *p_usrinp;
-            struct Packet *p_pckt;
-            TbBool can_control;
-            short dcthing;
-            short cwep;
-
-            dcthing = p_locplayer->DirectControl[mouser];
-            can_control = person_can_accept_control(dcthing);
-            p_usrinp = &p_locplayer->UserInput[mouser];
-
-            lbDisplay.RightButton = 0;
-            p_usrinp->ControlMode |= UInpCtrF_Unkn4000;
-            if (!p_locplayer->DoubleMode)
-            {
-                map_y = (alt_at_point(map_x, map_z) >> 8) + 20;
-                dcthing = p_locplayer->DirectControl[mouser];
-                cwep = things[dcthing].U.UPerson.CurrentWeapon;
-                p_pckt = &packets[local_player_no];
-
-                if ((cwep == WEP_ELEMINE) || (cwep == WEP_EXPLMINE))
-                {
-                    if ((gameturn & 0x7FFF) - p_usrinp->Turn >= 7)
                     {
-                        p_usrinp->Turn = gameturn & 0x7FFF;
-                        if (can_control)
-                        {
-                            if (p_locplayer->TargetType == TrgTp_Unkn3)
-                                my_build_packet(p_pckt, PAct_PLANT_MINE_AT_FACE_PT, dcthing, map_x, p_locplayer->Target, map_z);
-                            else
-                                my_build_packet(p_pckt, PAct_PLANT_MINE_AT_GND_PT, dcthing, map_x, map_y, map_z);
-                        }
-                    }
-                    else
-                    {
-                        p_usrinp->Turn = 0;
-                        if (can_control)
-                        {
-                            if (p_locplayer->TargetType == TrgTp_Unkn3)
-                                my_build_packet(p_pckt, PAct_PLANT_MINE_AT_FACE_PT_FF, dcthing, map_x, p_locplayer->Target, map_z);
-                            else
-                                my_build_packet(p_pckt, PAct_PLANT_MINE_AT_GND_PT_FF, dcthing, map_x, map_y, map_z);
-                        }
+                        if (p_locplayer->TargetType == TrgTp_Unkn3)
+                            my_build_packet(p_pckt, PAct_PLANT_MINE_AT_FACE_PT_FF, dcthing, cor_x, p_locplayer->Target, cor_z);
+                        else
+                            my_build_packet(p_pckt, PAct_PLANT_MINE_AT_GND_PT_FF, dcthing, cor_x, cor_y, cor_z);
                     }
                 }
-                else if ((cwep == WEP_RAZORWIRE) || (cwep == WEP_EXPLWIRE))
+            }
+            else if ((cwep == WEP_RAZORWIRE) || (cwep == WEP_EXPLWIRE))
+            {
+                if ((gameturn & 0x7FFF) - p_usrinp->Turn >= 7)
                 {
-                    if ((gameturn & 0x7FFF) - p_usrinp->Turn >= 7)
+                    p_usrinp->Turn = gameturn & 0x7FFF;
+                    if (can_control)
                     {
-                        p_usrinp->Turn = gameturn & 0x7FFF;
-                        if (can_control)
-                        {
-                            if (p_locplayer->TargetType == TrgTp_Unkn3)
-                                my_build_packet(p_pckt, PAct_SHOOT_AT_FACE_POINT, dcthing, map_x, p_locplayer->Target, map_z);
-                            else
-                                my_build_packet(p_pckt, PAct_SHOOT_AT_GND_POINT, dcthing, map_x, map_y, map_z);
-                        }
-                    }
-                    else
-                    {
-                        p_usrinp->Turn = 0;
-                        if (can_control)
-                        {
-                            if (p_locplayer->TargetType == TrgTp_Unkn3)
-                                my_build_packet(p_pckt, PAct_SHOOT_AT_FACE_POINT_FF, dcthing, map_x, p_locplayer->Target, map_z);
-                            else
-                                my_build_packet(p_pckt, PAct_SHOOT_AT_GND_POINT_FF, dcthing, map_x, map_y, map_z);
-                        }
+                        if (p_locplayer->TargetType == TrgTp_Unkn3)
+                            my_build_packet(p_pckt, PAct_SHOOT_AT_FACE_POINT, dcthing, cor_x, p_locplayer->Target, cor_z);
+                        else
+                            my_build_packet(p_pckt, PAct_SHOOT_AT_GND_POINT, dcthing, cor_x, cor_y, cor_z);
                     }
                 }
                 else
                 {
+                    p_usrinp->Turn = 0;
                     if (can_control)
                     {
                         if (p_locplayer->TargetType == TrgTp_Unkn3)
-                            my_build_packet(p_pckt, PAct_SHOOT_AT_FACE_POINT, dcthing, map_x, p_locplayer->Target, map_z);
+                            my_build_packet(p_pckt, PAct_SHOOT_AT_FACE_POINT_FF, dcthing, cor_x, p_locplayer->Target, cor_z);
                         else
-                            my_build_packet(p_pckt, PAct_SHOOT_AT_GND_POINT, dcthing, map_x, map_y, map_z);
+                            my_build_packet(p_pckt, PAct_SHOOT_AT_GND_POINT_FF, dcthing, cor_x, cor_y, cor_z);
                     }
                 }
             }
-            return true;
+            else
+            {
+                if (can_control)
+                {
+                    if (p_locplayer->TargetType == TrgTp_Unkn3)
+                        my_build_packet(p_pckt, PAct_SHOOT_AT_FACE_POINT, dcthing, cor_x, p_locplayer->Target, cor_z);
+                    else
+                        my_build_packet(p_pckt, PAct_SHOOT_AT_GND_POINT, dcthing, cor_x, cor_y, cor_z);
+                }
+            }
         }
+        return true;
     }
+
     return false;
 }
 
@@ -518,19 +842,27 @@ TbBool check_scanner_input(void)
 void draw_new_panel_sprite_std(int px, int py, ulong spr_id)
 {
     struct TbSprite *p_spr;
+    ushort drwflags;
+    short brig;
 
     p_spr = &pop1_sprites[spr_id];
-    dword_1DC36C = ingame.Scanner.Brightness;
 
     if (ingame.PanelPermutation == -1) {
-        lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR4;
-        ApSpriteDrawLowTransGreyRemap(px, py, p_spr,
-          &pixmap.fade_table[0 * PALETTE_8b_COLORS]);
-        lbDisplay.DrawFlags &= ~Lb_SPRITE_TRANSPAR4;
+        brig = ingame.Scanner.Brightness;
+        drwflags = Lb_SPRITE_TRANSPAR4;
     } else {
-        // We do not want to scale brightness of non-transparent panels - using a standard function
-        LbSpriteDraw(px, py, p_spr);
+#if 0 // TODO maybe a cmdline option to change panel bringness with scanner?
+        if (ingame.Scanner.Brightness >= 8)
+            brig = 28 + ingame.Scanner.Brightness / 2;
+        else
+            brig = 16 + 2 * ingame.Scanner.Brightness;
+#else
+        brig = PALETTE_FADE_LEVELS / 2;
+#endif
+        drwflags = 0;
     }
+
+    enlist_hud_draw_sprite(px, py, p_spr, drwflags, brig);
 }
 
 /**
@@ -542,18 +874,28 @@ void draw_new_panel_sprite_std(int px, int py, ulong spr_id)
 void draw_new_panel_sprite_scaled_std(int px, int py, ulong spr_id, int dest_width, int dest_height)
 {
     struct TbSprite *p_spr;
+    ushort drwflags;
+    short brig;
 
     p_spr = &pop1_sprites[spr_id];
-    dword_1DC36C = ingame.Scanner.Brightness;
 
     if (ingame.PanelPermutation == -1) {
-        lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR4;
-        ApSpriteDrawScaledLowTransGreyRemap(px, py, p_spr, dest_width, dest_height,
-          &pixmap.fade_table[0 * PALETTE_8b_COLORS]);
-        lbDisplay.DrawFlags &= ~Lb_SPRITE_TRANSPAR4;
+        brig = ingame.Scanner.Brightness;
+        drwflags = Lb_SPRITE_TRANSPAR4;
     } else {
-        LbSpriteDrawScaled(px, py, p_spr, dest_width, dest_height);
+#if 0 // TODO maybe a cmdline option to change panel bringness with scanner?
+        if (ingame.Scanner.Brightness >= 8)
+            brig = 28 + ingame.Scanner.Brightness / 2;
+        else
+            brig = 16 + 2 * ingame.Scanner.Brightness;
+#else
+        brig = PALETTE_FADE_LEVELS / 2;
+#endif
+        drwflags = 0;
     }
+
+    enlist_hud_draw_sprite_scaled(px, py, p_spr, dest_width, dest_height,
+      drwflags, brig);
 }
 
 /**
@@ -565,18 +907,20 @@ void draw_new_panel_sprite_scaled_std(int px, int py, ulong spr_id, int dest_wid
 void draw_new_panel_sprite_dark(int px, int py, ulong spr_id)
 {
     struct TbSprite *p_spr;
+    ushort drwflags;
+    short brig;
 
     p_spr = &pop1_sprites[spr_id];
-    dword_1DC36C = 8;
 
     if (ingame.PanelPermutation == -1) {
-        lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR4;
-        ApSpriteDrawLowTransGreyRemap(px, py, p_spr,
-          &pixmap.fade_table[0 * PALETTE_8b_COLORS]);
-        lbDisplay.DrawFlags &= ~Lb_SPRITE_TRANSPAR4;
+        brig = 8;
+        drwflags = Lb_SPRITE_TRANSPAR4;
     } else {
-        LbSpriteDrawRemap(px, py, p_spr, &pixmap.fade_table[16 * PALETTE_8b_COLORS]);
+        brig = 16;
+        drwflags = 0;
     }
+
+    enlist_hud_draw_sprite(px, py, p_spr, drwflags, brig);
 }
 
 /**
@@ -588,19 +932,21 @@ void draw_new_panel_sprite_dark(int px, int py, ulong spr_id)
 void draw_new_panel_sprite_scaled_dark(int px, int py, ulong spr_id, int dest_width, int dest_height)
 {
     struct TbSprite *p_spr;
+    ushort drwflags;
+    short brig;
 
     p_spr = &pop1_sprites[spr_id];
-    dword_1DC36C = 8;
 
     if (ingame.PanelPermutation == -1) {
-        lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR4;
-        ApSpriteDrawScaledLowTransGreyRemap(px, py, p_spr, dest_width, dest_height,
-          &pixmap.fade_table[0 * PALETTE_8b_COLORS]);
-        lbDisplay.DrawFlags &= ~Lb_SPRITE_TRANSPAR4;
+        brig = 8;
+        drwflags = Lb_SPRITE_TRANSPAR4;
     } else {
-        LbSpriteDrawScaledRemap(px, py, p_spr, dest_width, dest_height,
-          &pixmap.fade_table[16 * PALETTE_8b_COLORS]);
+        brig = 16;
+        drwflags = 0;
     }
+
+    enlist_hud_draw_sprite_scaled(px, py, p_spr, dest_width, dest_height,
+      drwflags, brig);
 }
 
 /**
@@ -612,16 +958,20 @@ void draw_new_panel_sprite_scaled_dark(int px, int py, ulong spr_id, int dest_wi
 void draw_new_panel_sprite_prealp(int px, int py, ulong spr_id)
 {
     struct TbSprite *p_spr;
+    ushort drwflags;
+    short brig;
 
     p_spr = &pop1_sprites[spr_id];
-    dword_1DC36C = ingame.Scanner.Brightness;
 
     if (ingame.PanelPermutation == -1) {
-        lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR4;
-        ApSpriteDrawLowTransGreyRemap(px, py, p_spr,
-          &pixmap.fade_table[0 * PALETTE_8b_COLORS]);
-        lbDisplay.DrawFlags &= ~Lb_SPRITE_TRANSPAR4;
+        brig = ingame.Scanner.Brightness;
+        drwflags = Lb_SPRITE_TRANSPAR4;
+    } else {
+        // not sure why the sprite is not drawn at all here
+        return;
     }
+
+    enlist_hud_draw_sprite(px, py, p_spr, drwflags, brig);
 }
 
 /**
@@ -634,12 +984,16 @@ void draw_new_panel_sprite_prealp(int px, int py, ulong spr_id)
 void draw_fourpack_amount(short x, ushort y, ushort amount)
 {
     int i;
-    TbPixel col;
+    ushort drwflags;
+    TbPixel colour;
 
+    // TODO make configurable via panel config file
     if (ingame.PanelPermutation == -3)
-        col = 26;
+        colour = 26;
     else
-        col = 247;
+        colour = 247;
+    // Solid, even for transparent panel - full color is less confusing
+    drwflags = 0;
 
     for (i = 0; i < min(amount,8); i++)
     {
@@ -648,7 +1002,8 @@ void draw_fourpack_amount(short x, ushort y, ushort amount)
 
         p_shift = &game_panel_shifts[PaSh_WEP_FOURPACK_SLOTS + i];
         p_size = &game_panel_shifts[PaSh_WEP_FOURPACK_SIZE];
-        LbDrawBox(x + p_shift->x, y + p_shift->y, p_size->x, p_size->y, col);
+        enlist_hud_draw_box(x + p_shift->x, y + p_shift->y, p_size->x, p_size->y,
+          drwflags, 32, colour);
     }
 }
 
@@ -702,17 +1057,18 @@ TbBool draw_panel_pickable_thing_below_agent(struct Thing *p_agent)
         short x, y;
         ushort spr;
 
+        spr = 12;
         {
             struct TbSprite *p_spr;
 
-            p_spr = &pop1_sprites[12];
+            p_spr = &pop1_sprites[spr];
             x = lbDisplay.GraphicsScreenWidth - 8 * pop1_sprites_scale - p_spr->SWidth;
             y = lbDisplay.GraphicsScreenHeight - 8 * pop1_sprites_scale - p_spr->SHeight;
         }
-        lbDisplay.DrawFlags = 0;
         wtype = p_pickup->U.UWeapon.WeaponType;
 
-        draw_new_panel_sprite_std(x, y, 12);
+        draw_new_panel_sprite_std(x, y, spr);
+
         if (wtype)
             spr = weapon_sprite_index(wtype, false);
         else
@@ -747,17 +1103,18 @@ TbBool draw_panel_pickable_thing_player_targeted(PlayerInfo *p_locplayer)
         short x, y;
         ushort spr;
 
+        spr = 12;
         {
             struct TbSprite *p_spr;
 
-            p_spr = &pop1_sprites[12];
+            p_spr = &pop1_sprites[spr];
             x = lbDisplay.GraphicsScreenWidth - 8 * pop1_sprites_scale - p_spr->SWidth;
             y = lbDisplay.GraphicsScreenHeight - 8 * pop1_sprites_scale - p_spr->SHeight;
         }
-        lbDisplay.DrawFlags = 0;
         wtype = p_pickup->U.UWeapon.WeaponType;
 
-        draw_new_panel_sprite_std(x, y, 12);
+        draw_new_panel_sprite_std(x, y, spr);
+
         if (wtype)
             spr = weapon_sprite_index(wtype, false);
         else
@@ -810,7 +1167,8 @@ int count_weapons_in_flags(int *p_ncarr_below, int *p_ncarr_above, ulong weapons
     return ncarried;
 }
 
-void draw_agent_carried_weapon(PlayerIdx plyr, ushort plagent, short slot, TbBool ready, WeaponType wtype, short cx, short cy)
+void draw_agent_carried_weapon(PlayerIdx plyr, ushort plagent, short slot,
+  TbBool ready, WeaponType wtype, short cx, short cy)
 {
     TbBool wep_highlight;
     TbBool recharging;
@@ -820,7 +1178,6 @@ void draw_agent_carried_weapon(PlayerIdx plyr, ushort plagent, short slot, TbBoo
     recharging = (player_agent_weapon_delay(plyr, plagent, wtype) != 0);
     wep_highlight = panel_agents_weapon_highlighted(plyr, plagent, wtype);
 
-    lbDisplay.DrawFlags = 0;
     if (!recharging || (gameturn & 1))
     {
         if (slot == 1) { // First weapon on list entry starts its sprite a bit earlier
@@ -846,7 +1203,6 @@ void draw_agent_carried_weapon(PlayerIdx plyr, ushort plagent, short slot, TbBoo
 
     if (wep_highlight)
     {
-        lbDisplay.DrawFlags = 0;
         if (slot == 1) {// The first on list longer sprite has its own highlight
             x = cx + game_panel_shifts[PaSh_WEP_FRST_BTN_TO_DECOR].x;
             y = cy + game_panel_shifts[PaSh_WEP_FRST_BTN_TO_DECOR].y;
@@ -870,7 +1226,8 @@ void draw_agent_carried_weapon(PlayerIdx plyr, ushort plagent, short slot, TbBoo
     draw_fourpack_items(x, y, plagent, wtype);
 }
 
-void draw_agent_current_weapon(PlayerIdx plyr, ushort plagent, short slot, TbBool darkened, TbBool ready, WeaponType wtype, short cx, short cy)
+void draw_agent_current_weapon(PlayerIdx plyr, ushort plagent, short slot, TbBool darkened,
+  TbBool ready, WeaponType wtype, short cx, short cy)
 {
     TbBool wep_highlight;
     TbBool recharging;
@@ -904,7 +1261,8 @@ void draw_agent_current_weapon(PlayerIdx plyr, ushort plagent, short slot, TbBoo
     draw_fourpack_items(x, y, plagent, wtype);
 }
 
-void draw_agent_carried_weapon_prealp_list(PlayerIdx plyr, ushort plagent, short slot, TbBool ready, WeaponType wtype, short cx, short cy)
+void draw_agent_carried_weapon_prealp_list(PlayerIdx plyr, ushort plagent, short slot,
+  TbBool ready, WeaponType wtype, short cx, short cy)
 {
     TbBool wep_highlight;
     TbBool recharging;
@@ -916,7 +1274,6 @@ void draw_agent_carried_weapon_prealp_list(PlayerIdx plyr, ushort plagent, short
     x = cx + game_panel_shifts[PaSh_WEP_NEXT_BTN_TO_SYMBOL].x;
     y = cy + game_panel_shifts[PaSh_WEP_NEXT_BTN_TO_SYMBOL].y;
 
-    lbDisplay.DrawFlags = 0;
     if (!recharging || (gameturn & 1))
     {
         if (slot == 6)
@@ -938,7 +1295,8 @@ void draw_agent_carried_weapon_prealp_list(PlayerIdx plyr, ushort plagent, short
     draw_fourpack_items(x, y, plagent, wtype);
 }
 
-TbBool panel_mouse_over_weapon(short box_x, short box_y, short box_w, short box_h, int panstate, short box_no)
+TbBool panel_mouse_over_weapon(short box_x, short box_y,
+  short box_w, short box_h, int panstate, short box_no)
 {
     short msx, msy;
 
@@ -965,7 +1323,8 @@ TbBool panel_mouse_over_weapon(short box_x, short box_y, short box_w, short box_
  * This function is intended to loop through weapons in the same way
  * as draw_weapons_list_prealp(), but update state instead of drawing.
  */
-TbBool update_weapons_list_prealp(PlayerIdx plyr, ushort plagent, ulong weapons_carried, short current_weapon)
+TbBool update_weapons_list_prealp(PlayerIdx plyr, ushort plagent,
+  ulong weapons_carried, short current_weapon)
 {
     struct GamePanel *p_panel;
     ushort nshown;
@@ -1065,7 +1424,8 @@ void draw_weapons_list_prealp(PlayerIdx plyr, ushort plagent, ulong weapons_carr
             continue;
         if (nshown >= ncarr_below)
         {
-            draw_agent_carried_weapon_prealp_list(plyr, plagent, nshown, (wtype == current_weapon), wtype, cx, cy);
+            draw_agent_carried_weapon_prealp_list(plyr, plagent,
+              nshown, (wtype == current_weapon), wtype, cx, cy);
 
             cx += game_panel_shifts[PaSh_WEP_NEXT_DISTANCE].x;
             cy += game_panel_shifts[PaSh_WEP_NEXT_DISTANCE].y;
@@ -1109,7 +1469,8 @@ TbBool panel_update_weapon_current(PlayerIdx plyr, short nagent, ubyte flags)
 
     curwep = p_agent->U.UPerson.CurrentWeapon;
     prevwep = p_player->PrevWeapon[nagent];
-    if (curwep == 0 && prevwep == 0) {
+    if (curwep == WEP_NULL && prevwep == WEP_NULL) {
+        //TODO this is not a correct place to update this player property, move outside this function
         prevwep = find_nth_weapon_held(p_agent->ThingOffset, 1);
         p_player->PrevWeapon[nagent] = prevwep;
     }
@@ -1333,7 +1694,7 @@ void draw_panel_pickable_item(void)
         draw_panel_pickable_thing_player_targeted(p_locplayer);
 }
 
-TbBool func_1caf8(ubyte *panel_wep)
+TbBool draw_weapons_panel(ubyte *panel_wep)
 {
     TbBool ret;
     PlayerInfo *p_locplayer;
@@ -1397,7 +1758,6 @@ TbBool func_1caf8(ubyte *panel_wep)
         }
     }
 
-    lbDisplay.DrawFlags = 0;
     return ret;
 }
 
@@ -1434,66 +1794,22 @@ void draw_agent_grouping_bars(short panel)
     }
 }
 
-void func_702c0(int a1, int a2, int a3, int a4, int a5, ubyte a6)
+void draw_rect_around_map_coords(int cor_x, int cor_y_m8, int cor_z,
+  int half_width, int half_height, TbPixel colour)
 {
-    asm volatile (
-      "push %5\n"
-      "push %4\n"
-      "call ASM_func_702c0\n"
-        : : "a" (a1), "d" (a2), "b" (a3), "c" (a4), "g" (a5), "g" (a6));
+    int thickness;
+    ushort drwflags;
+
+    drwflags = 0;
+    thickness = 1;
+
+    enlist_hud_draw_mapcoord_flat_box(cor_x - half_width, cor_y_m8,
+      cor_z - half_height, 2 * half_width, 2 * half_height,
+      drwflags, thickness, colour);
 }
 
-void draw_transparent_slant_bar(short x, short y, ushort w, ushort h)
-{
-    long waftx, wafty;
-    ushort tmx, tmy;
-    struct EnginePoint point4;
-    struct EnginePoint point2;
-    struct EnginePoint point1;
-    struct EnginePoint point3;
-    short sh_x;
-
-    sh_x = 3;
-    if (lbDisplay.GraphicsScreenHeight < 400)
-        sh_x /= 2;
-    point1.pp.X = x;
-    point1.pp.Y = y;
-    point4.pp.X = (x + w);
-    point4.pp.Y = y;
-    point2.pp.Y = (y + h);
-    point2.pp.X = (x + w - sh_x);
-    point3.pp.Y = (y + h);
-    point3.pp.X = (x - sh_x);
-
-    // The shield bar is animated, even if it's not possible to see
-    waftx = waft_table[(gameturn >> 3) & 31];
-    wafty = waft_table[(gameturn + 16) & 31];
-    tmx = ((waftx + 30) >> 1);
-    tmy = ((wafty + 30) >> 3) + 64;
-    point1.pp.U = tmx << 16;
-    point4.pp.U = (tmx + 64) << 16;
-    point2.pp.U = (tmx + 64) << 16;
-    point1.pp.V = tmy << 16;
-    point4.pp.V = tmy << 16;
-    point2.pp.V = (tmy + 8) << 16;
-    point3.pp.U = tmx << 16;
-    point3.pp.V = (tmy + 8) << 16;
-
-    point1.pp.S = 0;
-    point2.pp.S = 0;
-    point3.pp.S = 0;
-    point4.pp.S = 0;
-
-    vec_mode = 18;
-    assert(vec_tmap[2] != NULL);
-    vec_map = vec_tmap[2];
-    draw_trigpoly(&point1.pp, &point4.pp, &point3.pp);
-    if (vec_mode == 2)
-        vec_mode = 27;
-    draw_trigpoly(&point4.pp, &point2.pp, &point3.pp);
-}
-
-void draw_health_level(short x, short y, ushort w, ushort h, short lv, ushort lvmax, ubyte col, ubyte transp)
+void draw_health_level(short x, short y, ushort w, ushort h,
+  short lv, ushort lvmax, TbPixel colour, ubyte transp)
 {
     short cw;
 
@@ -1503,112 +1819,93 @@ void draw_health_level(short x, short y, ushort w, ushort h, short lv, ushort lv
     cw = w * lv / lvmax;
     if (transp)
     {
-        draw_transparent_slant_bar(x, y, cw, h);
+        // The shield bar is animated, even if it's not possible to see
+        enlist_hud_draw_textured_flow_slant_box(x, y, cw, h,
+          18, 0x3F, 2, 0, 2);
     }
     else
     {
-        ApDrawSlantBox(x, y, cw, h, col);
+        enlist_hud_draw_slant_box(x, y, cw, h, 0, 32, colour);
     }
 }
 
-void draw_wep_energy_level(short x, short y, ushort w, ushort h, short lv, ushort lvmax, ubyte col, ubyte transp)
+void draw_wep_energy_level(short x, short y, ushort w, ushort h,
+  short lv, ushort lvmax, TbPixel colour, ubyte transp)
 {
-    short cw, ch;
+    ushort drwflags;
+    short ch;
 
     if ((lv <= 0) || (lvmax == 0))
         return;
 
+    drwflags = Lb_SPRITE_TRANSPAR4;
+
     ch = h * lv / lvmax;
 
-    short cx, cy;
-    cx = x;
-    cy = y;
-    for (cw = w; cw > 0; cw--)
-    {
-        short cy1, cy2;
-
-        cy1 = h + cy;
-        cy2 = h + cy - ch;
-        SCANNER_unkn_func_203(cx, cy1, cx, cy2, col,
-            ingame.Scanner.Contrast, ingame.Scanner.Brightness);
-        ++cx;
-        ++cy;
-    }
+    enlist_hud_draw_low_trans_grey_vslant_box(x, y + h, w, -ch, drwflags, 8, colour);
 }
 
 void draw_mood_level(short x, short y, ushort w, int h, short value)
 {
     short cent_x;
-    short x1, y1, x2;
-    TbPixel col;
+    short box_x, box_w;
+    ushort drwflags;
     short fade;
-    short i;
+    TbPixel colour;
 
     fade = value >> 2;
     if (value >= 0)
-        col = pixmap.fade_table[PALETTE_8b_COLORS * (63 - fade) + colour_lookup[ColLU_RED]];
+        colour = pixmap.fade_table[PALETTE_8b_COLORS * (63 - fade) + colour_lookup[ColLU_RED]];
     else
-        col = pixmap.fade_table[PALETTE_8b_COLORS * (63 + fade) + colour_lookup[ColLU_BLUE]];
+        colour = pixmap.fade_table[PALETTE_8b_COLORS * (63 + fade) + colour_lookup[ColLU_BLUE]];
+    drwflags = Lb_SPRITE_TRANSPAR4;
 
     cent_x = x + (w >> 1);
-    x1 = cent_x;
-    x2 = x1 + (w >> 1) * value / 88;
-    y1 = y;
-
-    for (i = h; i > 0; i--)
-    {
-        SCANNER_unkn_func_203(x1, y1, x2, y1,
-            col, ingame.Scanner.Contrast, ingame.Scanner.Brightness);
-        x1--;
-        x2--;
-        y1++;
-    }
+    box_x = cent_x;
+    box_w = (w >> 1) * value / 88;
+    enlist_hud_draw_low_trans_grey_slant_box(box_x, y, box_w, h, drwflags, 8, colour);
 }
 
 void draw_mood_limits(short x, short y, short w, short h, short value, short maxval)
 {
     short scaled_val;
     short curr_x, sh_x;
-    TbPixel col;
+    short thickness;
+    ushort drwflags;
+    TbPixel colour;
 
     if (value <= 0)
         return;
 
     sh_x = h;
 
-    col = colour_lookup[ColLU_WHITE];
+    drwflags = 0;
+    colour = colour_lookup[ColLU_WHITE];
     scaled_val = (w * value / maxval) >> 1;
+    thickness = 1;
 
     curr_x = x + (w >> 1) - scaled_val;
-    LbDrawLine(curr_x, y, curr_x - sh_x, (y + h), col);
+    enlist_hud_draw_line(curr_x, y, curr_x - sh_x, (y + h),
+      drwflags, thickness, 32, colour);
 
     curr_x = x + (w >> 1) + scaled_val;
-    LbDrawLine(curr_x, y, curr_x - sh_x, (y + h), col);
+    enlist_hud_draw_line(curr_x, y, curr_x - sh_x, (y + h),
+      drwflags, thickness, 32, colour);
 }
 
 void draw_energy_bar(int x1, int y1, short w, short h, int value, int maxval)
 {
     short scaled_val;
-    short x2, y2;
-    short i;
-    TbPixel col;
+    TbPixel colour;
 
     if (maxval == 0)
         return;
 
-    col = colour_lookup[ColLU_WHITE];
+    colour = colour_lookup[ColLU_WHITE];
     scaled_val = h * value / maxval;
-
-    x2 = x1 + scaled_val;
-    y2 = y1 - scaled_val;
-    for (i = w; i > 0; i--)
-    {
-        LbDrawLine(x1, y1, x2, y2, col);
-        x1++;
-        x2++;
-    }
+    enlist_hud_draw_slant_box(x1, y1, w, -scaled_val,
+      0, 32, colour);
 }
-
 
 TbBool panel_active_based_on_target(short panel)
 {
@@ -1835,25 +2132,6 @@ void draw_panel_thermal_button(short panel)
     }
 }
 
-/** Objective text, or net players list.
- */
-void draw_panel_objective_info(void)
-{
-    int x, y, w;
-    x = ingame.Scanner.X1 - 1;
-    if (x < 0)
-        x = 0;
-    y = lbDisplay.GraphicsScreenHeight - panel_get_objective_info_height(lbDisplay.GraphicsScreenHeight);
-    if (in_network_game) {
-        SCANNER_unkn_func_205();
-        w = lbDisplay.GraphicsScreenWidth;
-    } else {
-        // original width 67 low res, 132 high res
-        w = ingame.Scanner.X2 - ingame.Scanner.X1 + 3;
-    }
-    SCANNER_draw_objective_info(x, y, w);
-}
-
 void draw_weapon_energy_bar(short panel)
 {
     struct GamePanel *p_panel;
@@ -2020,11 +2298,10 @@ void draw_new_panel(void)
         p_panel = &game_panel[panel];
         if (p_panel->Spr[0] < 0)
           break;
-        lbDisplay.DrawFlags = 0;
 
-        if (!panel_for_speciifc_agent(panel))
+        if (!panel_for_specific_agent(panel))
         {
-            is_visible = (p_panel->Spr[0] != 0);
+            is_visible = (p_panel->Spr[0] != 0) || (p_panel->Type == PanT_Scanner) || (p_panel->Type == PanT_Objective);
             is_blinking = false;
             is_disabled = false;
             is_subordnt = false;
@@ -2231,33 +2508,37 @@ void draw_new_panel(void)
             draw_agent_grouping_bars(panel);
             draw_panel_thermal_button(panel);
             break;
+        case PanT_Scanner:
+            SCANNER_set_center_point(engn_xc, engn_zc, (2*LbFPMath_PI - 1) - ((engn_cam_yaw >> 5) & LbFPMath_AngleMask));
+            SCANNER_process_turn();
+            SCANNER_draw_new_transparent();
+            break;
+        case PanT_Objective:
+            panel_objective_info_process_turn(panel);
+            draw_panel_objective_info(panel);
+            break;
         }
     }
 
-    lbDisplay.DrawFlags = 0;
+    players_chat_talk_process_turn();
+    draw_players_chat();
 
     draw_panel_pickable_item();
 
-    if (!func_1caf8(panel_wep))
+    if (!draw_weapons_panel(panel_wep))
     {
-        if (ingame.Flags & GamF_Unkn0200) {
+        if ((ingame.Flags & GamF_NaviPerfInfo) != 0) {
             uint y;
             ushort ctlmode;
 
-            ctlmode = p_locplayer->UserInput[0].ControlMode & ~UInpCtr_AllFlagsMask;
+            ctlmode = user_input_control_mode_get(local_player_no, 0);
             if (ctlmode == UInpCtr_Mouse && !PacketRecord_IsPlayback()) {
                 y = alt_at_point(mouse_map_x, mouse_map_z);
-                func_702c0(mouse_map_x, PRCCOORD_TO_YCOORD(y), mouse_map_z, 64, 64, colour_lookup[ColLU_RED]);
+                draw_rect_around_map_coords(mouse_map_x, PRCCOORD_TO_YCOORD(y), mouse_map_z,
+                  64, 64, colour_lookup[ColLU_RED]);
             }
         }
     }
-
-    ingame.Scanner.MX = engn_xc >> 7;
-    ingame.Scanner.MZ = engn_zc >> 7;
-    ingame.Scanner.Angle = (2*LbFPMath_PI - 1) - ((engn_anglexz >> 5) & LbFPMath_AngleMask);
-    SCANNER_draw_new_transparent();
-
-    draw_panel_objective_info();
 }
 
 TbBool process_panel_state_one_agent_weapon(ushort agent)
@@ -2280,7 +2561,7 @@ TbBool process_panel_state_one_agent_weapon(ushort agent)
 
         if ((p_agent->Type == TT_PERSON) && (wtype != 0))
         {
-            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn4000;
+            user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_RBtnDown);
             my_build_packet(p_pckt, PAct_DROP_HELD_WEAPON_SECR, p_agent->ThingOffset, wtype, 0, 0);
             p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
             return true;
@@ -2298,7 +2579,7 @@ TbBool process_panel_state_one_agent_weapon(ushort agent)
             lbDisplay.RightButton = 0;
             if ((p_agent->Type == TT_PERSON) && (wtype != 0))
             {
-                p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn4000;
+                user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_RBtnDown);
                 my_build_packet(p_pckt, PAct_DROP_HELD_WEAPON_SECR, p_agent->ThingOffset, wtype, 0, 0);
                 p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
                 return true;
@@ -2313,7 +2594,7 @@ TbBool process_panel_state_one_agent_weapon(ushort agent)
                 p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
                 lbDisplay.RightButton = 0;
                 lbDisplay.LeftButton = 0;
-                p_locplayer->UserInput[mouser].ControlMode &= ~(UInpCtrF_Unkn4000|UInpCtrF_Unkn8000);
+                user_input_control_flags_clear(local_player_no, mouser, UInpCtrF_RBtnDown | UInpCtrF_LBtnDown);
                 return true;
             }
         }
@@ -2341,7 +2622,7 @@ TbBool process_panel_state_grp_agents_weapon(ushort agent)
         p_agent = p_locplayer->MyAgent[agent];
         if ((p_agent->Type == TT_PERSON) && (wtype != 0))
         {
-            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn8000;
+            user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_LBtnDown);
             my_build_packet(p_pckt, PAct_DROP_HELD_WEAPON_SECR, p_agent->ThingOffset, wtype, 0, 0);
             p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
             return true;
@@ -2359,7 +2640,7 @@ TbBool process_panel_state_grp_agents_weapon(ushort agent)
             p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
             lbDisplay.RightButton = 0;
             lbDisplay.LeftButton = 0;
-            p_locplayer->UserInput[mouser].ControlMode &= ~(UInpCtrF_Unkn4000|UInpCtrF_Unkn8000);
+            user_input_control_flags_clear(local_player_no, mouser, UInpCtrF_RBtnDown | UInpCtrF_LBtnDown);
             return true;
         }
         p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
@@ -2442,7 +2723,7 @@ TbBool process_panel_state_grp_agents_mood(ushort main_panel, ushort agent)
     }
     else if (p_locplayer->PanelState[mouser] != PANEL_STATE_NORMAL)
     {
-        p_locplayer->UserInput[mouser].ControlMode &= ~(UInpCtrF_Unkn4000|UInpCtrF_Unkn8000);
+        user_input_control_flags_clear(local_player_no, mouser, UInpCtrF_RBtnDown | UInpCtrF_LBtnDown);
         p_locplayer->PanelState[mouser] = PANEL_STATE_NORMAL;
         did_inp |= GINPUT_DIRECT;
     }
@@ -2551,7 +2832,7 @@ ubyte check_panel_input(short panel)
             }
             dcthing = p_locplayer->DirectControl[0];
             build_packet(p_pckt, PAct_SELECT_AGENT, dcthing, p_agent->ThingOffset, 0, 0);
-            p_locplayer->UserInput[0].ControlMode |= UInpCtrF_Unkn8000;
+            user_input_control_flags_raise(local_player_no, 0, UInpCtrF_LBtnDown);
             did_inp |= GINPUT_PACKET;
             return did_inp;
         case PanT_AgentMood:
@@ -2560,7 +2841,7 @@ ubyte check_panel_input(short panel)
             if ((p_agent->Type != TT_PERSON) || (p_agent->State == PerSt_DEAD)) {
                 break;
             }
-            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn8000;
+            user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_LBtnDown);
             i = panel_mouse_move_mood_value(panel);
             if (panel_active_based_on_target(panel) &&
               (p_agent->U.UPerson.Mood != limit_mood(p_agent, i))) {
@@ -2582,7 +2863,7 @@ ubyte check_panel_input(short panel)
             if ((p_agent->Type != TT_PERSON) || !person_can_accept_control(p_agent->ThingOffset)) {
                 break;
             }
-            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn8000;
+            user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_LBtnDown);
             p_locplayer->PanelState[mouser] = PANEL_STATE_WEP_SEL_ONE + p_panel->ID;
             did_inp |= GINPUT_DIRECT;
             break;
@@ -2605,7 +2886,7 @@ ubyte check_panel_input(short panel)
                 break;
             }
             build_packet(p_pckt, PAct_SHIELD_TOGGLE, dcthing, 0, 0, 0);
-            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn8000;
+            user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_LBtnDown);
             did_inp |= GINPUT_PACKET;
             return did_inp;
         case PanT_Grouping:
@@ -2623,7 +2904,7 @@ ubyte check_panel_input(short panel)
             {
                 // Increase agent grouping
                 dcthing = p_locplayer->DirectControl[mouser];
-                p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn8000;
+                user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_LBtnDown);
                 if (panel_active_based_on_target(panel))
                     my_build_packet(p_pckt, PAct_PROTECT_INC, dcthing, 0, 0, 0);
                 did_inp |= GINPUT_PACKET;
@@ -2654,7 +2935,7 @@ ubyte check_panel_input(short panel)
             if ((p_agent->Type != TT_PERSON) || (p_agent->State == PerSt_DEAD)) {
                 break;
             }
-            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn4000;
+            user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_RBtnDown);
             i = panel_mouse_move_mood_value(panel);
             if (panel_active_based_on_target(panel)) {
                 my_build_packet(p_pckt, PAct_GROUP_SET_MOOD, p_agent->ThingOffset, i, 0, 0);
@@ -2675,13 +2956,13 @@ ubyte check_panel_input(short panel)
             if ((p_agent->Type != TT_PERSON) || !person_can_accept_control(p_agent->ThingOffset)) {
                 break;
             }
-            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn4000;
+            user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_RBtnDown);
             p_locplayer->PanelState[mouser] = PANEL_STATE_WEP_SEL_GRP + p_panel->ID;
             did_inp |= GINPUT_DIRECT;
             break;
         case PanT_Grouping:
             // Switch grouping fully on or fully off
-            p_locplayer->UserInput[mouser].ControlMode |= UInpCtrF_Unkn4000;
+            user_input_control_flags_raise(local_player_no, mouser, UInpCtrF_RBtnDown);
             if (!panel_active_based_on_target(panel)) {
                 break;
             }

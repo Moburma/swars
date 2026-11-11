@@ -24,7 +24,7 @@
 #include "bftext.h"
 #include "bfutility.h"
 #include "ssampply.h"
-#include "bflib_joyst.h"
+#include "bfjoyst.h"
 
 #include "campaign.h"
 #include "display.h"
@@ -33,6 +33,7 @@
 #include "feequip.h"
 #include "femail.h"
 #include "femain.h"
+#include "festorage.h"
 #include "game_options.h"
 #include "game_speed.h"
 #include "game_sprts.h"
@@ -51,18 +52,23 @@
 
 #define PURPLE_APPS_EMAIL_ICONS_LIMIT 10
 
-extern ubyte byte_155124[];
-extern ubyte byte_15512C[];
+ubyte app_icons_spr_id[] = {
+  1, 17, 33, 39, 63, 148, 0, 0,
+};
 
-extern ubyte byte_1C497E;
-extern ubyte byte_1C497F;
-extern ubyte byte_1C4980;
-extern ubyte byte_1C4984[];
-extern short word_1C498A;
-extern ubyte byte_1C498C;
+ubyte byte_15512C[] = {
+  8, 8, 3, 12, 8, 4, 0, 0, -1, 121,
+};
 
-extern short word_1C6F3E;
-extern short word_1C6F40;
+ubyte byte_1C497E;
+ubyte byte_1C497F;
+ubyte byte_1C4980 = 0;
+ubyte byte_1C4984[6];
+short word_1C498A = 0;
+ubyte byte_1C498C = 0;
+
+short app_icons_first_email = 0;
+short app_icons_first_brief = 0;
 
 /******************************************************************************/
 
@@ -71,10 +77,10 @@ void draw_app_icon_hilight(short x, short y, ubyte iconid, ubyte aframe)
     struct TbSprite *spr;
 
     lbDisplay.DrawFlags |= 0x8000;
-    spr = &fe_icons_sprites[aframe + byte_155124[iconid] + byte_15512C[iconid]];
+    spr = &fe_icons_sprites[aframe + app_icons_spr_id[iconid] + byte_15512C[iconid]];
     draw_sprite_purple_list(x, y, spr);
     lbDisplay.DrawFlags = 0;
-    spr = &fe_icons_sprites[aframe + byte_155124[iconid]];
+    spr = &fe_icons_sprites[aframe + app_icons_spr_id[iconid]];
     draw_sprite_purple_list(x, y, spr);
     lbDisplay.DrawFlags = 0;
 }
@@ -84,7 +90,7 @@ void draw_app_icon_normal(short x, short y, ubyte iconid, ubyte aframe)
     struct TbSprite *spr;
 
     lbDisplay.DrawFlags |= 0x8000;
-    spr = &fe_icons_sprites[aframe + byte_155124[iconid] + byte_15512C[iconid]];
+    spr = &fe_icons_sprites[aframe + app_icons_spr_id[iconid] + byte_15512C[iconid]];
     draw_sprite_purple_list(x, y, spr);
     lbDisplay.DrawFlags = 0;
 }
@@ -145,7 +151,7 @@ TbBool is_purple_apps_utility_visible(short iconid)
     }
 
 
-    if (login_control__State == LognCt_Unkn5)
+    if (login_control[0].State == LognCt_NetStarted)
     {
         TbBool visible;
 
@@ -188,14 +194,14 @@ TbBool get_purple_apps_icon_rect(struct ScreenRect *p_rect, short iconid)
                 p_rect->Height = 0;
                 return false;
             }
-            spr = &fe_icons_sprites[byte_155124[cicnid]];
+            spr = &fe_icons_sprites[app_icons_spr_id[cicnid]];
             p_rect->Width = spr->SWidth;
             p_rect->Height = spr->SHeight;
             return true;
         }
         if (is_purple_apps_utility_space_reserved(cicnid))
         {
-            spr = &fe_icons_sprites[byte_155124[cicnid]];
+            spr = &fe_icons_sprites[app_icons_spr_id[cicnid]];
             cx += spr->SWidth + 3;
         }
     }
@@ -397,18 +403,18 @@ TbBool get_purple_app_unread_email_icon_inputs(void)
                 {
                     if (activate_queued_mail() == 1)
                     {
-                        word_1C6F40 = next_brief - 5;
-                        if (word_1C6F40 < 0)
-                            word_1C6F40 = 0;
+                        app_icons_first_brief = next_brief - 5;
+                        if (app_icons_first_brief < 0)
+                            app_icons_first_brief = 0;
                         open_brief = next_brief;
                         change_screen = ChSCRT_MISBRIEF;
                         subtext = gui_strings[372];
                     }
                     else
                     {
-                        word_1C6F3E = next_email - 4;
-                        if (word_1C6F3E < 0)
-                            word_1C6F3E = 0;
+                        app_icons_first_email = next_email - 4;
+                        if (app_icons_first_email < 0)
+                            app_icons_first_email = 0;
                         change_screen = ChSCRT_MISBRIEF;
                         subtext = gui_strings[373];
                         open_brief = -next_email;
@@ -443,7 +449,7 @@ void draw_purple_app_email_icon(short cx, short cy, short bri)
     short iconid;
     short tx;
 
-    iconid = bri - word_1C6F40;
+    iconid = bri - app_icons_first_brief;
     lbDisplay.DrawFlags = Lb_SPRITE_TRANSPAR4;
     spr = &fe_icons_sprites[102];
     if (mouse_move_over_rect(cx, cx + spr->SWidth + 1, cy,
@@ -533,11 +539,6 @@ TbBool get_purple_app_email_icon_inputs(short cx, short cy, short bri)
  */
 void show_purple_apps_selection_bar(void)
 {
-#if 0
-    asm volatile ("call ASM_show_purple_apps_selection_bar\n"
-        :  :  : "eax" );
-    return;
-#endif
     ushort bri;
     short iconid;
     short cx, cy;
@@ -559,9 +560,9 @@ void show_purple_apps_selection_bar(void)
         cy = global_apps_bar_box.Y;
     }
 
-    for (bri = word_1C6F40; bri < next_brief; bri++)
+    for (bri = app_icons_first_brief; bri < next_brief; bri++)
     {
-        if (bri >= word_1C6F40 + PURPLE_APPS_EMAIL_ICONS_LIMIT)
+        if (bri >= app_icons_first_brief + PURPLE_APPS_EMAIL_ICONS_LIMIT)
             break;
 
         draw_purple_app_email_icon(cx, cy, bri);
@@ -598,9 +599,9 @@ TbBool input_purple_apps_selection_bar(void)
         cy = global_apps_bar_box.Y;
     }
 
-    for (bri = word_1C6F40; bri < next_brief; bri++)
+    for (bri = app_icons_first_brief; bri < next_brief; bri++)
     {
-        if (bri >= word_1C6F40 + PURPLE_APPS_EMAIL_ICONS_LIMIT)
+        if (bri >= app_icons_first_brief + PURPLE_APPS_EMAIL_ICONS_LIMIT)
             break;
 
         get_purple_app_email_icon_inputs(cx, cy, bri);
@@ -665,8 +666,8 @@ void reset_app_bar_player_state(void)
 {
     new_mail = 0;
     next_brief = 0;
-    word_1C6F3E = 0;
-    word_1C6F40 = 0;
+    app_icons_first_email = 0;
+    app_icons_first_brief = 0;
     next_email = 0;
     next_ref = 0;
     open_brief = 0;

@@ -22,6 +22,8 @@
 #include "bfmemory.h"
 #include "bfmemut.h"
 #include "bfini.h"
+#include <ctype.h>
+#include <stdlib.h>
 
 #include "cybmod.h"
 #include "weapon.h"
@@ -31,8 +33,10 @@
 #include "lvfiles.h"
 #include "lvobjctv.h"
 #include "misstat.h"
-#include "wadfile.h"
+#include "mydraw.h"
 #include "swlog.h"
+#include "wadfile.h"
+#include "wrcities.h"
 /******************************************************************************/
 
 enum MissionListConfigCmd {
@@ -186,6 +190,17 @@ const struct TbNamedEnum missions_conf_any_bool[] = {
 };
 
 struct Campaign campaigns[CAMPAIGNS_MAX_COUNT];
+ubyte background_type = 0;
+
+struct Mission mission_list[MISSIONS_MAX_COUNT];
+ushort next_mission = 1;
+
+short mission_open[MISSION_STATE_SLOTS_COUNT];
+short mission_state[MISSION_STATE_SLOTS_COUNT];
+
+char mission_name[50] = "None";
+
+char *memload_netscan_text = NULL;
 
 /** Size of campaign strings within the engine buffer.
  */
@@ -193,8 +208,9 @@ ushort campaign_strings_len = 0;
 
 /** Size of mission strings after campaign strings.
  */
-extern ushort mission_strings_len; // = 0;
-extern ushort display_mode;
+ushort mission_strings_len = 0;
+
+ushort display_mode = 0;
 
 void load_campaigns(void)
 {
@@ -334,12 +350,23 @@ ushort find_mission_with_map_and_level(ushort mapno, ushort level)
 {
     ushort missi;
 
-    for (missi = 1; missi < MISSIONS_MAX_COUNT; missi++) {
+    for (missi = 1; missi < next_mission; missi++) {
         struct Mission *p_missi;
         p_missi = &mission_list[missi];
         if ((p_missi->MapNo == mapno) && (p_missi->LevelNo == level))
             return missi;
         if ((p_missi->MapNo == mapno) && (p_missi->ReLevelNo == level))
+            return missi;
+    }
+    return 0;
+}
+
+ushort find_first_mission_with_map(short mapno)
+{
+    ushort missi;
+    for (missi = 1; missi < next_mission; missi++)
+    {
+        if (mission_list[missi].MapNo == mapno)
             return missi;
     }
     return 0;
@@ -526,7 +553,7 @@ void read_missions_bin_file(int num)
           mission_list[i].ReLevelNo = 0;
     }
     for (i = 1; i < next_mission; i++)
-        mission_list[i].Complete = 0;
+        mission_list[i].Complete = MResol_UNDECIDED;
 }
 
 void read_mission_netscan_objectives_bin(void)
@@ -626,7 +653,7 @@ void save_mission_single_conf(TbFileHandle fh, struct Mission *p_missi, char *bu
           (int)p_missi->ExtraRewardType, (int)p_missi->ExtraRewardParam);
         LbFileWrite(fh, buf, strlen(buf));
     }
-    if ((p_missi->SuccessLevel[0]|p_missi->SuccessLevel[1]|p_missi->SuccessLevel[2]) != 0) {
+    if ((p_missi->SuccessLevel[0]|p_missi->SuccessLevel[1]) != 0) {
         sprintf(buf, "SuccessLevel = %d %d\n",
           (int)p_missi->SuccessLevel[0], (int)p_missi->SuccessLevel[1]);
         LbFileWrite(fh, buf, strlen(buf));
@@ -810,16 +837,21 @@ TbBool read_missions_conf_info(int num)
     conf_fh = LbFileOpen(conf_fname, Lb_FILE_MODE_READ_ONLY);
     if (conf_fh != INVALID_FILE) {
         conf_len = LbFileLengthHandle(conf_fh);
-        if (conf_len > 1024*1024)
-            conf_len = 1024*1024;
-        conf_buf = LbMemoryAlloc(conf_len+16);
+    } else {
+        LOGSYNC("Could not open '%s' file", conf_fname);
+        conf_len = 0;
+    }
+    if (conf_len > 1024*1024)
+        conf_len = 1024*1024;
+    conf_buf = LbMemoryAlloc(conf_len+16);
+    if (conf_buf == NULL) {
+        LOGSYNC("Could not alloc mem for '%s' file", conf_fname);
+        return false;
+    }
+    if (conf_fh != INVALID_FILE) {
         conf_len = LbFileRead(conf_fh, conf_buf, conf_len);
         LOGSYNC("Processing '%s' file, %d bytes", conf_fname, conf_len);
         LbFileClose(conf_fh);
-    } else {
-        LOGSYNC("Could not open '%s' file", conf_fname);
-        conf_buf = LbMemoryAlloc(16);
-        conf_len = 0;
     }
     conf_buf[conf_len] = '\0';
     LbIniParseStart(&parser, conf_buf, conf_len);
@@ -1749,15 +1781,15 @@ TbResult load_netscan_text_data(ushort mapno, ushort level)
     int secnum_int;
 
     found = 0;
-    totlen = load_file_alltext("textdata/netscan.txt", netscan_text);
+    totlen = load_file_alltext("textdata/netscan.txt", memload_netscan_text);
     if (totlen == Lb_FAIL) {
         return Lb_FAIL;
     }
-    if (totlen >= netscan_text_len) {
-        LOGERR("Insufficient memory for netscan_text - %d instead of %d", netscan_text_len, totlen);
-        totlen = netscan_text_len - 1;
+    if (totlen >= memload_netscan_text_len) {
+        LOGERR("Insufficient memory for netscan_text - %d instead of %d", memload_netscan_text_len, totlen);
+        totlen = memload_netscan_text_len - 1;
     }
-    p = netscan_text;
+    p = memload_netscan_text;
     while ( !found )
     {
         // Find section
@@ -1793,9 +1825,9 @@ TbResult load_netscan_text_data(ushort mapno, ushort level)
                 while ((c != '\n') && (c != '\0'));
                 *(p - 1) = '\0';
 
-                netscan_objectives[i].TextOffset = text - netscan_text;
-                my_preprocess_text(netscan_text + netscan_objectives[i].TextOffset);
-                k = my_count_lines(netscan_text + netscan_objectives[i].TextOffset);
+                netscan_objectives[i].TextOffset = text - memload_netscan_text;
+                my_preprocess_text(memload_netscan_text + netscan_objectives[i].TextOffset);
+                k = my_count_lines(memload_netscan_text + netscan_objectives[i].TextOffset);
                 netscan_objectives[i].TextLines = k;
             }
         }
@@ -1803,7 +1835,7 @@ TbResult load_netscan_text_data(ushort mapno, ushort level)
     return found ? Lb_SUCCESS : Lb_OK;
 }
 
-TbResult load_mission_name_text(ubyte missi)
+TbResult load_mission_name_text(ushort missi)
 {
     int totlen;
     ushort len;
@@ -1811,18 +1843,18 @@ TbResult load_mission_name_text(ubyte missi)
     char *p;
     char c;
 
-    totlen = load_file_alltext("textdata/names.txt", memload);
+    totlen = load_file_alltext("textdata/names.txt", memload_city_prop_text);
     if (totlen == Lb_FAIL) {
         mission_name[0] = '\0';
         return Lb_FAIL;
     }
-    if (totlen >= memload_len) {
-        LOGERR("Insufficient memory for memload - %d instead of %d", memload_len, totlen);
-        totlen = memload_len - 1;
+    if (totlen >= memload_city_prop_text_len) {
+        LOGERR("Insufficient memory for city_prop_text - %d instead of %d", memload_city_prop_text_len, totlen);
+        totlen = memload_city_prop_text_len - 1;
     }
-    memload[totlen] = '\0';
+    memload_city_prop_text[totlen] = '\0';
 
-    p = (char *)memload;
+    p = memload_city_prop_text;
     cmissi = -1;
     while ( 1 )
     {

@@ -27,6 +27,10 @@ extern "C" {
 /******************************************************************************/
 #pragma pack(1)
 
+#define EMAIL_STORE_COUNT 20
+#define BRIEF_STORE_COUNT 10
+#define NEWMAIL_STORE_COUNT 29
+
 enum MailType {
     MlTp_Email = 0,
     MlTp_Mission,
@@ -51,11 +55,11 @@ struct NewMailItem { // sizeof=5
 #pragma pack()
 /******************************************************************************/
 extern ubyte new_mail;
-extern short next_ref;
-extern struct NewMailItem newmail_store[29];
 extern ushort next_email;
-extern struct EmailItem email_store[20];
-extern struct EmailItem brief_store[10];
+extern short next_ref;
+extern struct EmailItem email_store[EMAIL_STORE_COUNT];
+extern struct EmailItem brief_store[BRIEF_STORE_COUNT];
+extern struct NewMailItem newmail_store[NEWMAIL_STORE_COUNT];
 
 ushort activate_queued_mail(void);
 void delete_mail(ushort mailnum, ubyte type);

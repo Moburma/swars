@@ -18,32 +18,36 @@
 /******************************************************************************/
 #include "thing.h"
 
-#include <assert.h>
-
 #include "bfbox.h"
 #include "bfutility.h"
+#include "bfmath.h"
 #include "bfmemut.h"
 #include "bfscreen.h"
 #include "ssampply.h"
+#include <assert.h>
+#include <stdlib.h>
 
 #include "bigmap.h"
 #include "building.h"
 #include "bmbang.h"
+#include "command.h"
 #include "display.h"
 #include "engindrwlstx.h"
-#include "enginfexpl.h"
 #include "enginsngobjs.h"
 #include "enginsngtxtr.h"
+#include "frame_sprani.h"
 #include "game.h"
+#include "game_data.h"
 #include "game_options.h"
 #include "game_speed.h"
-#include "game_sprani.h"
 #include "matrix.h"
 #include "packet.h"
 #include "pepgroup.h"
 #include "player.h"
 #include "sound.h"
+#include "thing_expld.h"
 #include "thing_fire.h"
+#include "thing_search.h"
 #include "vehicle.h"
 #include "game.h"
 #include "swlog.h"
@@ -59,11 +63,23 @@ struct UnkFLight { // sizeof=0x0A
     ubyte unfulgt_9;
 };
 
+struct AnimPage { // sizeof=0x0A
+	ubyte PageNo;
+	ubyte X;
+	ubyte Y;
+	ubyte Width;
+	ubyte Height;
+	ubyte No;
+	u32 apunknfld_6;
+};
+
 #pragma pack()
 /******************************************************************************/
 
+struct UnkFLight unkn_full_lights[50];
 ushort next_unkn_full_light = 1;
-extern struct UnkFLight unkn_full_lights[50];
+
+u32 things_init_times = 0;
 
 ubyte debug_log_things = 0;
 
@@ -80,6 +96,12 @@ short static_radii[] = {
    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+};
+
+struct AnimPage door_anim_page[] = {
+  {2,    0, 0x20, 0x20, 0x20, 5, 0},
+  {2, 0x60, 0x60, 0x10, 0x20, 5, 0},
+  {2, 0x60, 0x60, 0x10, 0x20, 5, 0},
 };
 
 const char *thing_type_names[] = {
@@ -116,7 +138,7 @@ const char *thing_type_names[] = {
   "TIME_POD",
   "AIR_STRIKE",
   "CANISTER",
-  "UNKN33",
+  "VEH_TURRET",
   "UNKN34",
   "UNKN35",
   "STASIS_POD",
@@ -149,6 +171,20 @@ const char *state_change_result_names[] = {
     "goal unattainable",
 };
 
+struct Thing *things = NULL;
+ushort things_used;
+ThingIdx things_used_head;
+ThingIdx things_empty_head;
+
+struct SimpleThing *sthings = NULL;
+ushort sthings_used;
+ThingIdx sthings_used_head;
+ThingIdx sthings_empty_head;
+
+ThingIdx same_type_head[256 + PEOPLE_GROUPS_LIMIT + 1] = {0};
+
+/******************************************************************************/
+
 TbBool thing_type_is_simple(short ttype)
 {
     return (ttype == SmTT_STATIC) ||
@@ -168,6 +204,12 @@ TbBool thing_type_is_simple(short ttype)
      (ttype == SmTT_FIRE) ||
      (ttype == SmTT_SFX) ||
      (ttype == SmTT_TEMP_LIGHT);
+}
+
+TbBool thing_type_is_pickup_item(short ttype)
+{
+    return (ttype == SmTT_DROPPED_ITEM) ||
+      (ttype == SmTT_CARRIED_ITEM);
 }
 
 struct Thing *get_thing_safe(ThingIdx thing, ubyte ttype)
@@ -231,6 +273,24 @@ void get_thing_position_mapcoords(short *x, short *y, short *z, ThingIdx thing)
         *z = cor_z;
 }
 
+u32 get_things_distance_mapcoords_precise(ThingIdx tng1, ThingIdx tng2)
+{
+    short x1, y1, z1;
+    short x2, y2, z2;
+    get_thing_position_mapcoords(&x1, &y1, &z1, tng1);
+    get_thing_position_mapcoords(&x2, &y2, &z2, tng2);
+    return map_distance_deltas_precise(x2 - x1, y2 - y1, z2 - z1);
+}
+
+u32 get_things_distance_mapcoords_fast(ThingIdx tng1, ThingIdx tng2)
+{
+    short x1, y1, z1;
+    short x2, y2, z2;
+    get_thing_position_mapcoords(&x1, &y1, &z1, tng1);
+    get_thing_position_mapcoords(&x2, &y2, &z2, tng2);
+    return map_distance_deltas_fast(x2 - x1, y2 - y1, z2 - z1);
+}
+
 const char *state_change_result_name(StateChRes res)
 {
     return state_change_result_names[res];
@@ -278,10 +338,24 @@ void move_mapwho(struct Thing *p_thing, int x, int y, int z)
         : : "a" (p_thing), "d" (x), "b" (y), "c" (z));
 }
 
+void init_just_things(void)
+{
+    asm volatile ("call ASM_init_just_things\n"
+        :  :  : "eax" );
+}
+
 void init_things(void)
 {
+#if 0
     asm volatile ("call ASM_init_things\n"
         :  :  : "eax" );
+#endif
+    things_init_times++;
+    gameturn = 0;
+
+    init_things_memory_with_user_heap();
+    init_just_things();
+    init_commands();
 }
 
 void quick_light_unkn_func_04(short a1, int a2, short a3, short a4)
@@ -310,7 +384,7 @@ void apply_full_light(short lx, short lz, ushort b, ushort intens, ushort lid)
     asm volatile (
       "push %4\n"
       "call ASM_apply_full_light\n"
-        : : "a" (lx), "d" (lz), "b" (b), "c" (intens), "g" (lid));
+        : : "a" (lx), "d" (lz), "b" (b), "c" (intens), "g" ((u32)lid));
     return;
 }
 
@@ -344,8 +418,41 @@ void unkn_update_lights(void)
     return;
 }
 
+int recalc_rocket_direction(struct Thing *p_rocket)
+{
+#if 0
+    int ret;
+    asm volatile ("call ASM_recalc_rocket_direction\n"
+        : "=r" (ret) : "a" (p_rocket));
+    return ret;
+#endif
+    struct Thing *p_target;
+    int cor_dx, cor_dy, cor_dz;
+    int new_vx, new_vy, new_vz;
+    int dist;
+
+    p_target = p_rocket->PTarget;
+    cor_dx = (p_target->X - p_rocket->X) >> 8;
+    cor_dz = (p_target->Z - p_rocket->Z) >> 8;
+    cor_dy = (p_target->Y - p_rocket->Y) >> 8;
+    dist = LbSqrL(cor_dx * cor_dx + cor_dz * cor_dz);
+    if (dist == 0)
+        dist = 1;
+    new_vx = (cor_dx << 8) / dist;
+    new_vy = (cor_dy << 8) / dist;
+    new_vz = (cor_dz << 8) / dist;
+    if (new_vx * p_rocket->VX + new_vy * p_rocket->VY + new_vz * p_rocket->VZ < 0)
+        return 0;
+
+    p_rocket->VX = new_vx;
+    p_rocket->VY = new_vy;
+    p_rocket->VZ = new_vz;
+    return 1;
+}
+
 void process_rocket(struct Thing *p_rocket)
 {
+    //TODO modify to make the rocket disappear when falling into sludge
     asm volatile (
       "call ASM_process_rocket\n"
         : : "a" (p_rocket));
@@ -358,6 +465,13 @@ void process_laser_guided(struct Thing *p_laser)
         : : "a" (p_laser));
 }
 
+void process_c_iff(struct Thing *p_mine)
+{
+    asm volatile (
+      "call ASM_process_c_iff\n"
+        : : "a" (p_mine));
+}
+
 void process_mine(struct SimpleThing *p_mine)
 {
     asm volatile (
@@ -365,11 +479,151 @@ void process_mine(struct SimpleThing *p_mine)
         : : "a" (p_mine));
 }
 
+struct SimpleThing *init_nuclear_bomb(MapCoord x, MapCoord y, MapCoord z)
+{
+#if 0
+    struct SimpleThing *ret;
+    asm volatile (
+      "call ASM_init_nuclear_bomb\n"
+        : "=r" (ret) : "a" (x), "d" (y), "b" (z));
+    return ret;
+#endif
+    struct SimpleThing *p_sthing;
+    ThingIdx thing;
+
+    if (x < 0)
+        return NULL;
+    if (z < 0)
+        return NULL;
+    if (sthings_used > STHINGS_LIMIT - 5) {
+        return NULL;
+    }
+    thing = get_new_sthing();
+    if (thing == 0) {
+        return NULL;
+    }
+    if (thing <= -STHINGS_LIMIT-1) {
+        return NULL;
+    }
+
+    p_sthing = &sthings[thing];
+    p_sthing->Type = SmTT_NUCLEAR_BOMB;
+    p_sthing->Radius = 64;
+    p_sthing->X = MAPCOORD_TO_PRCCOORD(x, 0);
+    p_sthing->Z = MAPCOORD_TO_PRCCOORD(z, 0);
+    p_sthing->Y = MAPCOORD_TO_PRCCOORD(y, 0);
+    p_sthing->Timer1 = 0;
+    p_sthing->Flag = (TngF_InVehicle|TngF_Persuaded|TngF_Unkn0004);
+    add_node_sthing(thing);
+    set_nuclear_shade_point(x, y, z);
+
+    return p_sthing;
+}
+
 void process_grenade(struct Thing *p_grenade)
 {
+#if 0
     asm volatile (
       "call ASM_process_grenade\n"
         : : "a" (p_grenade));
+#endif
+    if (p_grenade->Timer1 == 0)
+    {
+        MapCoord cor_x, cor_y, cor_z;
+
+        cor_x = PRCCOORD_TO_MAPCOORD(p_grenade->X);
+        cor_z = PRCCOORD_TO_MAPCOORD(p_grenade->Z);
+        cor_y = PRCCOORD_TO_MAPCOORD(alt_at_point(cor_x, cor_z));
+
+        if (p_grenade->SubType == 3)
+        {
+            struct SimpleThing *p_bomb;
+            p_bomb = init_nuclear_bomb(cor_x, cor_y, cor_z);
+            if (p_bomb != NULL) {
+                p_bomb->Owner2 = p_grenade->Owner;
+                play_dist_ssample(p_bomb, 0x22u, 0x7Fu, 0x40u, 100, 0, 2);
+                play_dist_ssample(p_bomb, 1u, 0x7Fu, 0x40u, 100, 0, 3);
+            }
+        }
+        else if ((p_grenade->SubType == 4) || (p_grenade->SubType == 5))
+        {
+            struct SimpleThing *p_bomb;
+            p_bomb = init_nuclear_bomb(cor_x, cor_y, cor_z);
+            if (p_bomb != NULL) {
+                p_bomb->Type = SmTT_CANISTER;
+                p_bomb->SubType = p_grenade->SubType;
+                p_bomb->Owner2 = p_grenade->Owner;
+                play_dist_ssample(p_bomb, 0x22u, 0x7Fu, 0x40u, 100, 0, 2);
+                if (p_bomb->SubType == 4)
+                    play_dist_ssample(p_bomb, 0x20u, 0, 0x40u, 100, -1, 3);
+                else
+                    play_dist_ssample(p_bomb, 0x1Fu, 0, 0x40u, 100, -1, 3);
+            }
+        }
+
+        remove_thing(p_grenade->ThingOffset);
+        delete_node(p_grenade);
+        return;
+    }
+
+    short qbit;
+    int prc_x, prc_y, prc_z;
+
+    prc_x = p_grenade->X + MAPCOORD_TO_PRCCOORD(p_grenade->VX,0);
+    prc_y = p_grenade->Y + p_grenade->VY;
+    prc_z = p_grenade->Z + MAPCOORD_TO_PRCCOORD(p_grenade->VZ,0);
+    p_grenade->VY -= 500;
+    qbit = check_col_collision(PRCCOORD_TO_MAPCOORD(prc_x), PRCCOORD_TO_MAPCOORD(prc_y), PRCCOORD_TO_MAPCOORD(prc_z));
+    if (qbit == -1)
+    {
+        ushort txtr;
+        txtr = floor_texture_at_point(PRCCOORD_TO_MAPCOORD(prc_x), PRCCOORD_TO_MAPCOORD(prc_z));
+        if (sea_texture(txtr))
+        {
+            struct SimpleThing *p_effect;
+            MapCoord cor_x, cor_y, cor_z;
+
+            cor_x = PRCCOORD_TO_MAPCOORD(p_grenade->X);
+            cor_z = PRCCOORD_TO_MAPCOORD(p_grenade->Z);
+            cor_y = PRCCOORD_TO_MAPCOORD(alt_at_point(cor_x, cor_z));
+            p_effect = create_scale_effect(cor_x, cor_y, cor_z, 1087, 8);
+            if (p_effect != NULL) {
+                p_effect->SubType = 60;
+                p_effect->Object = 62 + (LbRandomAnyShort() & 0x7F);
+                create_sound_effect(cor_x, 0, cor_z, 3, 0, 0);
+            }
+            remove_thing(p_grenade->ThingOffset);
+            delete_node(p_grenade);
+            return;
+        }
+        if (map_floor_is_sludge(PRCCOORD_TO_MAPCOORD(prc_x), PRCCOORD_TO_MAPCOORD(prc_z)))
+        {
+            struct SimpleThing *p_effect;
+            MapCoord cor_x, cor_y, cor_z;
+
+            // Create sludge bulge effect
+            cor_x = PRCCOORD_TO_MAPCOORD(p_grenade->X);
+            cor_z = PRCCOORD_TO_MAPCOORD(p_grenade->Z);
+            cor_y = PRCCOORD_TO_MAPCOORD(alt_at_point(cor_x, cor_z));
+            p_effect = create_scale_effect(cor_x, cor_y, cor_z, 1091, 8);
+            if (p_effect != NULL) {
+                p_effect->Object = 62 + (LbRandomAnyShort() & 0x7F);
+                // Generic type which just plays animation until end
+                p_effect->SubType = 58;
+                create_sound_effect(cor_x, cor_y, cor_z, 25, 0, 0);
+            }
+            remove_thing(p_grenade->ThingOffset);
+            delete_node(p_grenade);
+            return;
+        }
+    }
+    if (qbit != 0) {
+        p_grenade->Timer1 = 0;
+    }
+    if ((PRCCOORD_TO_MAPCOORD(prc_x) < MAP_COORD_WIDTH) &&
+      (PRCCOORD_TO_MAPCOORD(prc_z) < MAP_COORD_HEIGHT)) {
+        move_mapwho(p_grenade, prc_x, prc_y, prc_z);
+    }
 }
 
 void process_laser_elec(struct Thing *p_elec)
@@ -383,46 +637,6 @@ void process_razor_wire(struct Thing *p_thing)
 {
     ;
 }
-
-struct SimpleThing *init_nuclear_bomb(MapCoord x, MapCoord y, MapCoord z)
-{
-#if 0
-    struct SimpleThing *ret;
-    asm volatile (
-      "call ASM_init_nuclear_bomb\n"
-        : "=r" (ret) : "a" (x), "d" (y), "b" (z));
-    return ret;
-#endif
-    struct SimpleThing *p_sthing;
-    ThingIdx new_sthing;
-
-    if (x < 0)
-        return 0;
-    if (z < 0)
-        return 0;
-    if (sthings_used > STHINGS_LIMIT - 5)
-        return 0;
-
-    new_sthing = get_new_sthing();
-    if (new_sthing == 0)
-        return 0;
-    if (new_sthing < -STHINGS_LIMIT)
-        return 0;
-
-    p_sthing = &sthings[new_sthing];
-    p_sthing->Type = SmTT_NUCLEAR_BOMB;
-    p_sthing->Radius = 64;
-    p_sthing->X = MAPCOORD_TO_PRCCOORD(x, 0);
-    p_sthing->Z = MAPCOORD_TO_PRCCOORD(z, 0);
-    p_sthing->Y = MAPCOORD_TO_PRCCOORD(y, 0);
-    p_sthing->Timer1 = 0;
-    p_sthing->Flag = (TngF_InVehicle|TngF_Persuaded|TngF_Unkn0004);
-    add_node_sthing(new_sthing);
-    set_nuclear_shade_point(x, y, z);
-
-    return p_sthing;
-}
-
 
 void process_air_strike(struct Thing *p_thing)
 {
@@ -513,6 +727,62 @@ void process_laser(struct Thing *p_laser)
         : : "a" (p_laser));
 }
 
+struct SimpleThing *create_temp_light(int prc_x, int prc_y, int prc_z,
+  short min_bright, short duration, short range_bright)
+{
+    short thing;
+    struct SimpleThing *p_sthing;
+
+    thing = get_new_sthing();
+    if (thing == 0)
+        return NULL;
+    if (thing <= -(STHINGS_LIMIT + 1))
+        return NULL;
+
+    p_sthing = &sthings[thing];
+
+    p_sthing->Type = SmTT_TEMP_LIGHT;
+    //TODO switch from precise coords to map coords when all callers are remade
+    p_sthing->X = prc_x; // MAPCOORD_TO_PRCCOORD(cor_x,127);
+    p_sthing->Y = prc_y; // MAPCOORD_TO_PRCCOORD(cor_y,127);
+    p_sthing->Z = prc_z; // MAPCOORD_TO_PRCCOORD(cor_z,127);
+    p_sthing->Timer1 = duration;
+    p_sthing->U.ULight.MinBright = min_bright;
+    p_sthing->U.ULight.RangeBright = range_bright;
+
+    return p_sthing;
+}
+
+struct SimpleThing *create_growing_e_strand(int x, int y, int z,
+  struct Thing *p_thing, int health, int owner)
+{
+#if 1
+    struct SimpleThing *ret;
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[2];
+
+    stkargs[0] = (int)(intptr_t)health;
+    stkargs[1] = (int)(intptr_t)owner;
+
+    asm volatile (
+      "push 4(%5)\n"
+      "push 0(%5)\n"
+      "call ASM_create_growing_e_strand\n"
+        : "=r" (ret)
+        : "a" ((s32)x), "d" ((s32)y), "b" ((s32)z), "c" (p_thing), "S" (stkargs)
+        : "cc", "memory");
+    return ret;
+#endif
+}
+
+void create_another_strand(struct SimpleThing *p_sthing)
+{
+    asm volatile (
+      "call ASM_create_another_strand\n"
+        : : "a" (p_sthing));
+}
+
 void process_electric_strand(struct SimpleThing *p_sthing)
 {
     asm volatile (
@@ -532,6 +802,57 @@ void process_stasis_pod(struct SimpleThing *p_sthing)
     asm volatile (
       "call ASM_process_stasis_pod\n"
         : : "a" (p_sthing));
+}
+
+void find_and_stasis(struct SimpleThing *p_stasis, int radius)
+{
+    asm volatile ("call ASM_find_and_stasis\n"
+        :  : "a" (p_stasis), "d" (radius));
+}
+
+void find_and_time_travel(struct SimpleThing *p_sthing)
+{
+#if 0
+    asm volatile ("call ASM_find_and_time_travel\n"
+        :  : "a" (p_sthing));
+#endif
+    struct Thing *p_hittng;
+
+    p_hittng = check_for_radius_hit_person(
+      p_sthing->X, p_sthing->Y, p_sthing->Z,
+      p_sthing->Radius, 0, 1, 0);
+    if (p_hittng == NULL) {
+        return;
+    }
+
+    if (p_hittng->Type == TT_VEHICLE)
+    {
+        struct Thing *p_person;
+        ThingIdx person;
+
+        for (person = p_hittng->U.UVehicle.PassengerHead;
+          person != 0; person = p_person->U.UPerson.LinkPassenger)
+        {
+            p_person = &things[person];
+            p_person->Flag2 |= 0x0002;
+        }
+    }
+    if ((p_hittng->Type != SmTT_STATIC) &&
+      (p_hittng->Type != TT_BUILDING))
+    {
+        delete_node(p_hittng);
+        p_hittng->Flag2 |= 0x0002;
+        p_hittng->U.UPerson.SpecialTimer = 100;
+        play_dist_sample(p_hittng, 0x33u, 0x7Fu, 0x40u, 100, 0, 3);
+    }
+    if (p_hittng->Type == TT_PERSON)
+    {
+        stop_looped_weapon_sample(p_hittng,
+          p_hittng->U.UPerson.CurrentWeapon);
+        if ((p_hittng->Flag2 & 0x0001) != 0) {
+            finalise_razor_wire(p_hittng);
+        }
+    }
 }
 
 void process_time_pod(struct SimpleThing *p_sthing)
@@ -590,11 +911,121 @@ void process_intelligent_door(struct SimpleThing *p_sthing)
         : : "a" (p_sthing));
 }
 
-void process_scale_effect(struct SimpleThing *p_sthing, ThingIdx thing)
+void process_unkn58(struct SimpleThing *p_sthing)
+{
+    ushort frm;
+
+    frm = frame[p_sthing->Frame].Next;
+
+    if ((frame[frm].Flags & 0x01) != 0) {
+        remove_sthing(p_sthing->ThingOffset);
+        delete_snode(p_sthing);
+        return;
+    }
+
+    p_sthing->Frame = frm;
+}
+
+ubyte napalm_person(struct Thing *p_person, ushort multi)
+{
+    ubyte ret;
+    asm volatile ("call ASM_napalm_person\n"
+        : "=r" (ret) : "a" (p_person), "d" (multi));
+    return ret;
+}
+
+void process_drift_smoke(struct SimpleThing *p_sthing, ThingIdx thing_item)
 {
     asm volatile (
+      "call ASM_process_drift_smoke\n"
+        : : "a" (p_sthing), "d" (thing_item));
+}
+
+void process_mushroom(struct SimpleThing *p_sthing, ThingIdx thing_item)
+{
+    asm volatile (
+      "call ASM_process_mushroom\n"
+        : : "a" (p_sthing), "d" (thing_item));
+}
+
+void process_special_drift_smoke(struct SimpleThing *p_sthing, ThingIdx thing_item)
+{
+    asm volatile (
+      "call ASM_process_special_drift_smoke\n"
+        : : "a" (p_sthing), "d" (thing_item));
+}
+
+void process_napalm_flame(struct SimpleThing *p_sthing, ThingIdx thing_item)
+{
+    asm volatile (
+      "call ASM_process_napalm_flame\n"
+        : : "a" (p_sthing), "d" (thing_item));
+}
+
+void process_flame1(struct SimpleThing *p_sthing)
+{
+    asm volatile (
+      "call ASM_process_flame1\n"
+        : : "a" (p_sthing));
+}
+
+void process_splash(struct SimpleThing *p_sthing)
+{
+    asm volatile (
+      "call ASM_process_splash\n"
+        : : "a" (p_sthing));
+}
+
+void process_scale_effect(struct SimpleThing *p_sthing, ThingIdx thing_item)
+{
+#if 0
+    asm volatile (
       "call ASM_process_scale_effect\n"
-        : : "a" (p_sthing), "d" (thing));
+        : : "a" (p_sthing), "d" (thing_item));
+#endif
+    switch (p_sthing->SubType)
+    {
+    case 30:
+        process_drift_smoke(p_sthing, thing_item);
+        break;
+    case 31:
+        process_mushroom(p_sthing, thing_item);
+        break;
+    case 44:
+        process_special_drift_smoke(p_sthing, thing_item);
+        break;
+    case 45:
+        process_drift_smoke(p_sthing, thing_item);
+        break;
+    case 46:
+        process_napalm_flame(p_sthing, thing_item);
+        break;
+    case 49:
+        if (p_sthing->Timer1 == 4)
+            p_sthing->Frame = nstart_ani[1104];
+        process_drift_smoke(p_sthing, thing_item);
+        break;
+    case 52:
+        process_flame1(p_sthing);
+        break;
+    case 56:
+    case 57:
+        process_flame1(p_sthing);
+        break;
+    case 58:
+        process_unkn58(p_sthing);
+        break;
+    case 60:
+        process_splash(p_sthing);
+        break;
+    }
+}
+
+void test_stuff(int x, int y, int z, ushort owner)
+{
+    asm volatile (
+      "call ASM_test_stuff\n"
+        : : "a" (x), "d" (y), "b" (z), "c" ((int)owner));
 }
 
 void process_nuclear_bomb(struct SimpleThing *p_sthing, ThingIdx thing_item)
@@ -654,7 +1085,7 @@ void process_thing(struct Thing *p_thing, ThingIdx thing)
     case TT_UNKN4:
         process_shield(p_thing);
         process_person(p_thing);
-        if ((p_thing->Flag & TngF_Unkn0800) != 0)
+        if ((p_thing->Flag & TngF_TriggerUse) != 0)
             p_thing->Flag2 |= TgF2_Unkn0400;
         else
             p_thing->Flag2 &= ~TgF2_Unkn0400;
@@ -719,7 +1150,7 @@ void process_carried_item(struct SimpleThing *p_item)
 
 void process_temp_light(struct SimpleThing *p_sthing)
 {
-    int bri, rng;
+    int brig, rng;
     short lgtng_x, lgtng_y, lgtng_z;
 
     p_sthing->Timer1--;
@@ -727,13 +1158,13 @@ void process_temp_light(struct SimpleThing *p_sthing)
         remove_sthing(p_sthing->ThingOffset);
         return;
     }
-    bri = p_sthing->U.ULight.MinBright;
+    brig = p_sthing->U.ULight.MinBright;
     if (p_sthing->U.ULight.RangeBright != 0) {
         rng = p_sthing->U.ULight.RangeBright;
-        bri += (ushort)LbRandomAnyShort() % rng;
+        brig += (ushort)LbRandomAnyShort() % rng;
     }
     get_thing_position_mapcoords(&lgtng_x, &lgtng_y, &lgtng_z, p_sthing->ThingOffset);
-    apply_full_light(lgtng_x, lgtng_y >> 3, lgtng_z, bri, 0);
+    apply_full_light(lgtng_x, lgtng_y >> 3, lgtng_z, brig, 0);
 }
 
 void set_thing_frame(struct Thing *p_thing, ushort anim_start)
@@ -878,15 +1309,10 @@ void process_sthing(struct SimpleThing *p_sthing, ThingIdx thing)
 
 void process_things(void)
 {
-#if 0
-    asm volatile ("call ASM_process_things\n"
-        :  :  : "eax" );
-    return;
-#endif
     int i;
     ushort plyr;
 
-    for (plyr = 0; plyr < 8; plyr++)
+    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
     {
         PlayerInfo *p_player;
         struct Thing *p_dcthing;
@@ -896,13 +1322,13 @@ void process_things(void)
         dcthing = p_player->DirectControl[0];
         p_dcthing = &things[dcthing];
         if (((1 << plyr) & ingame.InNetGame_UNSURE) != 0
-          && (p_dcthing->Flag & TngF_Unkn1000) == 0)
+          && (p_dcthing->Flag & TngF_SelectedAgent) == 0)
         {
 #if 0
             for (i = 0; i < playable_agents; i++)
               ;
 #endif
-            p_dcthing->Flag |= TngF_Unkn1000;
+            p_dcthing->Flag |= TngF_SelectedAgent;
         }
     }
 
@@ -911,7 +1337,7 @@ void process_things(void)
         if (ingame.fld_unkCB7 > 150)
             process_things_mines_explode((rand() & 0x1F) + 2);
         if ((net_game_play_flags & NGPF_Unkn10) != 0 && (gameturn & 0xF) == 0)
-            process_things_unkn_sub2(login_control__TechLevel, ingame.fld_unkCB7 > 100);
+            process_things_unkn_sub2(login_control[0].TechLevel, ingame.fld_unkCB7 > 100);
         if (things_used > 900)
             process_things_bang(16);
         else if ( things_used > 700 || ((gameturn & 0xF) == 0))
@@ -920,8 +1346,8 @@ void process_things(void)
 
     if ((gameturn & 0x1F) == 0)
     {
-        for (i = 0; i < PEOPLE_GROUPS_COUNT+1; i++) {
-            group_actions[i].Storming &= ~0x4000;
+        for (i = 0; i < PEOPLE_GROUPS_LIMIT+1; i++) {
+            group_actions[i].Storming &= ~GrpAF_UnderAttack;
         }
     }
 
@@ -934,17 +1360,17 @@ void process_things(void)
 #endif
     build_same_type_headers();
     ingame.fld_unkC4B = 0;
-    animate_textures();
     unkn_update_lights();
     unkn_full_update_lights();
 
     if (!execute_commands)
         return;
-    if ((ingame.Flags & GamF_StopThings) == 0)
+    if ((ingame.Flags & TngF_ProgressAction) == 0)
         return;
     monitor_all_samples();
 
-    if (!in_network_game && (pktrec_mode == PktR_NONE) && (ingame.Flags & GamF_Unkn0004) != 0 && ((gameturn & 0xF) != 0))
+    if (!in_network_game && (pktrec_mode == PktR_NONE)
+      && ((ingame.Flags & GamF_Unkn0004) != 0) && ((gameturn & 0xF) != 0))
         return;
 
     if (execute_commands)
@@ -1101,6 +1527,17 @@ TbBool thing_is_destroyed(ThingIdx thing)
     }
 }
 
+TbBool thing_is_pickup_item(ThingIdx thing)
+{
+    struct SimpleThing *p_sthing;
+
+    if (thing >= 0)
+        return false;
+
+    p_sthing = &sthings[thing];
+    return thing_type_is_pickup_item(p_sthing->Type);
+}
+
 TbResult delete_node(struct Thing *p_thing)
 {
     TbResult ret;
@@ -1159,12 +1596,45 @@ void remove_sthing(short tngno)
 
 short add_static(int x, int y, int z, ushort frame, int timer)
 {
+#if 0
     short ret;
     asm volatile (
       "push %5\n"
       "call ASM_add_static\n"
         : "=r" (ret) : "a" (x), "d" (y), "b" (z), "c" (frame), "g" (timer));
     return ret;
+#else
+    ThingIdx thing;
+    struct SimpleThing *p_sthing;
+
+    if (map_coords_limit(NULL, NULL, NULL, x, y, z))
+        return 0;
+    if (sthings_used > STHINGS_LIMIT - 5) {
+        return 0;
+    }
+
+    thing = get_new_sthing();
+    if (thing == 0) {
+        return 0;
+    }
+    if (thing <= -STHINGS_LIMIT-1) {
+        return 0;
+    }
+    p_sthing = &sthings[thing];
+    p_sthing->Z = MAPCOORD_TO_PRCCOORD(z,127);
+    p_sthing->X = MAPCOORD_TO_PRCCOORD(x,127);
+    p_sthing->Y = y;
+    p_sthing->Parent = 0;
+    p_sthing->StartFrame = frame - 1;
+    //TODO verify and/or unify to allow use of reset_sthing_frame(p_sthing);
+    p_sthing->Frame = nstart_ani[p_sthing->StartFrame + 1];
+    add_node_sthing(thing);
+    p_sthing->Type = SmTT_STATIC;
+    p_sthing->Radius = 64;
+    p_sthing->Flag = 4;
+    p_sthing->Timer1 = timer;
+    return thing;
+#endif
 }
 
 TbBool thing_is_within_circle(ThingIdx thing, short X, short Z, ushort R)
@@ -1241,8 +1711,71 @@ TbBool thing_intersects_cylinder(ThingIdx thing, short X, short Y, short Z, usho
 
 void build_same_type_headers(void)
 {
+#if 0
     asm volatile ("call ASM_build_same_type_headers\n"
         :  :  : "eax" );
+    return;
+#endif
+    struct Thing *p_thing;
+    short i;
+    ThingIdx thing;
+    TbBool link_all_people;
+
+    // On specific modes, people are linked into same-type lists even
+    // while under a flag which would normally exclude them
+    link_all_people = (word_1552F8 == 36) || (word_1552F8 == 18);
+
+    for (i = 0; i < 256 + PEOPLE_GROUPS_LIMIT + 1; i++)
+        same_type_head[i] = 0;
+
+    for (thing = things_used_head; thing != 0; thing = p_thing->LinkChild)
+    {
+        p_thing = &things[thing];
+
+        switch (p_thing->Type)
+        {
+        case TT_VEHICLE:
+            if (p_thing->SubType == SubTT_VEH_SHIP) {
+                p_thing->LinkSame = same_type_head[5];
+                same_type_head[5] = thing;
+            } else {
+                p_thing->LinkSame = same_type_head[2];
+                same_type_head[2] = thing;
+            }
+            break;
+        case TT_PERSON:
+        case TT_UNKN4:
+            if ((p_thing->Flag2 & (TgF2_ExistsOffMap|TgF2_AlteredSubType)) == 0 || link_all_people)
+            {
+                ubyte group;
+
+                p_thing->LinkSame = same_type_head[1];
+                same_type_head[1] = thing;
+
+                group = p_thing->U.UPerson.Group & PEOPLE_GROUPS_INDEX_MASK;
+                p_thing->LinkSameGroup = same_type_head[256 + group];
+                same_type_head[256 + group] = thing;
+            }
+            break;
+        case TT_BUILDING:
+            if (p_thing->SubType == SubTT_BLD_MGUN) {
+                p_thing->LinkSame = same_type_head[7];
+                same_type_head[7] = thing;
+            } else {
+                p_thing->LinkSame = same_type_head[3];
+                same_type_head[3] = thing;
+            }
+            break;
+        case TT_MINE:
+            if (p_thing->SubType == 48) {
+                p_thing->LinkSame = same_type_head[6];
+                same_type_head[6] = thing;
+            }
+            break;
+        default:
+            break;
+        }
+    }
 }
 
 short get_thing_same_type_head(short ttype, short subtype)
@@ -1270,6 +1803,8 @@ short get_thing_same_type_head(short ttype, short subtype)
     case TT_MINE:
         if (subtype == 48)
             thing = same_type_head[6];
+        else
+            thing = 0;
         break;
     default:
         thing = 0;
@@ -1324,7 +1859,7 @@ short new_thing_static_clone(struct SimpleThing *p_clsthing)
     return thing;
 }
 
-ThingIdx new_thing_building_clone(struct Thing *p_clthing, struct M33 *p_clmat, short shut_h)
+ThingIdx new_thing_building_clone(struct Thing *p_clthing, struct M33 *p_clmatx, short shut_h)
 {
     struct Thing *p_thing;
     struct SingleObject *p_sobj;
@@ -1397,10 +1932,10 @@ ThingIdx new_thing_building_clone(struct Thing *p_clthing, struct M33 *p_clmat, 
     }
     else if (styp == SubTT_BLD_MGUN)
     {
-        p_thing->U.UMGun.MatrixIndex = next_local_mat;
-        next_local_mat++;
-        if (p_clmat != NULL)
-            memcpy(&local_mats[p_thing->U.UMGun.MatrixIndex], p_clmat, sizeof(struct M33));
+        assert(next_local_mat < LOCAL_MATS_COUNT);
+        p_thing->U.UMGun.MatrixIndex = next_local_mat++;
+        if (p_clmatx != NULL)
+            memcpy(&local_mats[p_thing->U.UMGun.MatrixIndex], p_clmatx, sizeof(struct M33));
         else
             matrix_identity_fill(&local_mats[p_thing->U.UMGun.MatrixIndex]);
         p_thing->U.UMGun.AngleX = 1024;
@@ -1413,13 +1948,13 @@ ThingIdx new_thing_building_clone(struct Thing *p_clthing, struct M33 *p_clmat, 
     }
     else if (styp >= SubTT_BLD_MOVN_ROTOR && styp <= SubTT_BLD_37)
     {
-        p_thing->U.UObject.MatrixIndex = next_local_mat;
-        next_local_mat++;
-        if (p_clmat != NULL)
-            memcpy(&local_mats[p_thing->U.UObject.MatrixIndex], p_clmat, sizeof(struct M33));
+        assert(next_local_mat < LOCAL_MATS_COUNT);
+        p_thing->U.UObject.MatrixIndex = next_local_mat++;
+        if (p_clmatx != NULL)
+            memcpy(&local_mats[p_thing->U.UObject.MatrixIndex], p_clmatx, sizeof(struct M33));
         else
             matrix_identity_fill(&local_mats[p_thing->U.UObject.MatrixIndex]);
-        p_thing->Flag |=  TngF_Unkn1000;
+        p_thing->Flag |= TngF_SelectedAgent;
     }
     p_thing->SubState = p_clthing->SubState;
     p_thing->Timer1 = p_clthing->Timer1;
@@ -1613,25 +2148,118 @@ void refresh_old_thing_format(struct Thing *p_thing, struct ThingOldV9 *p_oldthi
     }
 }
 
-struct SimpleThing *create_scale_effect(int x, int y, int z, ushort frame, int timer)
+struct SimpleThing *create_item(int x, int y, int z, ushort frame, ubyte subtype)
+{
+    struct SimpleThing *ret;
+    asm volatile (
+      "push %5\n"
+      "call ASM_create_item\n"
+        : "=r" (ret) : "a" (x), "d" (y), "b" (z), "c" (frame), "g" ((u32)subtype));
+    return ret;
+}
+
+struct SimpleThing *create_scale_effect(int x, int y, int z, ushort frame, short timer)
 {
     struct SimpleThing *ret;
     asm volatile (
       "push %5\n"
       "call ASM_create_scale_effect\n"
-        : "=r" (ret) : "a" (x), "d" (y), "b" (z), "c" (frame), "g" (timer));
+        : "=r" (ret) : "a" (x), "d" (y), "b" (z), "c" (frame), "g" ((s32)timer));
     return ret;
 }
 
 struct SimpleThing *create_sound_effect(int x, int y, int z, ushort sample, int vol, int loop)
 {
     struct SimpleThing *ret;
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[2];
+
+    stkargs[0] = (int)(intptr_t)vol;
+    stkargs[1] = (int)(intptr_t)loop;
+
     asm volatile (
-      "push %6\n"
-      "push %5\n"
+      "push 4(%5)\n"
+      "push 0(%5)\n"
       "call ASM_create_sound_effect\n"
-        : "=r" (ret) : "a" (x), "d" (y), "b" (z), "c" (sample), "g" (vol), "g" (loop));
+        : "=r" (ret)
+        : "a" (x), "d" (y), "b" (z), "c" (sample), "S" (stkargs)
+        : "cc", "memory");
     return ret;
+}
+
+struct SimpleThing *create_stasis_pod(MapCoord x, MapCoord y, MapCoord z,
+  ushort timer, struct Thing *p_owner)
+{
+    struct SimpleThing *ret;
+    asm volatile (
+      "push %5\n"
+      "call ASM_create_stasis_pod\n"
+        : "=r" (ret) : "a" (x), "d" (y), "b" (z), "c" (timer), "g" (p_owner));
+    return ret;
+}
+
+struct SimpleThing *create_time_pod(MapCoord x, MapCoord y, MapCoord z,
+  ushort timer)
+{
+#if 0
+    struct SimpleThing *ret;
+    asm volatile (
+      "call ASM_create_time_pod\n"
+        : "=r" (ret) : "a" (x), "d" (y), "b" (z), "c" (timer));
+    return ret;
+#endif
+    struct SimpleThing *p_podtng;
+    ThingIdx thing;
+
+    if (sthings_used > STHINGS_LIMIT - 5) {
+        return NULL;
+    }
+    if ( x < 0 || z < 0 )
+        return NULL;
+    thing = get_new_sthing();
+    if (thing == 0) {
+        return NULL;
+    }
+    if (thing <= -STHINGS_LIMIT-1) {
+        return NULL;
+    }
+    p_podtng = &sthings[thing];
+    p_podtng->Radius = 0;
+    p_podtng->StartFrame = 0;
+    p_podtng->Type = 30;
+    p_podtng->State = 0;
+    p_podtng->X = MAPCOORD_TO_PRCCOORD(x, 0);
+    p_podtng->Z = MAPCOORD_TO_PRCCOORD(z, 0);
+    p_podtng->Y = MAPCOORD_TO_PRCCOORD(y, 0);
+    p_podtng->Timer1 = timer;
+    add_node_sthing(thing);
+    return p_podtng;
+}
+
+struct SimpleThing *create_electric_strand(MapCoord x, MapCoord y, MapCoord z,
+  MapCoord x2, MapCoord y2, MapCoord z2, int sound)
+{
+#if 1
+    struct SimpleThing *ret;
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[3];
+
+    stkargs[0] = (int)(intptr_t)y2;
+    stkargs[1] = (int)(intptr_t)z2;
+    stkargs[2] = (int)(intptr_t)sound;
+
+    asm volatile (
+      "push 8(%5)\n"
+      "push 4(%5)\n"
+      "push 0(%5)\n"
+      "call ASM_create_electric_strand\n"
+        : "=r" (ret)
+        : "a" ((s32)x), "d" ((s32)y), "b" ((s32)z), "c" ((s32)x2), "S" (stkargs)
+        : "cc", "memory");
+    return ret;
+#endif
 }
 
 void mine_detonate(struct Thing *p_thing)
@@ -1665,6 +2293,21 @@ int static_hit_by_bullet(struct SimpleThing *p_sthing, short hp,
         set_static_on_fire(p_sthing);
     }
     return 100;
+}
+
+struct Thing *replace_thing_given_thing_idx(int x, int y, int z, short owner, ThingIdx pv_thing)
+{
+    struct Thing *p_pv_thing;
+    struct Thing *p_nx_thing;
+
+    p_pv_thing = &things[pv_thing];
+    if (on_mapwho(p_pv_thing))
+        delete_node(p_pv_thing);
+    unkn01_thing_idx = pv_thing;
+    p_nx_thing = new_sim_person(x, y, z, 101u);
+    p_nx_thing->State = 0;
+    p_nx_thing->Owner = owner;
+    return p_nx_thing;
 }
 
 /******************************************************************************/

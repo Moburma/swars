@@ -67,6 +67,16 @@ extern char language_3str[4];
 
 extern MemSystem mem_game[];
 
+/** Scratch memory, reused for different purposes in different parts of the game.
+ */
+extern void *scratch_malloc_mem;
+extern u32 scratch_malloc_size;
+
+extern void *engine_mem_alloc_ptr;
+extern u32 engine_mem_alloc_size;
+
+extern ubyte *spare_map_buffer;
+
 /******************************************************************************/
 
 /** Returns absolute path to user files directory for the application.
@@ -98,8 +108,10 @@ void get_user_settings_fname(char *fname, const char *name);
 void get_saved_game_fname(char *fname, ushort slot);
 
 void adjust_memory_use(void);
-void init_memory(MemSystem *mem_table);
-long get_memory_ptr_allocated_count(void **mgptr);
+TbResult init_memory(MemSystem *mem_table);
+int get_memory_ptr_allocated_count(void **mgptr);
+TbResult propagate_memory_sizes(void);
+void init_things_memory_with_user_heap(void);
 
 /******************************************************************************/
 #ifdef __cplusplus

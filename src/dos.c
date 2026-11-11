@@ -86,7 +86,10 @@ int dos_open(const char *path, int open_flags, ...)
 
 int dos_low_level_open(const char *path, uint16_t data_segment, uint16_t mode)
 {
+#if LB_FILENAME_TRANSFORM
     char trans_path[FILENAME_MAX];
+#endif
+    const char *prop_path;
     int access_mode;
     int open_mode;
 
@@ -99,9 +102,19 @@ int dos_low_level_open(const char *path, uint16_t data_segment, uint16_t mode)
     else
         open_mode = DOS_O_RDONLY;
 
-    game_transform_path(path, trans_path);
+#if LB_FILENAME_TRANSFORM
+    if (lbFileNameTransform != NULL)
+    {
+        lbFileNameTransform(trans_path, path);
+        prop_path = trans_path;
+    }
+    else
+#endif
+    {
+        prop_path = path;
+    }
 
-    return dos_open(trans_path, open_mode | DOS_O_BINARY);
+    return dos_open(prop_path, open_mode | DOS_O_BINARY);
 }
 
 size_t dos_low_level_read(int fd, void *buffer, uint16_t ds, size_t size,

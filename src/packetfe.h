@@ -60,9 +60,9 @@ struct NetworkPlayerUFourPacks {
 };
 
 struct NetworkPlayerUProgress {
-  long Credits;
-  ubyte val_181189;
-  ubyte val_181183;
+  s32 Credits;
+  ubyte Team;
+  ubyte Faction;
   ubyte TechLevel;
   ubyte SelectedCity;
   ushort GrPaintX;
@@ -71,12 +71,12 @@ struct NetworkPlayerUProgress {
   ubyte DoubleMode;
   ubyte val_flags_08;
   ubyte GrPaintColour;
-  ubyte val_15516D;
-  long Expenditure;
+  ubyte SelectedUser;
+  s32 Expenditure;
 };
 
 struct NetworkPlayerUWepMod {
-  ulong Weapons[4];
+  u32 Weapons[4];
   union Mod Mods[4];
 };
 
@@ -145,7 +145,7 @@ void net_player_scheduled_action_prepare_packet(void);
 void net_player_action_prepare(int plyr);
 void net_player_action_execute(int plyr, int netplyr);
 void net_player_update_from_progress_packet_hostonly(void);
-TbBool net_players_immediate_exchange(void);
+TbBool net_players_immediate_exchange(int plyr);
 
 void net_players_copy_equip_and_cryo(void);
 void net_players_copy_equip_and_cryo_now(void);

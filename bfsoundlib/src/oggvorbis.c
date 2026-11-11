@@ -23,8 +23,11 @@
 #include <errno.h>
 
 #include "oggvorbis.h"
+
+#include "bffile.h"
 #include "bfmemory.h"
 #include "bfmemut.h"
+
 #include "drv_oal.h"
 #include "snderr.h"
 
@@ -122,13 +125,26 @@ void ogg_vorbis_stream_clear(OggVorbisStream *stream)
 
 bool ogg_vorbis_stream_open(OggVorbisStream *stream, const char *fname)
 {
+#if LB_FILENAME_TRANSFORM
+    char real_fname[FILENAME_MAX];
+#endif
     FILE *f = NULL;
     vorbis_info *info;
     uint32_t sz;
 
     ogg_vorbis_stream_clear(stream);
 
-    f = fopen(fname, "rb");
+#if LB_FILENAME_TRANSFORM
+    if (lbFileNameTransform != NULL)
+    {
+        lbFileNameTransform(real_fname, fname);
+        f = fopen(real_fname, "rb");
+    }
+    else
+#endif
+    {
+        f = fopen(fname, "rb");
+    }
     if (f == NULL)
     {
         SNDLOGFAIL("Music play", "%s: Cannot fopen: %s", fname, strerror(errno));

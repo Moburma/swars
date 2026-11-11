@@ -40,9 +40,9 @@ struct ScreenButton;
 
 void draw_text_purple_list2(int x, int y, const char *text, ushort line);
 void draw_sprite_purple_list(int x, int y, const struct TbSprite *sprite);
-void draw_trig_purple_list(long x2, long y2, long x3, long y3);
-void copy_box_purple_list(long x, long y, ulong width, ulong height);
-void draw_box_purple_list(int x, int y, ulong width, ulong height, int colour);
+void draw_trig_purple_list(int x2, int y2, int x3, int y3);
+void copy_box_purple_list(int x, int y, uint width, uint height);
+void draw_box_purple_list(int x, int y, uint width, uint height, TbPixel colour);
 void draw_line_purple_list(int x1, int y1, int x2, int y2, int colour);
 void draw_triangle_purple_list(int x1, int y1, int x2, int y2, int x3, int y3, TbPixel colour);
 void draw_hotspot_purple_list(int x, int y);
@@ -56,13 +56,11 @@ void draw_noise_box_purple_list(int x, int y, ulong width, ulong height);
 
 short get_text_box_lines_visible(struct ScreenTextBox *p_box);
 
-// Watcom calling convention - do not call from C
-ubyte ac_flashy_draw_purple_box(struct ScreenBox *p_box);
-ubyte ac_flashy_draw_purple_button(struct ScreenButton *p_button);
-ubyte ac_flashy_draw_purple_text_box(struct ScreenTextBox *p_box);
-ubyte ac_flashy_draw_purple_info_box(struct ScreenInfoBox *p_box);
-ubyte ac_button_text(struct ScreenButton *p_button);
-ubyte ac_info_box_text(struct ScreenInfoBox *p_box);
+ubyte flashy_draw_purple_button(struct ScreenButton *p_button);
+ubyte flashy_draw_purple_info_box(struct ScreenInfoBox *p_box);
+ubyte button_text(struct ScreenButton *p_button);
+ubyte label_text(struct ScreenButton *p_btn);
+ubyte info_box_text(struct ScreenInfoBox *p_box);
 
 /******************************************************************************/
 #ifdef __cplusplus

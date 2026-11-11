@@ -30,18 +30,18 @@ extern "C" {
 
 enum PurpleDrawType {
   PuDT_NONE = 0,
-  PuDT_BOX = 1,
-  PuDT_TEXT = 2,
-  PuDT_UNK03 = 3,
-  PuDT_COPYBOX = 4,
-  PuDT_SPRITE = 5,
-  PuDT_POTRIG = 6, /* Textured triangle from projector origin point to given line */
-  PuDT_FLIC = 7,
-  PuDT_NOISEBOX = 8,
-  PuDT_LINE = 9,
-  PuDT_HVLINE = 10,
-  PuDT_TRIANGLE = 11,
-  PuDT_HOTSPOT = 12,
+  PuDT_BOX,
+  PuDT_TEXT,
+  PuDT_UNK03,
+  PuDT_COPYBOX,
+  PuDT_SPRITE,
+  PuDT_HOLORAY, /**< Textured triangle from projector origin point to given line */
+  PuDT_FLIC,
+  PuDT_NOISEBOX,
+  PuDT_LINE,
+  PuDT_HVLINE,
+  PuDT_TRIANGLE,
+  PuDT_HOTSPOT,
 };
 
 struct SRect {

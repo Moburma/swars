@@ -30,12 +30,26 @@ extern "C" {
 #pragma pack(1)
 
 enum GuiStrings {
+    GSTR_PLAYERS = 459,
+    GSTR_PLAYER = 460,
+    GSTR_CONTROLS_TYPES = 461,
+    GSTR_CONTROLS = 486,
+    GSTR_KEYS = 487,
+    GSTR_JOYSTICK2 = 488,
+    GSTR_JOYSTICK_TYPE = 489,
     // Names for network protocols
     GSTR_NET_PROTO_NAMES = 497,
+    GSTR_JOY_CAL_TOP_LEFT = 574,
+    GSTR_JOY_CAL_BOTTOM_RIGHT = 575,
+    GSTR_JOY_CAL_LEAVE_CENTRE = 576,
+    GSTR_CONTROLS_SAVED_SUCC = 577,
+    GSTR_CONTROLS_SAVED_FAIL = 578,
     // Extra names for network protocols if modem is in use
     GSTR_NET_PROTO_MODEM_NAMES = 619,
     // Name for mission metric
     GSTR_MTR_SCIENTISTS_DEAD = 537,
+    // Short name of mission time to put before the time format
+    GSTR_CHK_MISSION_STA_TIME = 632,
     // Names for mission status values
     GSTR_ENM_MISSION_STATUS = 634,
     // Chunk of a sentence to put before mission status
@@ -83,7 +97,10 @@ enum GuiStrings {
 extern char *gui_strings[STRINGS_MAX];
 extern char *gui_strings_data;
 extern char *gui_strings_data_end;
-extern ulong text_buf_pos;
+extern u32 text_buf_pos;
+
+extern char *memload_wep_mod_desc_text;
+#define memload_wep_mod_desc_text_len 32768
 
 void snprint_dh_time_duration(char *out, ulong outlen, long ndays, short nhours);
 
@@ -96,6 +113,10 @@ const char *loctext_to_gtext(const char *ltext);
 
 void read_strings_file(void);
 TbBool create_strings_list(char **strings, char *strings_data, char *strings_data_end);
+
+const char *weapon_description_text(ushort wtype);
+const char *cybmod_description_text(ushort mtype);
+void load_wep_mod_desc_text(void);
 
 /******************************************************************************/
 #ifdef __cplusplus

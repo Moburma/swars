@@ -37,14 +37,14 @@ enum SmackerPlayFlags {
     SMK_UnknFlag100        = 0x0100,
 };
 
-typedef void (*SmackDrawCallback)(ubyte *frame_data, long width, long height);
+typedef void (*SmackDrawCallback)(ubyte *frame_data, int32_t width, int32_t height);
 
 /******************************************************************************/
 extern SmackDrawCallback smack_draw_callback;
 
-TbResult play_smk(const char *fname, ulong smkflags, ushort plyflags);
+TbResult play_smk(char *fname, u32 smkflags, ushort plyflags);
 
-void set_smack_malloc(void *(*cb)(int));
+void set_smack_malloc(void *(*cb)(uint32_t));
 void set_smack_free(void (*cb)(void *ptr));
 
 /******************************************************************************/

@@ -24,6 +24,7 @@
 #include "bfsprite.h"
 #include "bfscreen.h"
 
+#include "game_sprts.h"
 #include "guiboxes.h"
 #include "guitext.h"
 #include "display.h"
@@ -32,7 +33,6 @@
 #include "purpldrwlst.h"
 #include "swlog.h"
 /******************************************************************************/
-extern struct TbSprite *fe_icons_sprites;
 
 void draw_chartxy_axis_y_values(int x, int y, int height, int ax_min, int ax_max, int tot_values)
 {
@@ -192,7 +192,8 @@ void draw_line_purple_thick(int x1, int y1, int x2, int y2, ubyte colour, ubyte 
     }
 }
 
-void draw_chartxy_curve(int x, int y, int width, int height, ushort *y_vals, int n_y_vals, int y_scale, ushort y_trend_delta, int tot_values)
+void draw_chartxy_curve(int x, int y, int width, int height,
+  ushort *y_vals, int n_y_vals, int y_scale, ushort y_trend_delta, int tot_values)
 {
     int cday, progress, prev_progress, progress_scale;
     int cx, cy, mcy;

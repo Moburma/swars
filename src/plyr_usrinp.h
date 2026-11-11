@@ -66,11 +66,11 @@ enum SpecialUserInputControlModes {
     UInpCtr_Joystick3,
     UInpCtr_MODES_COUNT,
     UInpCtrF_Unkn2000 = 0x2000,
-    UInpCtrF_Unkn4000 = 0x4000,
-    UInpCtrF_Unkn8000 = 0x8000,
+    UInpCtrF_RBtnDown = 0x4000,
+    UInpCtrF_LBtnDown = 0x8000,
 };
 
-#define UInpCtr_AllFlagsMask (UInpCtrF_Unkn2000|UInpCtrF_Unkn4000|UInpCtrF_Unkn8000)
+#define UInpCtr_AllFlagsMask (UInpCtrF_Unkn2000|UInpCtrF_RBtnDown|UInpCtrF_LBtnDown)
 
 /** Per-local-player input mapping struct.
  *
@@ -104,6 +104,26 @@ void do_user_input_bits_direction_from_joy(struct SpecialUserInput *p_usrinp, ub
 short get_agent_move_direction_delta_x(const struct SpecialUserInput *p_usrinp);
 short get_agent_move_direction_delta_z(const struct SpecialUserInput *p_usrinp);
 void update_agent_move_direction_deltas(struct SpecialUserInput *p_usrinp);
+
+/** Clear state of user groups of agents to allow for clean missison start.
+ */
+void reset_user_groups(void);
+
+/** Clear state of user inputs to get rid of half-finished operations.
+ */
+void reset_user_input(void);
+
+void user_input_control_mode_set(PlayerIdx plyr, ubyte dmuser, ushort ctrmode);
+ushort user_input_control_mode_get(PlayerIdx plyr, ubyte dmuser);
+void user_input_control_flags_raise(PlayerIdx plyr, ubyte dmuser, ushort ctrflags);
+void user_input_control_flags_clear(PlayerIdx plyr, ubyte dmuser, ushort ctrflags);
+TbBool user_input_control_flags_check(PlayerIdx plyr, ubyte dmuser, ushort ctrflags);
+
+/** Initialize selected control scheme for local users.
+ *
+ * Finds and setups mouse user, resets controls state for mission start.
+ */
+void init_user_input_local_controls(void);
 
 void do_user_input_bits_actions_from_kbd(struct SpecialUserInput *p_usrinp);
 void do_user_input_bits_actions_from_joy(struct SpecialUserInput *p_usrinp, ubyte channel);

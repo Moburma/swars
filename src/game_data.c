@@ -19,22 +19,24 @@
 #include "game_data.h"
 
 #include <assert.h>
-#include "globals.h"
 #include "bffile.h"
 #include "bfdir.h"
 #include "bffnuniq.h"
+#include "bfmemut.h"
 #include "bfstrut.h"
 
 #include "campaign.h"
 #include "command.h"
-#include "engindrwlstm.h"
+#include "engincam.h"
 #include "engindrwlstx.h"
 #include "enginfloor.h"
 #include "enginlights.h"
 #include "enginpriobjs.h"
 #include "enginpritxtr.h"
+#include "enginprops.h"
 #include "enginsngobjs.h"
 #include "enginsngtxtr.h"
+#include "engintxtrmap.h"
 #include "bigmap.h"
 #include "game_options.h"
 #include "game.h"
@@ -42,6 +44,7 @@
 #include "lvobjctv.h"
 #include "lvwalk.h"
 #include "swlog.h"
+#include "thing.h"
 #include "tngcolisn.h"
 #include "osunix.h"
 #include "oswindws.h"
@@ -51,6 +54,18 @@
 static char data_path_user[DISKPATH_SIZE] = "";
 static char data_path_hdd[DISKPATH_SIZE] = "";
 static char game_dir_language[64] = "language/eng";
+char cd_drive[52];
+char language_3str[4] = "eng";
+
+void *scratch_malloc_mem = NULL;
+u32 scratch_malloc_size = 0;
+
+void *engine_mem_alloc_ptr = NULL;
+u32 engine_mem_alloc_size = 5900000;
+
+ubyte *game_user_heap = NULL;
+
+ubyte *spare_map_buffer = NULL;
 
 /******************************************************************************/
 
@@ -59,7 +74,7 @@ MemSystem mem_game[] = {
   { "textures",			(void **)&game_textures,		18u, 4512, 0, 0, 0 },
   { "face_textures",	(void **)&game_face_textures,	16u, 4000, 0, 0, 0 },
   { "object_points",	(void **)&game_object_points,	10u, 20000, 0, 0, 0 },
-  { "object_faces",		(void **)&game_object_faces,	32u, 15000, 0, 0, 0 },
+  { "object_faces3",	(void **)&game_object_faces3,	32u, 15000, 0, 0, 0 },
   { "objects",			(void **)&game_objects,			36u, 2000, 0, 0, 0 },
   { "quick_lights",		(void **)&game_quick_lights,	6u, 64000, 0, 0, 0 },
   { "full_lights",		(void **)&game_full_lights,		32u, 4000, 0, 0, 0 },
@@ -76,11 +91,11 @@ MemSystem mem_game[] = {
   { "prim4_textures",	(void **)&prim4_textures,		18u, 1200, 0, 0, 0 },
   { "prim_face_textures", (void **)&prim_face_textures,	16u, 500, 0, 0, 0 },
   { "prim_object_points", (void **)&prim_object_points,	10u, 2000, 0, 0, 0 },
-  { "prim_object_faces", (void **)&prim_object_faces,	32u, 800, 0, 0, 0 },
+  { "prim_object_faces3", (void **)&prim_object_faces3,	32u, 800, 0, 0, 0 },
   { "prim_object_faces4", (void **)&prim_object_faces4,	40u, 1300, 0, 0, 0 },
   { "prim_objects",		(void **)&prim_objects,			36u, 60, 0, 0, 0 },
-  { "special_object_faces", (void **)&game_special_object_faces, 32u, 1400, 0, 0, 0 },
-  { "special_object_faces4",(void **)&game_special_object_faces4, 40u, 1400, 0, 0, 0 },
+  { "special_obj_faces3", (void **)&game_special_obj_faces3, 32u, 1400, 0, 0, 0 },
+  { "special_obj_faces4", (void **)&game_special_obj_faces4, 40u, 1400, 0, 0, 0 },
   { "floor_tiles",		(void **)&game_floor_tiles,		39u, 18000, 0, 0, 0 },
   { "used_objectives",	(void **)&game_used_objectives,	32u, 1200, 0, 0, 0 },
   { "objectives",		(void **)&game_objectives,		32u, 1200, 0, 0, 0 },
@@ -113,6 +128,14 @@ PathInfo game_dirs[] = {
   {NULL,		0},
 };
 
+void SetupBflibScreenshotsDir(void)
+{
+    PathInfo *pinfo;
+
+    pinfo = &game_dirs[DirPlace_Scrnshots];
+    LbSetImagesDirectory(pinfo->directory);
+}
+
 const char *
 GetDirectoryUser(void)
 {
@@ -124,7 +147,7 @@ GetDirectoryUser(void)
         {
             snprintf(data_path_user, sizeof(data_path_user), ".");
         }
-        LbSyncLog("Dir for user files '%s'", data_path_user);
+        LOGSYNC_F("Dir for user files '%s'", data_path_user);
 
         pinfo = &game_dirs[DirPlace_Savegame];
         LbDirectoryMake(pinfo->directory, true);
@@ -144,7 +167,7 @@ GetDirectoryHdd(void)
         {
             snprintf(data_path_hdd, sizeof(data_path_hdd), "%s", ".");
         }
-        LbSyncLog("Dir with HDD data '%s'",data_path_hdd);
+        LOGSYNC_F("Dir with HDD data '%s'", data_path_hdd);
     }
     return data_path_hdd;
 }
@@ -231,20 +254,27 @@ void SyndFileNameTransform(char *out_fname, const char *inp_fname)
         base_dir = GetDirectoryHdd();
     }
 
-    strncpy(fs_fname, inp_fname, DISKPATH_SIZE);
+    strncpy(fs_fname, inp_fname, DISKPATH_SIZE-1);
+    fs_fname[DISKPATH_SIZE-1] = '\0';
     // Switch the input folder separators to proper ones for current os
     replace_fs_separator_to_native(fs_fname);
     // Add base path only if the input one is not absolute
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
     if (fs_fname[0] == FS_SEP || (strlen(fs_fname) >= 2 && fs_fname[1] == ':')) {
         snprintf(out_fname, FILENAME_MAX-1, "%s", fs_fname);
     } else {
         snprintf(out_fname, FILENAME_MAX-1, "%s" FS_SEP_STR "%s", base_dir, fs_fname);
     }
+#pragma GCC diagnostic pop
 }
 
 void setup_file_names(void)
 {
+#if LB_FILENAME_TRANSFORM
     lbFileNameTransform = SyndFileNameTransform;
+#endif
+    SetupBflibScreenshotsDir();
     // This fills the path variable; for user, it also creates the folder
     GetDirectoryHdd();
     GetDirectoryUser();
@@ -308,7 +338,7 @@ int get_memory_ptr_index(void **mgptr)
     return -1;
 }
 
-long get_memory_ptr_allocated_count(void **mgptr)
+int get_memory_ptr_allocated_count(void **mgptr)
 {
     int i;
     for (i = 0; mem_game[i].Name != NULL; i++)
@@ -387,7 +417,7 @@ void adjust_memory_use(void)
         mem_game[i].N = 2000;
     total += mem_game[i].ESize * mem_game[i].N;
 
-    assert((i = get_memory_ptr_index((void **)&prim_object_faces)) != -1);
+    assert((i = get_memory_ptr_index((void **)&prim_object_faces3)) != -1);
     if ((ingame.LowerMemoryUse == 1) && (is_single_game || cmdln_param_bcg))
         mem_game[i].N = 2000;
     total += mem_game[i].ESize * mem_game[i].N;
@@ -397,7 +427,7 @@ void adjust_memory_use(void)
         mem_game[i].N = 2000;
     total += mem_game[i].ESize * mem_game[i].N;
 
-    assert((i = get_memory_ptr_index((void **)&game_object_faces)) != -1);
+    assert((i = get_memory_ptr_index((void **)&game_object_faces3)) != -1);
     if (ingame.LowerMemoryUse == 1)
         mem_game[i].N = 11000;
     total += mem_game[i].ESize * mem_game[i].N;
@@ -430,7 +460,7 @@ void adjust_memory_use(void)
     if (ingame.LowerMemoryUse == 1)
     {
         engine_mem_alloc_size = (2000000 + total + 0xFFFF) & ~0xFFFF;
-        game_perspective = 5;
+        game_perspective = ProjM_Perspective;
     } else
     {
         engine_mem_alloc_size = (2850000 + total + 0xFFFF) & ~0xFFFF;
@@ -452,7 +482,7 @@ uint memory_table_entries(MemSystem *mem_table)
     return i;
 }
 
-void init_memory(MemSystem *mem_table)
+TbResult init_memory(MemSystem *mem_table)
 {
     MemSystem *ment;
     int mem_table_len;
@@ -460,15 +490,26 @@ void init_memory(MemSystem *mem_table)
     ubyte *p;
     int i;
     ulong k;
+    TbResult ret;
 
+    ret = Lb_SUCCESS;
     totlen = 8192;
     mem_table_len = memory_table_entries(mem_table);
 
-    p = scratch_malloc_mem;
+    if (engine_mem_alloc_ptr == NULL) {
+        LOGWARN("Memory for engine not allocated; further init will not work correctly");
+        ret = Lb_FAIL;
+    }
+
+    if (tmaps_extra_buf == NULL) {
+        LOGWARN("Texture maps not allocated; cannor reuse their extra memory");
+    }
+
+    p = NULL;
     for (i = mem_table_len - 1; i >= 0; i--)
     {
         ment = &mem_table[i];
-        if (i == 17)
+        if (i == 17) // col_columns
             p = engine_mem_alloc_ptr + totlen;
 
         if (ment->PrivBuffer == NULL)
@@ -476,29 +517,116 @@ void init_memory(MemSystem *mem_table)
             if ((engine_mem_alloc_size & 0x80000000) == 0)
               ment->PrivBuffer = engine_mem_alloc_ptr + totlen;
             else
-              exit_game = 1;
+              ret = Lb_FAIL;
 
-            if (ment->N * (ulong)ment->ESize >= dword_1810D5 || mem_game_index_is_prim(i))
+            if (ment->N * (ulong)ment->ESize < tmaps_extra_len && !mem_game_index_is_prim(i))
+            {
+                // Reuse extra texture maps atlas memory
+                ment->PrivBuffer = tmaps_extra_buf;
+                k = ment->N * ment->ESize;
+                k = (k + 4) & ~0x3;
+                tmaps_extra_len -= k;
+                tmaps_extra_buf += k;
+            }
+            else
             {
                 k = ment->N * ment->ESize;
                 k = (k + 4) & ~0x3;
                 totlen += k;
                 assert(totlen <= engine_mem_alloc_size);
             }
-            else
-            {
-                ment->PrivBuffer = dword_1810D1;
-                k = ment->N * ment->ESize;
-                k = (k + 4) & ~0x3;
-                dword_1810D5 -= k;
-                dword_1810D1 += k;
-            }
             *(ment->BufferPtr) = ment->PrivBuffer;
         }
     }
-    scratch_malloc_mem = p;
+    if (p != NULL) {
+        scratch_malloc_mem = p;
+        assert((ubyte *)engine_mem_alloc_ptr + engine_mem_alloc_size > p);
+        scratch_malloc_size = (ubyte *)engine_mem_alloc_ptr + engine_mem_alloc_size - p;
+    } else {
+        LOGWARN("Memory for scratch_malloc not prepared");
+        scratch_malloc_size = 0;
+        ret = Lb_FAIL;
+    }
+
+    //TODO clear first two entries only? looks like some workaround; maybe swrender should have mem init function?
     memset(game_sort_sprites, 0, 0x20u);
-    scratch_buf1 = *ment[23].BufferPtr; // prim_objects
+
+    scratch_buf1 = *mem_table[23].BufferPtr; // prim_objects
+    if (scratch_buf1 == NULL) {
+        LOGWARN("Memory for scratch_buf1 not prepared");
+        ret = Lb_FAIL;
+    }
+
+    if (ret == Lb_FAIL) {
+        LOGSYNC("Memory init failed, game will exit");
+        exit_game = 1;
+    } else {
+        LOGSYNC("Memory init performed");
+    }
+
+    return ret;
 }
 
+TbResult propagate_memory_sizes(void)
+{
+    TbResult ret;
+
+    ret = Lb_SUCCESS;
+
+    screen_points_limit = mem_game[30].N;
+    assert(screen_points_limit > 0);
+    draw_items_limit = mem_game[31].N;
+    assert(draw_items_limit > 0);
+    sort_lines_limit = get_memory_ptr_allocated_count((void **)&game_sort_lines);
+    assert(sort_lines_limit > 0);
+    sort_sprites_limit = get_memory_ptr_allocated_count((void **)&game_sort_sprites);
+    assert(sort_sprites_limit > 0);
+    floor_tiles_limit = get_memory_ptr_allocated_count((void **)&game_floor_tiles);
+    assert(floor_tiles_limit > 0);
+
+    game_textures_limit = get_memory_ptr_allocated_count((void **)&game_textures);
+    assert(game_textures_limit > 0);
+    face_textures_limit = get_memory_ptr_allocated_count((void **)&game_face_textures);
+    assert(face_textures_limit > 0);
+    game_anim_tmaps_limit = get_memory_ptr_allocated_count((void **)&game_anim_tmaps);
+    assert(game_anim_tmaps_limit > 0);
+
+    game_object_points_limit = get_memory_ptr_allocated_count((void **)&game_object_points);
+    assert(game_object_points_limit > 0);
+    game_object_faces3_limit = get_memory_ptr_allocated_count((void **)&game_object_faces3);
+    assert(game_object_faces3_limit > 0);
+    game_object_faces4_limit = get_memory_ptr_allocated_count((void **)&game_object_faces4);
+    assert(game_object_faces4_limit > 0);
+    game_normals_limit = get_memory_ptr_allocated_count((void **)&game_normals);
+    assert(game_normals_limit > 0);
+    game_objects_limit = get_memory_ptr_allocated_count((void **)&game_objects);
+    assert(game_objects_limit > 0);
+
+    game_special_obj_faces3_limit = get_memory_ptr_allocated_count((void **)&game_special_obj_faces3);
+    assert(game_special_obj_faces3_limit > 0);
+    game_special_obj_faces4_limit = get_memory_ptr_allocated_count((void **)&game_special_obj_faces4);
+    assert(game_special_obj_faces4_limit > 0);
+
+    prim_object_faces3_limit = get_memory_ptr_allocated_count((void **)&prim_object_faces3);
+    assert(prim_object_faces3_limit > 0);
+    prim_object_faces4_limit = get_memory_ptr_allocated_count((void **)&prim_object_faces4);
+    assert(prim_object_faces4_limit > 0);
+
+    return ret;
+}
+
+void init_things_memory_with_user_heap(void)
+{
+    ubyte *buf;
+    u32 sthings_len, things_len;
+
+    buf = game_user_heap + 34000;
+    sthings_len = STHINGS_LIMIT * sizeof(struct SimpleThing);
+    things_len = THINGS_LIMIT * sizeof(struct Thing);
+    LbMemorySet(buf, 0, sthings_len + things_len);
+
+    buf += sthings_len;
+    things = (struct Thing *)buf;
+    sthings = (struct SimpleThing *)buf;
+}
 /******************************************************************************/

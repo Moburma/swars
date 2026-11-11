@@ -99,15 +99,9 @@ def enctable_string_to_bytes(cte, s):
 
 
 def datitem_string_national_adjust(stri):
-    stro = ""
-    for c in stri:
-        if c in "êô":
-            stro = stro + unicodedata.normalize('NFKD', c).encode('ascii', 'ignore').decode('ascii', errors='ignore')
-        elif c in "ÍÓÚ": # TODO is that really needed? remove, if it will not cause regression in these chars
-            stro = stro + c.lower()
-        else:
-            stro = stro + c
-    return stro
+    # currently, there is no need to alter the national character codes
+    # no need to convert to upper() nor normalize('NFKD')
+    return stri
 
 
 def datitem_string_to_bytes(po, s):
@@ -235,6 +229,7 @@ def textdat_create_from_po(lines, polist, txtfname):
         for e in polist:
             # Find entries matching for current txt file
             for place, num in e.occurrences:
+                assert (campgn,place,num,) not in pomdict, f"Place '{campgn},{place}:{num}' repeats"
                 pomdict[ (campgn,place,num,) ] = e
     create_lines_for_per_line(lines, pomdict, 'guitext')
     return

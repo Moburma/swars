@@ -22,9 +22,12 @@
 #include "bfini.h"
 #include "bfmemory.h"
 #include "bfmemut.h"
+#include "bfpalette.h"
 #include "bfplanar.h"
 #include "bfscreen.h"
 #include "bfsprite.h"
+
+#include "engincolour.h"
 
 #include "game.h"
 #include "game_data.h"
@@ -36,10 +39,21 @@
 
 enum PanelsCommonConfigCmd {
     PnComnCmd_PanelsCount = 1,
+    PnComnCmd_AgentNumberAnim,
 };
 
 const struct TbNamedEnum panels_conf_common_cmnds[] = {
   {"PanelsCount",	PnComnCmd_PanelsCount},
+  {"AgentNumberAnim",	PnComnCmd_AgentNumberAnim},
+  {NULL,			0},
+};
+
+const struct TbNamedEnum panels_conf_colour_cmnds[] = {
+  {"Text",			PanColr_Text + 1},
+  {"PlanRoadway",	PanColr_Roadway + 1},
+  {"PlanLiquid",	PanColr_Liquid + 1},
+  {"Outline",		PanColr_Outline + 1},
+  {"Frame",			PanColr_Frame + 1},
   {NULL,			0},
 };
 
@@ -122,6 +136,8 @@ const struct TbNamedEnum panels_conf_panel_type[] = {
   {"WeaponEnergy",	PanT_WeaponEnergy + 1},
   {"UNKN09",		PanT_UNKN09 + 1},
   {"Grouping",		PanT_Grouping + 1},
+  {"Scanner",		PanT_Scanner + 1},
+  {"Objective",		PanT_Objective + 1},
   {NULL,			0},
 };
 
@@ -135,6 +151,11 @@ const struct TbNamedEnum panels_conf_panel_flags[] = {
   {"RepositionWithParent",	PanF_REPOSITION_WITH_PARENT},
   {"RepositionToAfter",		PanF_REPOSITION_TO_AFTER},
   {"StrechToParentSize",	PanF_STRECH_TO_PARENT_SIZE},
+  {"ResizeProporHoriz",		PanF_RESIZE_PROPOR_HORIZ},
+  {"ResizeProporVertc",		PanF_RESIZE_PROPOR_VERTC},
+  {"ResizeTextOnlyVertc",	PanF_RESIZE_TEXT_ONLY_VERTC},
+  {"ResizeAnchorEndVertc",	PanF_RESIZE_ANCHOR_END_VERTC},
+  {"FillRemainingVertc",	PanF_FILL_REMAINING_VERTC},
   {NULL,					0},
 };
 
@@ -145,6 +166,7 @@ const struct TbNamedEnum panels_conf_any_bool[] = {
 };
 
 struct GamePanel game_panel_custom[GAME_PANELS_LIMIT];
+struct PanelStyle game_panel_custom_style;
 struct TbPoint game_panel_custom_shifts[48];
 
 // Original sizes of scanner in low res 64x62, high res 129x119
@@ -210,26 +232,6 @@ int panel_get_objective_info_height(short screen_height)
     return h;
 }
 
-void panel_get_scanner_screen_size(short *p_margin, short *p_width, short *p_height,
-  short screen_width, short screen_height, short spr_scale)
-{
-    int margin, width, height;
-
-    width = screen_width * scanner_width_pct / 100;
-    height = screen_height * scanner_height_pct / 100;
-    margin = panel_get_objective_info_height(screen_height) + 2;
-    if (screen_width >= 640) {
-        width = width * 101 / 100;
-        height = height * 99 / 100;
-    } else {
-        // width without change
-        height = height * 124 / 100;
-    }
-    *p_margin = margin;
-    *p_width = width;
-    *p_height = height;
-}
-
 void panel_strech_width_to_res(short detail)
 {
     short base_width;
@@ -256,7 +258,7 @@ void panel_strech_width_to_res(short detail)
 
         if (p_panel->Spr[1] == -1)
             continue;
-        if ((p_panel->Flags & (PanF_SPRITES_IN_LINE_HORIZ|PanF_REPOSITION_HORIZ)) == 0)
+        if ((p_panel->Flags & (PanF_SPRITES_IN_LINE_HORIZ|PanF_REPOSITION_HORIZ|PanF_RESIZE_PROPOR_HORIZ)) == 0)
             continue;
 
         if (p_panel->Spr[1] > 0)
@@ -281,7 +283,8 @@ void panel_strech_width_to_res(short detail)
             new_dim = p_panel->pos.X * lbDisplay.GraphicsScreenWidth / base_width;
             dt_x = new_dim - p_panel->pos.X;
         }
-        if ((p_panel->Flags & PanF_RESIZE_MIDDLE_SPR) != 0)
+        if ((((p_panel->Flags & PanF_RESIZE_MIDDLE_SPR) != 0) && ((p_panel->Flags & PanF_SPRITES_IN_LINE_HORIZ) != 0))
+          || ((p_panel->Flags & PanF_RESIZE_PROPOR_HORIZ) != 0))
         {
             new_dim = p_panel->pos.Width * lbDisplay.GraphicsScreenWidth / base_width;
             dt_width = new_dim - p_panel->pos.Width;
@@ -319,21 +322,68 @@ void panel_strech_width_to_res(short detail)
 
 void panel_strech_height_to_res(short detail)
 {
-    short scan_margin, scan_width, scan_height;
     short base_height, curr_height;
     short panel;
+    short remain_panel[3];
 
     if (detail == 0) {
-        panel_get_scanner_screen_size(&scan_margin, &scan_width, &scan_height, 320, 200, 1);
-        base_height = (200 - (scan_height + scan_margin)) * (detail + 1);
+        base_height = 200 * (detail + 1);
     } else {
-        panel_get_scanner_screen_size(&scan_margin, &scan_width, &scan_height, 640, 480, 2);
-        base_height = (240 - (scan_height + scan_margin)/2) * (detail + 1);
+        base_height = 240 * (detail + 1);
     }
 
-    panel_get_scanner_screen_size(&scan_margin, &scan_width, &scan_height,
-      lbDisplay.GraphicsScreenWidth, lbDisplay.GraphicsScreenHeight, detail + 1);
-    curr_height = lbDisplay.GraphicsScreenHeight - (scan_height + scan_margin);
+    curr_height = lbDisplay.GraphicsScreenHeight;
+
+    remain_panel[1] = -1;
+    // Find panel which is supposed to gather remaining size
+    for (panel = 0; panel < GAME_PANELS_LIMIT; panel++)
+    {
+        struct GamePanel *p_panel;
+
+        p_panel = &game_panel_custom[panel];
+        if (p_panel->Spr[0] == -1)
+            break;
+        if ((p_panel->Flags & PanF_FILL_REMAINING_VERTC) != 0)
+        {
+            remain_panel[1] = panel;
+            break;
+        }
+    }
+    // Find panels before and after the remain panel
+    remain_panel[0] = -1;
+    remain_panel[2] = -1;
+    if (remain_panel[1] >= 0)
+    {
+        struct GamePanel *p_rmpane;
+        short dt_before, dt_after;
+
+        p_rmpane = &game_panel_custom[remain_panel[1]];
+        dt_before = INT16_MAX;
+        dt_after = INT16_MAX;
+        for (panel = 0; panel < GAME_PANELS_LIMIT; panel++)
+        {
+            struct GamePanel *p_panel;
+            short dt;
+
+            p_panel = &game_panel_custom[panel];
+            if (p_panel->Spr[0] == -1)
+                break;
+            if (panel == remain_panel[1])
+                continue;
+            dt = p_rmpane->pos.Y - (p_panel->pos.Y + p_panel->pos.Height);
+            if ((dt >= 0) && (dt < dt_before))
+            {
+                dt_before = dt;
+                remain_panel[0] = panel;
+            }
+            dt = p_panel->pos.Y - (p_rmpane->pos.Y + p_rmpane->pos.Height);
+            if ((dt >= 0) && (dt < dt_after))
+            {
+                dt_after = dt;
+                remain_panel[2] = panel;
+            }
+        }
+    }
 
     for (panel = 0; panel < GAME_PANELS_LIMIT; panel++)
     {
@@ -355,7 +405,7 @@ void panel_strech_height_to_res(short detail)
 
         if (p_panel->Spr[1] == -1)
             continue;
-        if ((p_panel->Flags & (PanF_SPRITES_IN_LINE_VERTC|PanF_REPOSITION_VERTC)) == 0)
+        if ((p_panel->Flags & (PanF_SPRITES_IN_LINE_VERTC|PanF_REPOSITION_VERTC|PanF_RESIZE_PROPOR_VERTC|PanF_RESIZE_TEXT_ONLY_VERTC)) == 0)
             continue;
 
         if (p_panel->Spr[1] > 0)
@@ -373,7 +423,7 @@ void panel_strech_height_to_res(short detail)
             p_panel->SprHeight += p_spr->SHeight;
         }
 
-        // Compute adjusted size, bot better fit the panel size
+        // Compute adjusted size, to better fit the panel size
         adjusted_base_height = base_height;
         adjusted_curr_height = curr_height;
         for (owpanl = 0; owpanl < GAME_PANELS_LIMIT; owpanl++)
@@ -396,6 +446,12 @@ void panel_strech_height_to_res(short detail)
                 adjusted_curr_height -= adj_height;
             }
         }
+        // Any panel to fill the remaining space, may be severely affected by shrinking
+        // So if there is such panel, and we are shrinking - shrink more than what is mandatory
+        if ((remain_panel[1] >= 0) && (adjusted_curr_height < adjusted_base_height * 7 / 8))
+        {
+            adjusted_curr_height = adjusted_curr_height * 7 / 8;
+        }
 
         dt_y = 0;
         dt_height = 0;
@@ -404,7 +460,12 @@ void panel_strech_height_to_res(short detail)
             new_dim = p_panel->pos.Y * adjusted_curr_height / adjusted_base_height;
             dt_y = new_dim - p_panel->pos.Y;
         }
-        if ((p_panel->Flags & PanF_RESIZE_MIDDLE_SPR) != 0)
+        if ((p_panel->Flags & PanF_RESIZE_TEXT_ONLY_VERTC) != 0) {
+            new_dim = panel_get_objective_info_height(curr_height);
+            dt_height = new_dim - p_panel->pos.Height;
+        }
+        else if ((((p_panel->Flags & PanF_RESIZE_MIDDLE_SPR) != 0) && ((p_panel->Flags & PanF_SPRITES_IN_LINE_VERTC) != 0))
+          || ((p_panel->Flags & PanF_RESIZE_PROPOR_VERTC) != 0))
         {
             if ((p_panel->Flags & PanF_REPOSITION_VERTC) != 0) {
                 new_dim = p_panel->pos.Height * adjusted_curr_height / adjusted_base_height;
@@ -412,6 +473,13 @@ void panel_strech_height_to_res(short detail)
                 new_dim = p_panel->pos.Height * (adjusted_curr_height - p_panel->pos.Y) / (adjusted_base_height - p_panel->pos.Y);
             }
             dt_height = new_dim - p_panel->pos.Height;
+            if ((p_panel->Flags & PanF_RESIZE_ANCHOR_END_VERTC) != 0) {
+                dt_y -= dt_height;
+            }
+        }
+        if ((p_panel->pos.Y + dt_y + p_panel->pos.Height + dt_height >= curr_height)
+          || (p_panel->pos.Y + p_panel->pos.Height == base_height)) {
+            dt_y = curr_height - (p_panel->pos.Height + dt_height) - p_panel->pos.Y;
         }
 
         p_panel->pos.Y += dt_y;
@@ -444,6 +512,31 @@ void panel_strech_height_to_res(short detail)
             }
         }
     }
+
+    // Now after all panels are resized, do the same to remain panel
+    if (remain_panel[1] >= 0)
+    {
+        struct GamePanel *p_rmpane;
+        struct GamePanel *p_panel;
+        short dt_y, dt_height;
+
+        p_rmpane = &game_panel_custom[remain_panel[1]];
+        dt_y = 0;
+        dt_height = 0;
+
+        if (remain_panel[0] >= 0) {
+            p_panel = &game_panel_custom[remain_panel[0]];
+            dt_y = p_panel->pos.Y + p_panel->pos.Height - p_rmpane->pos.Y;
+        }
+        if (remain_panel[2] >= 0) {
+            p_panel = &game_panel_custom[remain_panel[2]];
+            dt_height = p_panel->pos.Y - (p_rmpane->pos.Y + dt_y + p_rmpane->pos.Height);
+        }
+        p_rmpane->pos.Y += dt_y;
+        p_rmpane->dyn.Y += dt_y;
+        p_rmpane->pos.Height += dt_height;
+        p_rmpane->dyn.Height += dt_height;
+    }
 }
 
 void size_panels_for_detail(short detail)
@@ -452,27 +545,41 @@ void size_panels_for_detail(short detail)
     short styleno;
 
     if (ingame.PanelPermutation >= 0) {
+        styleno = ingame.PanelPermutation;
         name = "panel";
     } else {
+        styleno = -ingame.PanelPermutation - 1;
         name = "pop";
     }
-    // Currently we use the same config for all styles
-    styleno = 0;
+    LOGDBG("Begin for \"%s\" style=%d", name, (int)styleno);
     read_panel_config(name, styleno, detail);
     update_panel_derivative_shifts(detail);
     panel_strech_width_to_res(detail);
     panel_strech_height_to_res(detail);
     game_panel = game_panel_custom;
+    game_panel_style = &game_panel_custom_style;
     game_panel_shifts = game_panel_custom_shifts;
+}
+
+void panel_set_default_colours(struct PanelStyle *p_style)
+{
+    p_style->Colours[PanColr_Liquid] = LbPaletteFindColour(display_palette, 13,7,30);
+    p_style->Colours[PanColr_Text] = p_style->Colours[PanColr_Liquid];
+    p_style->Colours[PanColr_Roadway] = LbPaletteFindColour(display_palette, 22,22,22);
+    p_style->Colours[PanColr_Frame] = p_style->Colours[PanColr_Liquid];
+    p_style->Colours[PanColr_Outline] = LbPaletteFindColour(display_palette, 0,63,63);
+    p_style->AgentNumAnim = 1520;
+    p_style->AgentNumDetails = 2;
 }
 
 TbBool read_panel_config(const char *name, ushort styleno, ushort detail)
 {
+    struct PanelStyle *p_style;
     PathInfo *pinfo;
     TbFileHandle conf_fh;
     TbBool done;
     int i, n;
-    long k, m;
+    long k, m, p;
     char *conf_buf;
     struct TbIniParser parser;
     char conf_fname[DISKPATH_SIZE];
@@ -480,6 +587,7 @@ TbBool read_panel_config(const char *name, ushort styleno, ushort detail)
     short pop_panel_count, panel;
 
     pinfo = &game_dirs[DirPlace_Config];
+    p_style = &game_panel_custom_style;
     snprintf(conf_fname, DISKPATH_SIZE-1, "%s/%s%hu-%hu.ini", pinfo->directory, name, styleno, detail);
     conf_fh = LbFileOpen(conf_fname, Lb_FILE_MODE_READ_ONLY);
     if (conf_fh != INVALID_FILE) {
@@ -526,6 +634,15 @@ TbBool read_panel_config(const char *name, ushort styleno, ushort detail)
             }
             pop_panel_count = k;
             CONFDBGLOG("%s %d", COMMAND_TEXT(cmd_num), (int)pop_panel_count);
+            break;
+        case PnComnCmd_AgentNumberAnim:
+            i = LbIniValueGetLongInt(&parser, &k);
+            if (i <= 0) {
+                CONFWRNLOG("Could not read \"%s\" command parameter.", COMMAND_TEXT(cmd_num));
+                break;
+            }
+            p_style->AgentNumAnim = k;
+            CONFDBGLOG("%s %d", COMMAND_TEXT(cmd_num), (int)p_style->AgentNumAnim);
             break;
         case 0: // comment
             break;
@@ -593,6 +710,63 @@ TbBool read_panel_config(const char *name, ushort styleno, ushort detail)
             p_shift->x = k;
             p_shift->y = m;
             CONFDBGLOG("%s (%d,%d)", COMMAND_TEXT(cmd_num), (int)p_shift->x, (int)p_shift->y);
+            break;
+        case 0: // comment
+            break;
+        case -1: // end of buffer
+        case -3: // end of section
+            done = true;
+            break;
+        default:
+            CONFWRNLOG("Unrecognized command.");
+            break;
+        }
+        LbIniSkipToNextLine(&parser);
+    }
+#undef COMMAND_TEXT
+
+    // Parse the [colour] section of loaded file
+    if (conf_len > 0) {
+        panel_set_default_colours(p_style);
+    }
+    done = false;
+    if (LbIniFindSection(&parser, "colour") != Lb_SUCCESS) {
+        CONFWRNLOG("Could not find \"[%s]\" section.", "colour");
+        done = true;
+    }
+#define COMMAND_TEXT(cmd_num) LbNamedEnumGetName(panels_conf_colour_cmnds,cmd_num)
+    while (!done)
+    {
+        int cmd_num;
+
+        // Finding command number in this line
+        i = 0;
+        cmd_num = LbIniRecognizeKey(&parser, panels_conf_colour_cmnds);
+        // Now store the config item in correct place
+        switch (cmd_num)
+        {
+        case PanColr_Text + 1:
+        case PanColr_Roadway + 1:
+        case PanColr_Liquid + 1:
+        case PanColr_Outline + 1:
+        case PanColr_Frame + 1:
+            i = LbIniValueGetLongInt(&parser, &k);
+            if (i <= 0) {
+                CONFWRNLOG("Could not read \"%s\" command 1st parameter.", COMMAND_TEXT(cmd_num));
+                break;
+            }
+            i = LbIniValueGetLongInt(&parser, &m);
+            if (i <= 0) {
+                CONFWRNLOG("Could not read \"%s\" command 2nd parameter.", COMMAND_TEXT(cmd_num));
+                break;
+            }
+            i = LbIniValueGetLongInt(&parser, &p);
+            if (i <= 0) {
+                CONFWRNLOG("Could not read \"%s\" command 2nd parameter.", COMMAND_TEXT(cmd_num));
+                break;
+            }
+            p_style->Colours[cmd_num - 1] = LbPaletteFindColour(display_palette, k>>2, m>>2, p>>2);
+            CONFDBGLOG("%s (%d)", COMMAND_TEXT(cmd_num), (int)p_style->Colours[cmd_num - 1]);
             break;
         case 0: // comment
             break;

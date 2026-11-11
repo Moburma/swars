@@ -91,7 +91,7 @@ TbBool LbFileExists(const char *fname)
         fname = real_fname;
     }
 #endif
-    return access(fname,F_OK) == 0;
+    return access(fname, F_OK) == 0;
 }
 
 long LbFilePosition(TbFileHandle fhandle)

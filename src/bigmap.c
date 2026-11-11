@@ -18,17 +18,18 @@
 /******************************************************************************/
 #include "bigmap.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <limits.h>
 #include "bfmath.h"
 #include "bfmemut.h"
 
+#include "enginprops.h"
+#include "enginsngtxtr.h"
+
+#include "game_data.h"
 #include "swlog.h"
 /******************************************************************************/
-struct MapOffset spiral_step[SPIRAL_STEPS_COUNT];
-ushort dist_tiles_to_spiral_step[MAP_TILE_WIDTH];
-ushort spiral_dist_tiles_limit = 0;
-
 const struct Direction angle_direction[] = {
     {   0,  256},
     { 181,  181},
@@ -40,8 +41,21 @@ const struct Direction angle_direction[] = {
     {-181,  181},
 };
 
-void map_coords_limit(MapCoord *cor_x, MapCoord *cor_y, MapCoord *cor_z, long map_x, long map_y, long map_z)
+struct MapOffset spiral_step[SPIRAL_STEPS_COUNT];
+ushort dist_tiles_to_spiral_step[MAP_TILE_WIDTH];
+ushort spiral_dist_tiles_limit = 0;
+
+struct MyMapElement *game_my_big_map = NULL;
+
+struct ColColumn *game_col_columns = NULL;
+ushort next_col_column = 1;
+/******************************************************************************/
+
+TbBool map_coords_limit(MapCoord *cor_x, MapCoord *cor_y, MapCoord *cor_z, long map_x, long map_y, long map_z)
 {
+    TbBool altered;
+
+    altered = false;
     if (map_x < 0)
         map_x = 0;
     else if (map_x >= MAP_COORD_WIDTH)
@@ -57,12 +71,20 @@ void map_coords_limit(MapCoord *cor_x, MapCoord *cor_y, MapCoord *cor_z, long ma
     else if (map_z >= MAP_COORD_HEIGHT)
         map_z = MAP_COORD_HEIGHT - 1;
 
-    if (cor_x != NULL)
+    if (cor_x != NULL) {
+        altered |= (*cor_x != map_x);
         *cor_x = map_x;
-    if (cor_y != NULL)
+    }
+    if (cor_y != NULL) {
+        altered |= (*cor_y != map_y);
         *cor_y = map_y;
-    if (cor_z != NULL)
+    }
+    if (cor_z != NULL) {
+        altered |= (*cor_z != map_z);
         *cor_z = map_z;
+    }
+
+    return altered;
 }
 
 void clear_mapwho_on_whole_map(void)
@@ -211,13 +233,9 @@ void init_search_spiral(void)
     LOGSYNC("Created for distance up to %hu tiles", spiral_dist_tiles_limit);
 }
 
-ushort floor_texture_at_point(MapCoord cor_x, MapCoord cor_z)
+ushort floor_texture_at_tile(short tile_x, short tile_z)
 {
     struct MyMapElement *p_mapel;
-    short tile_x, tile_z;
-
-    tile_x = MAPCOORD_TO_TILE(cor_x);
-    tile_z = MAPCOORD_TO_TILE(cor_z);
 
     if ((tile_x < 0) || (tile_x >= MAP_TILE_WIDTH))
         return 0;
@@ -226,6 +244,16 @@ ushort floor_texture_at_point(MapCoord cor_x, MapCoord cor_z)
 
     p_mapel = &game_my_big_map[MAP_TILE_WIDTH * (tile_z) + (tile_x)];
     return (p_mapel->Texture & 0x3FFF);
+}
+
+ushort floor_texture_at_point(MapCoord cor_x, MapCoord cor_z)
+{
+    short tile_x, tile_z;
+
+    tile_x = MAPCOORD_TO_TILE(cor_x);
+    tile_z = MAPCOORD_TO_TILE(cor_z);
+
+    return floor_texture_at_tile(tile_x, tile_z);
 }
 
 int alt_at_point(short x, short z)
@@ -288,6 +316,55 @@ int alt_at_point(short x, short z)
 #endif
 }
 
+int alt_at_point_under_height(int cor_x, int cor_z, int h)
+{
+#if 0
+    int ret;
+    asm volatile (
+      "call ASM_alt_at_point_under_height\n"
+        : "=r" (ret) : "a" (x), "d" (z), "b" (h));
+    return ret;
+#endif
+    short tile_x, tile_z;
+    ushort ccol;
+    ubyte qb;
+
+    tile_x = MAPCOORD_TO_TILE(cor_x);
+    tile_z = MAPCOORD_TO_TILE(cor_z);
+
+    if ((tile_x < 0) || (tile_x >= MAP_TILE_WIDTH))
+        return 0;
+    if ((tile_z < 0) || (tile_z >= MAP_TILE_HEIGHT))
+        return 0;
+
+    ccol = get_mapel_col_column_head(tile_x, tile_z);
+    qb = map_coord_to_collision_qbit_index(cor_x, cor_z);
+
+    int alt_curr, alt_best, h_max;
+
+    h_max = 8 * h;
+    alt_curr = 8 * alt_at_point(cor_x, cor_z);
+    alt_best = alt_curr;
+
+    if (ccol != 0)
+    {
+        struct ColColumn *p_ccol;
+        u32 mask;
+
+        p_ccol = &game_col_columns[ccol];
+
+        for (mask = 1; mask; mask *= 2)
+        {
+            if (alt_curr > h_max)
+                break;
+            if ((mask & p_ccol->QBits[qb]) != 0)
+                alt_best = alt_curr;
+            alt_curr += 0x8000;
+        }
+    }
+    return alt_best;
+}
+
 int alt_change_at_tile(short tile_x, short tile_z, int *change_xz)
 {
     int alt_min, alt_max;
@@ -319,6 +396,79 @@ int alt_change_at_tile(short tile_x, short tile_z, int *change_xz)
     if (change_xz != NULL)
         *change_xz = 256;
     return abs(alt_max - alt_min);
+}
+
+int is_this_a_nice_place_for_a_picnic(s32 prc_x, s32 prc_z)
+{
+    int ret;
+    asm volatile (
+      "call ASM_is_this_a_nice_place_for_a_picnic\n"
+        : "=r" (ret) : "a" (prc_x), "d" (prc_z));
+    return ret;
+}
+
+ubyte map_coord_to_collision_qbit_index(short x, short z)
+{
+    ubyte qb;
+
+    if ((x & 0xFF) <= 127) {
+        if ((z & 0xFF) <= 127)
+            qb = 0;
+        else
+            qb = 3;
+    } else {
+        if ((z & 0xFF) <= 127)
+            qb = 1;
+        else
+            qb = 2;
+    }
+    return qb;
+}
+
+ushort get_mapel_col_column_head(short tile_x, short tile_z)
+{
+    struct MyMapElement *p_mapel;
+
+    if ((tile_x < 0) || (tile_x >= MAP_TILE_WIDTH))
+        return 0;
+    if ((tile_z < 0) || (tile_z >= MAP_TILE_HEIGHT))
+        return 0;
+
+    p_mapel = &game_my_big_map[MAP_TILE_WIDTH * tile_z + tile_x];
+
+    return p_mapel->ColumnHead & COL_COLUMN_MASK;
+}
+
+void set_mapel_col_columns(struct MyMapElement *p_mapel, short setbit, ushort qb)
+{
+    struct ColColumn *p_ccol;
+    ushort ccol;
+
+    if (setbit < 0)
+        return;
+    ccol = p_mapel->ColumnHead & COL_COLUMN_MASK;
+    if (ccol == 0)
+    {
+        int limit;
+
+        limit = get_memory_ptr_allocated_count((void **)&game_col_columns);
+        if (next_col_column >= limit) {
+            LOGERR("out of col_columns");
+            return;
+        }
+        ccol = next_col_column;
+        next_col_column++;
+
+        assert((ccol & COL_COLUMN_MASK) == ccol);
+        p_mapel->ColumnHead = ccol;
+        p_ccol = &game_col_columns[ccol];
+        p_ccol->QBits[0] = 0;
+        p_ccol->QBits[1] = 0;
+        p_ccol->QBits[2] = 0;
+        p_ccol->QBits[3] = 0;
+    }
+    p_ccol = &game_col_columns[ccol];
+    p_ccol->QBits[qb] |= 1 << setbit;
 }
 
 static ushort count_tiles_around_steeper_than(short tile_x, short tile_z, short steepness)
@@ -395,10 +545,48 @@ void update_map_flags(void)
     }
 }
 
-void quick_crater(int x, int z, int size)
+uint sea_texture(int tex)
 {
-    asm volatile ("call ASM_quick_crater\n"
-        :  : "a" (x), "d" (z), "b" (size));
+    uint ret;
+    asm volatile (
+      "call ASM_sea_texture\n"
+        : "=r" (ret) : "a" (tex));
+    return ret;
+}
+
+TbBool map_floor_is_water(MapCoord cor_x, MapCoord cor_z)
+{
+    ushort textr;
+
+    textr = floor_texture_at_point(cor_x, cor_z);
+    if ((get_my_texture_bits(textr) & 0x02) != 0)
+        return true;
+    return false;
+}
+
+TbBool map_floor_is_sludge(MapCoord cor_x, MapCoord cor_z)
+{
+    ushort textr;
+
+    textr = floor_texture_at_point(cor_x, cor_z);
+    if (my_texture_is_only_using_index(textr, 29))
+        return true;
+    return false;
+}
+
+/** Checks whether given floor texture is a fluid surface.
+ *
+ * Both sea and sludge are recognized. Craters must not damage such tiles;
+ * the original game only tested for sea here, which left sludge pools
+ * being replaced with scorched ground.
+ */
+TbBool floor_texture_is_fluid(ushort textr)
+{
+    if ((get_my_texture_bits(textr) & 0x02) != 0)
+        return true;
+    if (my_texture_is_only_using_index(textr, 29))
+        return true;
+    return false;
 }
 
 u32 map_distance_deltas_precise(int dt_x, int dt_y, int dt_z)

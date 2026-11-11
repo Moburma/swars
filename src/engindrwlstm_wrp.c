@@ -1,0 +1,1486 @@
+/******************************************************************************/
+// Syndicate Wars Fan Expansion, source port of the classic game from Bullfrog.
+/******************************************************************************/
+/** @file engindrwlstm_wrp.c
+ *     Making drawlists for the 3D engine.
+ * @par Purpose:
+ *     Implements functions for filling drawlists.
+ * @par Comment:
+ *     None.
+ * @author   Tomasz Lis
+ * @date     22 Apr 2024 - 12 May 2024
+ * @par  Copying and copyrights:
+ *     This program is free software; you can redistribute it and/or modify
+ *     it under the terms of the GNU General Public License as published by
+ *     the Free Software Foundation; either version 2 of the License, or
+ *     (at your option) any later version.
+ */
+/******************************************************************************/
+#include "engindrwlstm_wrp.h"
+
+#include "bfendian.h"
+#include "bfmath.h"
+#include "bfmemut.h"
+#include "bfpalette.h"
+#include "bfsprite.h"
+#include "bfutility.h"
+#include <assert.h>
+#include <limits.h>
+#include <string.h>
+
+#include "enginbckt.h"
+#include "engincam.h"
+#include "engincolour.h"
+#include "engindrwlstm.h"
+#include "engindrwlstx.h"
+#include "enginfloor.h"
+#include "enginpeff.h"
+#include "enginshadws.h"
+#include "enginsngobjs.h"
+#include "enginsngtxtr.h"
+#include "enginshrapn.h"
+#include "enginprops.h"
+#include "engintrns.h"
+#include "frame_sprani.h"
+
+#include "bigmap.h"
+#include "game.h"
+#include "game_data.h"
+#include "game_options.h"
+#include "game_speed.h"
+#include "matrix.h"
+#include "people.h"
+#include "swlog.h"
+#include "thing.h"
+#include "tngobjdrw.h"
+#include "vehicle.h"
+/******************************************************************************/
+#pragma pack(1)
+
+struct unkn_mech_struc4;
+
+struct BulStart {
+    sbyte OffsetX;
+    sbyte OffsetY;
+};
+
+struct unkn_mech_struc4 { // sizeof=0x7A
+    short thing;
+    ubyte field_2;
+    struct unkn_mech_struc4 *field_3[8];
+    short field_23;
+    struct M33 mat25;
+    int angle_49;
+    int angle_4D;
+    int angle_51;
+    int field_55;
+    int field_59;
+    ubyte field_5D[4];
+    struct M31 field_61;
+    struct M31 field_6D;
+    ubyte field_79;
+};
+
+struct unkn_mech_struc3 { // sizeof=0x76
+    struct unkn_mech_struc4 *mech3_arr4_ptr;
+    int mech3_unkn_arr4_idx;
+    int mech3_unkn_fld_8;
+    struct M33 mech3_unkn_mat_C;
+    ubyte mech3_unkn_fld_30[25];
+    int mech3_unkn_fld_49;
+    ubyte mech3_unkn_fld_4D[7];
+    int mech3_unkn_fld_54[3];
+    ubyte field_60;
+    int field_61;
+    int field_65;
+    int field_69;
+    ubyte field_6D[3];
+    int field_70;
+    ubyte field_74;
+    ubyte field_75;
+};
+
+#pragma pack()
+/******************************************************************************/
+extern ubyte byte_176D49;
+
+s32 bang_wobble_line_timer = 0;
+short veh_plasma_sparks_timer = 0;
+u32 dword_152E4C = 0x3F69A093;
+
+/** Bullets/shots start point for each frame.
+ */
+struct BulStart bul_starts[4000];
+
+ubyte pers_shield_spr_vers[][5] = {
+  {0, 1, 2, 0, 0,},
+  {0, 2, 1, 0, 0,},
+  {0, 1, 1, 0, 0,},
+  {1, 2, 0, 0, 0,},
+  {1, 1, 0, 0, 0,},
+  {2, 0, 1, 0, 0,},
+  {2, 0, 2, 0, 0,},
+  {2, 0, 2, 0, 0,},
+};
+
+ubyte byte_152EF0[] = {
+   0, 10,  5, 10,  7,  7,  8, 10,
+  10, 10,  5,  7,  5,  7,  7,  0,
+};
+
+
+void draw_thing_e_graphic(struct Thing *p_thing, int x, int y, int z,
+  ushort frame, int radius, int intensity)
+{
+    int depth_shift;
+
+    if ((ingame.DisplayMode != 50) &&
+      ((p_thing->Flag2 & TgF2_InsideBuilding) != 0))
+        depth_shift = BUCKETS_COUNT;
+    else
+        depth_shift = 0;
+
+    enlist_draw_frame_graphic(x, y, z, frame, radius,
+      intensity, depth_shift, (intptr_t)p_thing);
+}
+
+static void draw_pers_shadow(struct Thing *p_thing,
+  int scr_x, int scr_y, int scr_depth)
+{
+    ushort sbfrm, anmode;
+    ushort shpak;
+    short strng;
+    ubyte shangl, angl;
+
+    angl = p_thing->U.UPerson.Angle;
+    sbfrm = get_person_anim_subframe(p_thing);
+    /* shadows are strictly limited in amount of frames */
+    if (sbfrm >= MUCOL_SHADOW_FRAMES_COUNT)
+        sbfrm = sbfrm % MUCOL_SHADOW_FRAMES_COUNT;
+
+    anmode = p_thing->U.UPerson.AnimMode;
+    if ((anmode == ANIM_PERS_WEPHEAVY_IDLE) ||
+      (anmode == ANIM_PERS_WEPHEAVY_Unkn15) ||
+      (anmode == ANIM_PERS_WEPHEAVY_Unkn07))
+        shpak = 12;
+    else if ((anmode == ANIM_PERS_WEPLIGHT_IDLE) ||
+      (anmode == ANIM_PERS_Unkn14) ||
+      (anmode == ANIM_PERS_Unkn06))
+        shpak = pers_subtype_to_shpak[2 * p_thing->SubType + 1];
+    else
+        shpak = pers_subtype_to_shpak[2 * p_thing->SubType + 0];
+
+    shangl = p_thing->U.UPerson.Shadows[0];
+    strng = p_thing->U.UPerson.Shadows[1];
+
+    enlist_draw_tall_spr_shadow(scr_x, scr_y, scr_depth, sbfrm,
+      angl, shangl, shpak, strng, (intptr_t)p_thing);
+}
+
+static void draw_pers_frame_basic(struct Thing *p_thing,
+  int scr_x, int scr_y, int scr_depth, int frame, short bright)
+{
+    ubyte angl;
+
+    angl = (p_thing->U.UObject.Angle + 8 - byte_176D49) & 7;
+
+    enlist_draw_frame_pers_basic(scr_x, scr_y, scr_depth, frame,
+      angl, bright, (intptr_t)p_thing);
+}
+
+static void draw_pers_frame_versioned(struct Thing *p_thing,
+  int scr_x, int scr_y, int scr_depth, int frame, short bright)
+{
+    ubyte *frv;
+    ubyte angl;
+
+    if ((p_thing->U.UPerson.AnimMode == ANIM_PERS_Unkn12) ||
+      ((ingame.Flags & GamF_ThermalView) != 0))
+        bright = 32;
+    if (((p_thing->Flag2 & TgF2_Unkn00080000) != 0) &&
+      (p_thing->SubType == SubTT_PERS_ZEALOT))
+        bright = 32;
+    frv = p_thing->U.UPerson.FrameId.Version;
+    angl = (p_thing->U.UObject.Angle + 8 - byte_176D49) & 7;
+
+    enlist_draw_frame_pers_rot_versioned(scr_x, scr_y, scr_depth,
+      frame, frv, angl, bright, (intptr_t)p_thing);
+}
+
+static void draw_pers_shield(struct Thing *p_thing, int scr_x, int scr_y,
+  int scr_depth, short bright)
+{
+    ubyte *frv;
+    ushort frame, k;
+    ubyte angl;
+
+    frame = shield_frm[p_thing->ThingOffset & 3];
+    k = ((gameturn + 16 * p_thing->ThingOffset) >> 2) & 7;
+    angl = (p_thing->U.UObject.Angle + 8 - byte_176D49) & 7;
+    frv = pers_shield_spr_vers[k];
+
+    enlist_draw_frame_effect_versioned(scr_x, scr_y, scr_depth,
+      frame, frv, angl, bright, (intptr_t)p_thing);
+}
+
+void draw_pers_e_graphic(struct Thing *p_thing,
+  int cor_dx, int cor_dy, int cor_dz,
+  int frame, int radius, int intensity)
+{
+    struct ShEnginePoint sp;
+    int scr_depth;
+    short br_inc;
+    short brig;
+
+    brig = byte_152EF0[p_thing->SubType] + intensity;
+    br_inc = person_shield_glow_brightness(p_thing);
+
+    if ((render_floor_flags & RendFlrF_WobblyTerrain) != 0)
+        cor_dy += waft_between_turns(render_anim_turn) >> 3;
+
+    transform_shpoint(&sp, cor_dx, 8 * cor_dy - 8 * engn_yc, cor_dz);
+
+    scr_depth = sp.Depth - ((radius * overall_scale) >> 8);
+    if (ingame.DisplayMode == 50)
+    {
+        if ((p_thing->Flag2 & TgF2_InsideBuilding) != 0) {
+            if ((p_thing->Flag & TngF_Destroyed) != 0) {
+                return;
+            }
+            scr_depth -= 10 * BUCKETS_COUNT;
+        }
+    }
+    else
+    {
+        if ((p_thing->Flag2 & TgF2_InsideBuilding) != 0)
+            scr_depth = -BUCKETS_COUNT;
+    }
+
+    if (((p_thing->Flag2 & TgF2_InsideBuilding) != 0) &&
+      (ingame.DisplayMode == 50))
+    {
+        if ((ingame.Flags & GamF_ThermalView) != 0) {
+            ushort frm;
+            frm = nstart_ani[1066];
+            brig = PALETTE_FADE_LEVELS / 2;
+            draw_pers_frame_basic(p_thing, sp.X, sp.Y,
+              scr_depth, frm, brig);
+        }
+    }
+    else
+    {
+        draw_pers_frame_versioned(p_thing, sp.X, sp.Y,
+          scr_depth, frame, brig + br_inc);
+    }
+
+    if (br_inc > 0) {
+        draw_pers_shield(p_thing, sp.X, sp.Y, scr_depth - 1, br_inc);
+    }
+
+    if (((p_thing->Flag2 & TgF2_InsideBuilding) == 0) &&
+      (p_thing->U.UPerson.OnFace == 0) &&
+      (p_thing->SubType != SubTT_PERS_MECH_SPIDER))
+    {
+        draw_pers_shadow(p_thing, sp.X, sp.Y,
+          scr_depth - ((200 * overall_scale) >> 8));
+    }
+}
+
+void FIRE_draw_fire(struct SimpleThing *p_sthing)
+{
+    enlist_draw_fire_flames(p_sthing->U.UFire.flame);
+}
+
+void draw_bang_phwoar(struct SimpleThing *p_pow)
+{
+    enlist_draw_bang_phwoars(p_pow->U.UBang.phwoar);
+}
+
+void draw_bang_shrapnel(struct SimpleThing *p_pow)
+{
+    enlist_draw_bang_shrapnels(p_pow->U.UBang.shrapnel);
+}
+
+void build_wobble_line(int x1, int y1, int z1,
+ int x2, int y2, int z2, struct SimpleThing *p_sthing, int itime)
+{
+    ubyte slflags;
+    TbBool is_player;
+
+    if ((p_sthing != NULL) && (p_sthing->Flag & TngF_PlayerAgent) != 0)
+        is_player = 1;
+    else
+        is_player = 0;
+
+    if (is_player && (p_sthing->Timer1 < 1))
+        slflags = 0x02;
+    else
+        slflags = 0x01;
+
+    enlist_draw_wobble_line(x1, y1, z1, x2, y2, z2,
+      itime, slflags, is_player);
+}
+
+void draw_bang_wobble_line(struct SimpleThing *p_pow)
+{
+    if (bang_wobble_line_timer == 0)
+        return;
+
+    if ((dword_152E4C & 0xFF) <= 208)
+        return;
+
+    bang_wobble_line_timer--;
+
+    enlist_draw_bang_wobble_line(p_pow->U.UBang.shrapnel);
+}
+
+void calc_bul_offsets(void)
+{
+#if 0
+    asm volatile ("call ASM_calc_bul_offsets\n"
+        :  :  : "eax", "cc", "memory" );
+    return;
+#endif
+    int count;
+    int i;
+
+    count = (int)(nstart_ani_end - nstart_ani);
+
+    for (i = 0; i < (int)(sizeof(bul_starts)/sizeof(bul_starts[0])); i++)
+    {
+        bul_starts[i].OffsetX = 0;
+        bul_starts[i].OffsetY = 0;
+    }
+
+    for (i = 1; i < count - 1; i++)
+    {
+        ushort ani_idx;
+        ushort elem_idx;
+
+        if (i >= (int)(sizeof(bul_starts)/sizeof(bul_starts[0]))) {
+            break;
+        }
+
+        ani_idx = nstart_ani[i];
+        elem_idx = frame[ani_idx].FirstElement;
+
+        while (elem_idx != 0)
+        {
+            struct Element *p_elem;
+
+            p_elem = &melement_ani[elem_idx];
+            if (p_elem->ToSprite != 0)
+            {
+                struct TbSprite *p_sprite;
+
+                p_sprite = (struct TbSprite *)((ubyte *)m_sprites + p_elem->ToSprite);
+                if (((p_elem->Flags & 0x1F0) == 0x40) && ((p_elem->Flags & 0xFE00) == 0x400))
+                {
+                    bul_starts[i].OffsetX = (sbyte)(p_elem->X + p_sprite->SWidth);
+                    bul_starts[i].OffsetY = (sbyte)(p_elem->Y + p_sprite->SHeight);
+                    break;
+                }
+            }
+            elem_idx = p_elem->Next;
+        }
+
+        if ((bul_starts[i].OffsetX == 0) && (bul_starts[i].OffsetY == 0)) {
+            bul_starts[i].OffsetY = -30;
+        }
+    }
+}
+
+void get_bullet_start_offsets(short *p_ofs_x, short *p_ofs_y, const struct Thing *p_person)
+{
+    ushort mangle, frame;
+
+    mangle = (p_person->U.UPerson.Angle + 8 - byte_176D49) & 7;
+    frame = p_person->StartFrame + 1 + mangle;
+    *p_ofs_x = bul_starts[frame].OffsetX;
+    *p_ofs_y = bul_starts[frame].OffsetY;
+}
+
+void build_laser(int cor1_x, int cor1_y, int cor1_z,
+  int cor2_x, int cor2_y, int cor2_z,
+  int itime, struct Thing *p_owner, TbPixel colour)
+{
+    int depth_shift;
+    short ofs_x, ofs_y;
+
+    if ((p_owner != NULL) && (p_owner->Type == TT_BUILDING))
+    {
+        short angle;
+
+        if (p_owner->U.UObject.Angle != 0)
+            angle = p_owner->U.UObject.ZZ_unused_but_pads_to_long_ObjectNo + 48;
+        else
+            angle = p_owner->U.UObject.ZZ_unused_but_pads_to_long_ObjectNo - 48;
+        angle = ((angle + 0x0800) & 0x0700) | (angle & 0xFF);
+        cor1_x = PRCCOORD_TO_MAPCOORD(p_owner->X + 3 * lbSinTable[angle] / 2);
+        cor1_y = PRCCOORD_TO_MAPCOORD(p_owner->Y);
+        cor1_z = PRCCOORD_TO_MAPCOORD(p_owner->Z - 3 * lbSinTable[angle + LbFPMath_PI/2] / 2);
+    }
+    if ((p_owner != NULL) && (p_owner->Type != TT_BUILDING)) {
+        get_bullet_start_offsets(&ofs_x, &ofs_y, p_owner);
+    } else {
+        ofs_x = ofs_y = 0;
+    }
+
+    depth_shift = -641;
+    if ((itime < 0) || (colour == colour_lookup[ColLU_GREEN]))
+        depth_shift -= 400;
+
+    enlist_draw_laser(cor1_x, cor1_y, cor1_z, cor2_x, cor2_y, cor2_z,
+      depth_shift, itime, ofs_x, ofs_y, colour);
+}
+
+void build_electricity_strand(struct SimpleThing *p_sthing, ubyte itime)
+{
+    struct EnginePoint ep1, ep2;
+
+    ep1.Flags = 0;
+    ep1.X3d = (p_sthing->X >> 8) - engn_xc;
+    ep1.Y3d = (p_sthing->Y >> 8); // subtracted within transform_point(): - 8 * engn_yc;
+    ep1.Z3d = (p_sthing->Z >> 8) - engn_zc;
+    transform_point(&ep1);
+
+    ep2.Flags = 0;
+    ep2.X3d = p_sthing->U.UEffect.VX - engn_xc;
+    ep2.Y3d = p_sthing->U.UEffect.VY; // subtracted within transform_point(): - 8 * engn_yc;
+    ep2.Z3d = p_sthing->U.UEffect.VZ - engn_zc;
+    transform_point(&ep2);
+
+    build_wobble_line(ep1.pp.X, ep1.pp.Y, ep1.Z3d, ep2.pp.X, ep2.pp.Y, ep2.Z3d, p_sthing, itime);
+}
+
+void build_electricity(int cor1_x, int cor1_y, int cor1_z,
+  int cor2_x, int cor2_y, int cor2_z, int itime, struct Thing *p_owner)
+{
+#if 0
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[4];
+
+    stkargs[0] = (int)(intptr_t)cor2_y;
+    stkargs[1] = (int)(intptr_t)cor2_z;
+    stkargs[2] = (int)(intptr_t)itime;
+    stkargs[3] = (int)(intptr_t)p_owner;
+
+    asm volatile (
+      "push 12(%4)\n"
+      "push 8(%4)\n"
+      "push 4(%4)\n"
+      "push 0(%4)\n"
+      "call ASM_build_electricity\n"
+        : : "a" (cor1_x), "d" (cor1_y), "b" (cor1_z), "c" (cor2_x), "S" (stkargs)
+        : "cc", "memory");
+#endif
+    struct EnginePoint ep;
+    int scr1_x, scr1_y;
+    int scr1_depth;
+    short ofs_x, ofs_y;
+
+    if (p_owner != NULL) {
+        get_bullet_start_offsets(&ofs_x, &ofs_y, p_owner);
+    } else {
+        ofs_x = ofs_y = 0;
+    }
+
+    ep.Flags = 0;
+    ep.X3d = cor1_x - engn_xc;
+    ep.Y3d = 8 * cor1_y; // subtracted within transform_point(): - 8 * engn_yc;
+    ep.Z3d = cor1_z - engn_zc;
+    transform_point(&ep);
+
+    scr1_x = ep.pp.X + ((overall_scale * ofs_x) >> 9);
+    scr1_y = ep.pp.Y + ((overall_scale * ofs_y) >> 9);
+    scr1_depth = ep.Z3d;
+
+    ep.Flags = 0;
+    ep.X3d = cor2_x - engn_xc;
+    ep.Y3d = 8 * cor2_y; // subtracted within transform_point(): - 8 * engn_yc;
+    ep.Z3d = cor2_z - engn_zc;
+    transform_point(&ep);
+
+    build_wobble_line(scr1_x, scr1_y, scr1_depth, ep.pp.X, ep.pp.Y, ep.Z3d, NULL, itime);
+}
+
+void draw_bang(struct SimpleThing *p_pow)
+{
+    if (p_pow->State != 0)
+    {
+        short st;
+        TbPixel col;
+        st = p_pow->State;
+        if (st < 100) {
+            col = colour_lookup[ColLU_GREEN];
+        } else {
+            st = -10;
+            col = colour_lookup[ColLU_PINK];
+        }
+        build_laser(p_pow->X >> 8, p_pow->Y >> 8, p_pow->Z >> 8,
+          (p_pow->X >> 8), (p_pow->Y >> 8) + 400, p_pow->Z >> 8, st, 0, col);
+    }
+
+    dword_152E4C = bw_rotr32(dword_152E4C, 7) + 0x16365267;
+    {
+        short tmp;
+        tmp = (dword_152E4C & 0xFF);
+        if (tmp > 240)
+            bang_wobble_line_timer = tmp - 240;
+    }
+    dword_152E4C = bw_rotr32(dword_152E4C, 7) + 0x16365267;
+
+    draw_bang_wobble_line(p_pow);
+    draw_bang_shrapnel(p_pow);
+    draw_bang_phwoar(p_pow);
+}
+
+/**
+ *
+ * Before this call, the caller needs to ensure there is a free screen point.
+ */
+static void transform_rot_object_shpoint(struct ShEnginePoint *p_sp,
+  int offset_x, int offset_y, int offset_z, ushort matx, ushort pt)
+{
+    struct SinglePoint *p_snpoint;
+    struct SpecialPoint *p_specpt;
+
+    p_snpoint = &game_object_points[pt];
+    if ((p_snpoint->Flags & 0x40) != 0) // has sub-item alocated in `PointOffset`
+    {
+        p_specpt = &game_screen_point_pool[p_snpoint->PointOffset];
+        p_sp->X = p_specpt->X;
+        p_sp->Y = p_specpt->Y;
+        p_sp->Depth = p_specpt->Z;
+        p_sp->Flags = p_snpoint->Flags;
+    }
+    else
+    {
+        struct M31 vec_inp, vec_rot;
+        int dxc, dyc, dzc;
+        ushort pt;
+
+        vec_inp.R[0] = 2 * p_snpoint->X;
+        vec_inp.R[1] = 2 * p_snpoint->Y;
+        vec_inp.R[2] = 2 * p_snpoint->Z;
+        assert(matx < LOCAL_MATS_COUNT);
+        matrix_transform(&vec_rot, &local_mats[matx], &vec_inp);
+
+        dxc = offset_x + (vec_rot.R[0] >> 15);
+        dyc = offset_y + (vec_rot.R[1] >> 15);
+        dzc = offset_z + (vec_rot.R[2] >> 15);
+        transform_shpoint(p_sp, dxc, dyc - 8 * engn_yc, dzc);
+
+        pt = next_screen_point;
+        next_screen_point++;
+
+        p_specpt = &game_screen_point_pool[pt];
+        p_specpt->X = p_sp->X;
+        p_specpt->Y = p_sp->Y;
+        p_specpt->Z = p_sp->Depth;
+
+        p_snpoint->PointOffset = pt;
+        p_snpoint->Flags = p_sp->Flags;
+    }
+}
+
+void compute_normals_light_ratio(ushort nrml_beg, ushort nrml_end, ushort matx)
+{
+    ushort i;
+
+    for (i = nrml_beg; i < nrml_end; i++)
+    {
+        struct M31 vec_nx, vec_rot;
+        struct Normal *p_nrml;
+        int fctr_p, fctr_s, fctr_o, fctr_r;
+
+        p_nrml = &game_normals[i];
+        vec_nx = *(struct M31 *)&p_nrml->NX;
+        matrix_transform(&vec_rot, &local_mats[matx], &vec_nx);
+
+        fctr_o = transf_vec_yaw_z * (vec_rot.R[0] >> 14) - transf_vec_yaw_x * (vec_rot.R[2] >> 14);
+        fctr_p = (transf_vec_yaw_z * (vec_rot.R[2] >> 14) + transf_vec_yaw_x * (vec_rot.R[0] >> 14)) >> 16;
+        fctr_r = transf_vec_tlt_xz * (vec_rot.R[1] >> 14) - transf_vec_tlt_y * fctr_p;
+        fctr_s = (transf_vec_tlt_y * (vec_rot.R[1] >> 14) + transf_vec_tlt_xz * fctr_p) >> 16;
+
+        p_nrml->LightRatio = 0;
+        p_nrml->LightRatio |= ((fctr_o >> 19) & 0xFF);
+        p_nrml->LightRatio |= (((fctr_r >> 19) & 0xFF) << 8);
+        p_nrml->LightRatio |= ((fctr_s & 0xFFFF) << 16);
+    }
+}
+
+void object_points_clear_flags(struct SingleObject *point_object)
+{
+    int i;
+
+    for (i = point_object->StartPoint; i < point_object->EndPoint; i++)
+    {
+        struct SinglePoint *p_snpoint;
+
+        p_snpoint = &game_object_points[i];
+        p_snpoint->Flags = 0;
+    }
+}
+
+void object_points_in_faces_clear_flags(struct SingleObject *point_object)
+{
+    short i;
+    int face_beg, face;
+    short faces_num;
+
+    faces_num = point_object->NumbFaces;
+    face_beg = point_object->StartFace;
+
+    face = face_beg;
+    for (i = 0; i < faces_num; i++, face++)
+    {
+        struct SingleObjectFace3 *p_face;
+        struct SinglePoint *p_snpoint;
+
+        p_face = &game_object_faces3[face];
+
+        p_snpoint = &game_object_points[p_face->PointNo[0]];
+        p_snpoint->Flags = 0;
+        p_snpoint = &game_object_points[p_face->PointNo[1]];
+        p_snpoint->Flags = 0;
+        p_snpoint = &game_object_points[p_face->PointNo[2]];
+        p_snpoint->Flags = 0;
+    }
+
+    faces_num = point_object->NumbFaces4;
+    face_beg = point_object->StartFace4;
+
+    face = face_beg;
+    for (i = 0; i < faces_num; i++, face++)
+    {
+        struct SingleObjectFace4 *p_face4;
+        struct SinglePoint *p_snpoint;
+
+        p_face4 = &game_object_faces4[face];
+
+        p_snpoint = &game_object_points[p_face4->PointNo[0]];
+        p_snpoint->Flags = 0;
+        p_snpoint = &game_object_points[p_face4->PointNo[1]];
+        p_snpoint->Flags = 0;
+        p_snpoint = &game_object_points[p_face4->PointNo[2]];
+        p_snpoint->Flags = 0;
+        p_snpoint = &game_object_points[p_face4->PointNo[3]];
+        p_snpoint->Flags = 0;
+    }
+}
+
+TbBool enlist_draw_face3_rot(int cor_dx, int cor_dy, int cor_dz,
+  int face, short depth_shift, ushort matx, ushort edflags, int *bckt_max)
+{
+    struct ShEnginePoint sp;
+    struct SingleObjectFace3 *p_face;
+
+    // each transform_rot_object_shpoint() call could reserve a point
+    if (next_screen_point + 4 > screen_points_limit) {
+        return false;
+    }
+
+    p_face = &game_object_faces3[face];
+
+    transform_rot_object_shpoint(&sp, cor_dx, cor_dy, cor_dz,
+      matx, p_face->PointNo[0]);
+
+    transform_rot_object_shpoint(&sp, cor_dx, cor_dy, cor_dz,
+      matx, p_face->PointNo[2]);
+
+    transform_rot_object_shpoint(&sp, cor_dx, cor_dy, cor_dz,
+      matx, p_face->PointNo[1]);
+
+    return enlist_draw_face3_prealloc(face, depth_shift,
+      edflags, bckt_max);
+}
+
+TbBool enlist_draw_face4_rot(int cor_dx, int cor_dy, int cor_dz,
+  int face, short depth_shift, ushort matx, ushort edflags, int *bckt_max)
+{
+    struct ShEnginePoint sp;
+    struct SingleObjectFace4 *p_face4;
+
+    if (next_screen_point + 5 > screen_points_limit) {
+        return false;
+    }
+
+    p_face4 = &game_object_faces4[face];
+
+    transform_rot_object_shpoint(&sp, cor_dx, cor_dy, cor_dz,
+      matx, p_face4->PointNo[0]);
+
+    transform_rot_object_shpoint(&sp, cor_dx, cor_dy, cor_dz,
+      matx, p_face4->PointNo[2]);
+
+    transform_rot_object_shpoint(&sp, cor_dx, cor_dy, cor_dz,
+      matx, p_face4->PointNo[1]);
+
+    transform_rot_object_shpoint(&sp, cor_dx, cor_dy, cor_dz,
+      matx, p_face4->PointNo[3]);
+
+    return enlist_draw_face4_prealloc(face, depth_shift,
+      edflags, bckt_max);
+}
+
+int draw_rot_object_faces(int cor_dx, int cor_dy, int cor_dz,
+  struct SingleObject *point_object, short depth_shift,
+  ushort matx, ushort faceWH, ushort faceGF)
+{
+    int i, bckt_max;
+    int face_beg, face;
+    short faces_num;
+
+    bckt_max = 0;
+
+    faces_num = point_object->NumbFaces;
+    face_beg = point_object->StartFace;
+
+    face = face_beg;
+    for (i = 0; i < faces_num; i++, face++)
+    {
+        struct SingleObjectFace3 *p_face;
+        ushort edflags;
+        TbBool enlisted;
+
+        p_face = &game_object_faces3[face];
+        p_face->GFlags &= ~(FGFlg_Unkn10|FGFlg_Unkn08|FGFlg_Unkn04);
+        p_face->GFlags |= faceGF;
+        p_face->WalkHeader = faceWH;
+
+        edflags = EnFaceF_MovingObject | EnFaceF_SkipFlg20;
+        if ((p_face->GFlags & FGFlg_Unkn80) != 0)
+            edflags |= EnFaceF_Reflective;
+
+        enlisted = enlist_draw_face3_rot(cor_dx, cor_dy, cor_dz,
+          face, depth_shift, matx, edflags, &bckt_max);
+        if (!enlisted)
+            break;
+    }
+
+    faces_num = point_object->NumbFaces4;
+    face_beg = point_object->StartFace4;
+
+    face = face_beg;
+    for (i = 0; i < faces_num; i++, face++)
+    {
+        struct SingleObjectFace4 *p_face4;
+        ushort edflags;
+        TbBool enlisted;
+
+        p_face4 = &game_object_faces4[face];
+        p_face4->GFlags &= ~(FGFlg_Unkn10|FGFlg_Unkn08|FGFlg_Unkn04);
+        p_face4->GFlags |= faceGF;
+        p_face4->WalkHeader = faceWH;
+
+        edflags = EnFaceF_MovingObject | EnFaceF_SkipFlg20;
+        if ((p_face4->GFlags & FGFlg_Unkn80) != 0)
+            edflags |= EnFaceF_Reflective;
+
+        enlisted = enlist_draw_face4_rot(cor_dx, cor_dy, cor_dz,
+          face, depth_shift, matx, edflags, &bckt_max);
+        if (!enlisted)
+            break;
+    }
+
+    return bckt_max;
+}
+
+int draw_rot_object2_faces(int cor_dx, int cor_dy, int cor_dz,
+  struct SingleObject *point_object,
+  ushort matx)
+{
+    int i, bckt_max;
+    int face_beg, face;
+    short depth_shift;
+    short faces_num;
+
+    bckt_max = 0;
+
+    faces_num = point_object->NumbFaces;
+    face_beg = point_object->StartFace;
+    depth_shift = -150;
+
+    face = face_beg;
+    for (i = 0; i < faces_num; i++, face++)
+    {
+        ushort edflags;
+        TbBool enlisted;
+
+        edflags = EnFaceF_SkipFlg20;
+
+        enlisted = enlist_draw_face3_rot(cor_dx, cor_dy, cor_dz,
+          face, depth_shift, matx, edflags, &bckt_max);
+        if (!enlisted)
+            break;
+    }
+
+    faces_num = point_object->NumbFaces4;
+    face_beg = point_object->StartFace4;
+    depth_shift = -250;
+
+    face = face_beg;
+    for (i = 0; i < faces_num; i++, face++)
+    {
+        ushort edflags;
+        TbBool enlisted;
+
+        edflags = EnFaceF_SkipFlg20;
+
+        enlisted = enlist_draw_face4_rot(cor_dx, cor_dy, cor_dz,
+          face, depth_shift, matx, edflags, &bckt_max);
+        if (!enlisted)
+            break;
+    }
+
+    return bckt_max;
+}
+
+int draw_rot_object(int cor_dx, int cor_dy, int cor_dz,
+  struct SingleObject *point_object, struct Thing *p_thing)
+{
+    int bckt_max;
+    short depth_shift;
+    ushort faceWH, faceGF;
+
+    bckt_max = 0;
+    depth_shift = -250;
+
+    faceGF = 0;
+    if ((p_thing->Type != TT_UNKN35) && (p_thing->SubType != SubTT_VEH_TRAIN))
+    {
+        short cor_x, cor_z;
+        ushort darken;
+
+        // Cannot get absolute map position from p_thing as it might be relative; so get it from the offset
+        cor_x = engn_xc + cor_dx;
+        cor_z = engn_zc + cor_dz;
+
+        darken = 9;
+        if (cor_x < TILE_TO_MAPCOORD(8, 0))
+            darken = min(darken, cor_x >> 7);
+        else if (cor_x > TILE_TO_MAPCOORD(MAP_TILE_WIDTH - 8, 0))
+            darken = min(darken, (MAP_COORD_WIDTH - cor_x) >> 7);
+        else if (cor_z < TILE_TO_MAPCOORD(8, 0))
+            darken = min(darken, cor_z >> 7);
+        else if (cor_z > TILE_TO_MAPCOORD(MAP_TILE_HEIGHT - 8, 0))
+            darken = min(darken, (MAP_COORD_HEIGHT - cor_z) >> 7);
+
+        if (darken < 9)
+        {
+            if (darken > 7)
+                darken = 7;
+            if (darken <= 0)
+                darken = 1;
+            faceGF |= (darken << 2);
+        }
+    }
+
+    if ((p_thing->Flag & TngF_Unkn01000000) != 0)
+    {
+        p_thing->Flag &= ~TngF_Unkn01000000;
+        faceWH = 11 - (gameturn & 3);
+    }
+    else
+    {
+        faceWH = 0;
+    }
+
+    // This function can be called for objects, vehicles, mguns and rockets
+    assert(offsetof(struct Thing, U.UObject.MatrixIndex) == offsetof(struct Thing, U.UVehicle.MatrixIndex));
+    assert(offsetof(struct Thing, U.UObject.MatrixIndex) == offsetof(struct Thing, U.UMGun.MatrixIndex));
+    assert(offsetof(struct Thing, U.UObject.MatrixIndex) == offsetof(struct Thing, U.UEffect.MatrixIndex));
+    // Matrix for anything other than rocket shall respect the allocated entries counter
+    assert((p_thing->U.UObject.MatrixIndex < next_local_mat) || (p_thing->Type == TT_ROCKET));
+
+    if ((render_floor_flags & RendFlrF_WobblyTerrain) != 0)
+        cor_dy += waft_between_turns(render_anim_turn);
+
+    object_points_clear_flags(point_object);
+
+    compute_normals_light_ratio(point_object->OffsetX, point_object->OffsetY,
+      p_thing->U.UObject.MatrixIndex);
+
+    bckt_max = draw_rot_object_faces(cor_dx, cor_dy, cor_dz,
+      point_object, depth_shift, p_thing->U.UObject.MatrixIndex,
+      faceWH, faceGF);
+
+    // Plasma jumps when a vehicle got influenced by explosion or is crashing
+    if ((p_thing->Type == TT_VEHICLE) && (p_thing->State == VehSt_UNKN_45 ||
+      (p_thing->U.UVehicle.WorkPlace & VWPFlg_Unkn0080) != 0))
+    {
+        if ((LbRandomPosShort() & 0xFF) > 0xE0)
+            veh_plasma_sparks_timer = (LbRandomPosShort() & 0xFF) - 0xD0;
+
+        if ((veh_plasma_sparks_timer != 0) && (LbRandomPosShort() & 0xFF) > 0x90)
+        {
+            veh_plasma_sparks_timer--;
+            enlist_draw_plasma_sparks_on_object(point_object);
+        }
+    }
+    return bckt_max;
+}
+
+short draw_rot_object2(int cor_dx, int cor_dy, int cor_dz,
+  struct SingleObject *point_object, struct Thing *p_thing)
+{
+    int bckt_max;
+
+    object_points_in_faces_clear_flags(point_object);
+
+    bckt_max = draw_rot_object2_faces(cor_dx, cor_dy, cor_dz, point_object,
+      p_thing->U.UObject.MatrixIndex);
+
+    return bckt_max;
+}
+
+enum DrawObjectFacesFlags {
+    DrwObjF_NoWobblyElevation = 0x0100,
+    DrwObjF_StartBelowWindow = 0x0200,
+};
+
+short draw_object_faces(int cor_dx, int cor_dy, int cor_dz,
+  struct SingleObject *point_object, ushort doflags)
+{
+    struct ShEnginePoint sp1;
+    int i, bckt_max;
+    int face_beg, face;
+    int snpoint;
+    int points_num;
+    short depth_shift;
+    short faces_num;
+
+    depth_shift = point_object->field_1E;
+
+    if ((point_object->field_1C & 0x0100) != 0 &&
+      ((doflags & DrwObjF_NoWobblyElevation) == 0))
+        cor_dy += waft_between_turns(render_anim_turn);
+
+    bckt_max = 0;
+
+    // Make sure we have enough free points to start drawing the object
+    points_num = point_object->EndPoint - point_object->StartPoint;
+    if (next_screen_point + 1 * points_num > screen_points_limit)
+        return 0;
+
+    for (snpoint = point_object->StartPoint; snpoint <= point_object->EndPoint; snpoint++)
+    {
+        struct SinglePoint *p_snpoint;
+        struct SpecialPoint *p_specpt;
+        {
+            int specpt;
+            int dxc, dyc, dzc;
+
+            specpt = next_screen_point;
+            next_screen_point++;
+
+            p_snpoint = &game_object_points[snpoint];
+            dxc = p_snpoint->X + cor_dx;
+            dzc = p_snpoint->Z + cor_dz;
+            dyc = p_snpoint->Y + cor_dy;
+            transform_shpoint(&sp1, dxc, dyc - 8 * engn_yc, dzc);
+
+            p_specpt = &game_screen_point_pool[specpt];
+            p_specpt->X = sp1.X;
+            p_specpt->Y = sp1.Y;
+            p_specpt->Z = sp1.Depth;
+
+            p_snpoint->PointOffset = specpt + 0;
+            p_snpoint->Flags = sp1.Flags;
+        }
+    }
+
+    faces_num = point_object->NumbFaces4;
+    face_beg = point_object->StartFace4;
+
+    face = face_beg;
+    for (i = 0; i < faces_num; i++, face++)
+    {
+        struct SingleObjectFace4 *p_face4;
+        TbBool enlisted;
+
+        p_face4 = &game_object_faces4[face];
+        if ((p_face4->GFlags & FGFlg_Unkn08) != 0)
+        {
+            // TODO why depth_shift is zero? deliberate or a mistake?
+            enlisted = enlist_draw_face4_pole(cor_dx, cor_dy, cor_dz,
+              face, 0, &bckt_max);
+        }
+        else
+        {
+            ushort edflags;
+
+            edflags = 0;
+            if ((doflags & DrwObjF_StartBelowWindow) != 0)
+                edflags |= EnFaceF_SemiTranspr;
+
+            enlisted = enlist_draw_face4_prealloc(face, depth_shift,
+              edflags, &bckt_max);
+        }
+        if (!enlisted)
+            break;
+    }
+
+    faces_num = point_object->NumbFaces;
+    face_beg = point_object->StartFace;
+
+    face = face_beg;
+    for (i = 0; i < faces_num; i++, face++)
+    {
+        TbBool enlisted;
+
+        {
+            ushort edflags;
+
+            edflags = 0;
+            if ((doflags & DrwObjF_StartBelowWindow) != 0)
+                edflags |= EnFaceF_SemiTranspr;
+
+            enlisted = enlist_draw_face3_prealloc(face, depth_shift,
+              edflags, &bckt_max);
+        }
+        if (!enlisted)
+            break;
+    }
+
+    return bckt_max;
+}
+
+short draw_object(int sh_x, int sh_y, int sh_z,
+  struct SingleObject *point_object)
+{
+    int cor_dx, cor_dy, cor_dz;
+    ushort doflags;
+
+    doflags = 0;
+
+    if ((game_perspective == ProjM_IsomNoBuildng) && engine_render_lights)
+        return 0;
+
+    cor_dx = point_object->MapX - engn_xc;
+    cor_dy = point_object->OffsetY;
+    cor_dz = point_object->MapZ - engn_zc;
+
+    if (((ingame.Flags & GamF_DeepRadar) != 0) && (current_map != 11)) // map011 Orbital Station
+    {
+        int scr_y;
+
+        scr_y = transform_shpoint_y(cor_dx, cor_dy - 8 * engn_yc, cor_dz);
+        if (scr_y >= vec_window_height + 10)
+            doflags |= DrwObjF_StartBelowWindow;
+    }
+
+    if (things[point_object->ThingNo].U.UObject.BHeight <= 1400)
+        doflags &= ~DrwObjF_StartBelowWindow;
+
+    if (word_1552F8 == 5)
+        doflags |= DrwObjF_NoWobblyElevation;
+
+    return draw_object_faces(cor_dx, cor_dy, cor_dz, point_object, doflags);
+}
+
+/** Transforms vecs_num vectors from p_vecs1 into p_vecs2 using the transpose of p_mat.
+ *
+ * Transforms vectors like: p_vec2[i] = transpose(p_mat) * p_vec1[i], which is equivalent
+ * to treating each vector as a row vector multiplied by p_mat.
+ */
+int vectors_mul_by_transposed_matrix(uint vecs_num, const struct M33 *p_mat,
+  const struct M31 *p_vecs1, struct M31 *p_vecs2)
+{
+#if 0
+    int ret;
+    asm volatile ("call ASM_vectors_mul_by_transposed_matrix\n"
+        : "=r" (ret) : "a" (vecs_num),  "d" (p_mat),  "b" (p_vec1),  "c" (p_vec2));
+    return ret;
+#endif
+    uint i;
+
+    for (i = 0; i < vecs_num; i++)
+    {
+        int x, y, z;
+
+        x = p_vecs1[i].R[0];
+        y = p_vecs1[i].R[1];
+        z = p_vecs1[i].R[2];
+        p_vecs2[i].R[0] = p_mat->R[0][0] * x + p_mat->R[1][0] * y + p_mat->R[2][0] * z;
+        p_vecs2[i].R[1] = p_mat->R[0][1] * x + p_mat->R[1][1] * y + p_mat->R[2][1] * z;
+        p_vecs2[i].R[2] = p_mat->R[0][2] * x + p_mat->R[1][2] * y + p_mat->R[2][2] * z;
+    }
+    return 0;
+}
+
+/** Normalises a 3-component Q14 fixed-point vector (unit length == 0x4000) in place.
+ *
+ * Uses a bisection-based iterative algorithm, with up to 10 refining steps.
+ */
+static void mech12_norm_vec3_q14(int *p_x, int *p_y, int *p_z)
+{
+    int x, y, z, ss, i;
+
+    x = *p_x; y = *p_y; z = *p_z;
+    ss = (((s64)x * x) >> 14) + (((s64)y * y) >> 14) + (((s64)z * z) >> 14);
+    if (ss == 0)
+    {
+        x <<= 16; y <<= 16; z <<= 16;
+        ss = (((s64)x * x) >> 14) + (((s64)y * y) >> 14) + (((s64)z * z) >> 14);
+    }
+    if (ss == 0)
+    {
+        /* Degenerate (zero) vector - fall back to a unit vector on the first axis. */
+        *p_x = 0x4000;
+        *p_y = 0;
+        *p_z = 0;
+        return;
+    }
+
+    while (ss > 0x10000)
+    {
+        ss >>= 2;
+        x >>= 1; y >>= 1; z >>= 1;
+    }
+    while (ss < 0x1000)
+    {
+        ss <<= 2;
+        x <<= 1; y <<= 1; z <<= 1;
+    }
+
+    {
+        int dx, dy, dz;
+
+        dx = x >> 1; dy = y >> 1; dz = z >> 1;
+        for (i = 10; i > 0; i--)
+        {
+            if (ss > 0x4001) {
+                x -= dx; y -= dy; z -= dz;
+            } else if (ss < 0x3fff) {
+                x += dx; y += dy; z += dz;
+            } else {
+                break;
+            }
+            ss = (((s64)x * x) >> 14) + (((s64)y * y) >> 14) + (((s64)z * z) >> 14);
+            dx >>= 1; dy >>= 1; dz >>= 1;
+        }
+    }
+
+    *p_x = x; *p_y = y; *p_z = z;
+}
+
+/* Permute mat1 into mat2, and apply axis rotation to mat1.
+ *
+ * While mat2 looks like a scratch storage here, its final
+ * content can be also relied upon by the caller afterwards.
+ * Rotation angle is provided as sine and cosine values.
+ */
+int mech_unkn_func_12(struct M33 *p_mat1, struct M33 *p_mat2,
+  int sin_angl, int cos_angl, int axis)
+{
+#if 0
+    int ret;
+    asm volatile (
+      "push %5\n"
+      "call ASM_mech_unkn_func_12\n"
+        : "=r" (ret) : "a" (p_mat1),  "d" (p_mat2),  "b" (sin_angl),  "c" (cos_angl), "g" ((int)axis));
+    return ret;
+#endif
+    struct M33 work;
+    int sin_neg, sin_pos, cos_val;
+    int row;
+
+    // Build a permuted copy of mat1 into mat2.
+    p_mat2->R[0][0] = p_mat1->R[0][2];
+    p_mat2->R[0][1] = p_mat1->R[1][2];
+    p_mat2->R[0][2] = p_mat1->R[2][2];
+    p_mat2->R[1][0] = p_mat1->R[0][1];
+    p_mat2->R[1][1] = p_mat1->R[1][1];
+    p_mat2->R[1][2] = p_mat1->R[2][1];
+    p_mat2->R[2][0] = p_mat1->R[0][0];
+    p_mat2->R[2][1] = p_mat1->R[1][0];
+    p_mat2->R[2][2] = p_mat1->R[2][0];
+
+    sin_neg = -sin_angl;
+    if (sin_neg >= 0x10000)
+        sin_neg = 0xffff;
+    sin_pos = -sin_neg;
+    cos_val = cos_angl;
+
+    switch (axis)
+    {
+    case 0:
+        // Rotate around local axis 0: spin columns 1/2 of each row, keep column 0.
+        for (row = 0; row < 3; row++)
+        {
+            int b, c;
+
+            b = p_mat2->R[row][1];
+            c = p_mat2->R[row][2];
+            work.R[row][0] = p_mat2->R[row][0];
+            work.R[row][1] = (((s64)b * cos_val) >> 16) + (((s64)c * sin_pos) >> 16);
+            work.R[row][2] = (((s64)b * sin_neg) >> 16) + (((s64)c * cos_val) >> 16);
+        }
+        mech12_norm_vec3_q14(&work.R[0][1], &work.R[1][1], &work.R[2][1]);
+        mech12_norm_vec3_q14(&work.R[0][2], &work.R[1][2], &work.R[2][2]);
+        break;
+    case 1:
+        // Rotate around local axis 1: spin columns 0/2 of each row, keep column 1.
+        for (row = 0; row < 3; row++)
+        {
+            int a, c;
+
+            a = p_mat2->R[row][0];
+            c = p_mat2->R[row][2];
+            work.R[row][0] = (((s64)a * cos_val) >> 16) + (((s64)c * sin_neg) >> 16);
+            work.R[row][1] = p_mat2->R[row][1];
+            work.R[row][2] = (((s64)a * sin_pos) >> 16) + (((s64)c * cos_val) >> 16);
+        }
+        mech12_norm_vec3_q14(&work.R[0][0], &work.R[1][0], &work.R[2][0]);
+        mech12_norm_vec3_q14(&work.R[0][2], &work.R[1][2], &work.R[2][2]);
+        break;
+    case 2:
+        // Rotate around local axis 2: spin columns 0/1 of each row, keep column 2.
+        for (row = 0; row < 3; row++)
+        {
+            int a, b;
+
+            a = p_mat2->R[row][0];
+            b = p_mat2->R[row][1];
+            work.R[row][0] = (((s64)a * cos_val) >> 16) + (((s64)b * sin_pos) >> 16);
+            work.R[row][1] = (((s64)a * sin_neg) >> 16) + (((s64)b * cos_val) >> 16);
+            work.R[row][2] = p_mat2->R[row][2];
+        }
+        mech12_norm_vec3_q14(&work.R[0][0], &work.R[1][0], &work.R[2][0]);
+        mech12_norm_vec3_q14(&work.R[0][1], &work.R[1][1], &work.R[2][1]);
+        break;
+    default:
+        LOGERR("invalid rotation axis provided: %d", (int)axis);
+        return 0;
+    }
+
+    // Undo the permutation applied above, writing the
+    // rotated/normalised matrix back into mat1.
+    p_mat1->R[0][2] = work.R[0][0];
+    p_mat1->R[1][2] = work.R[0][1];
+    p_mat1->R[2][2] = work.R[0][2];
+    p_mat1->R[0][1] = work.R[1][0];
+    p_mat1->R[1][1] = work.R[1][1];
+    p_mat1->R[2][1] = work.R[1][2];
+    p_mat1->R[0][0] = work.R[2][0];
+    p_mat1->R[1][0] = work.R[2][1];
+    p_mat1->R[2][0] = work.R[2][2];
+
+    return 0;
+}
+
+/** Re-orthonormalises a (possibly fixed-point-drifted) rotation matrix.
+ *
+ * Decompose the matrix into yaw/pitch/roll angles (roll angle requires
+ * re-applying the first two). Then rebuild a clean matrix from those
+ * angles. Finally, re-normalise all 3 rows.
+ */
+int mech_unkn_func_13(struct M33 *p_mat1, struct M33 *p_mat2)
+{
+#if 0
+    int ret;
+    asm volatile ("call ASM_mech_unkn_func_13\n"
+        : "=r" (ret) : "a" (p_mat1),  "d" (p_mat2));
+    return ret;
+#endif
+    int len_xz, len_full, len_roll;
+    int cos_yaw, sin_yaw, cos_pitch, sin_pitch, cos_roll, sin_roll;
+
+    // Decompose row0 into yaw/pitch angles
+    len_xz = LbSqrL(p_mat1->R[0][0] * p_mat1->R[0][0]
+      + p_mat1->R[0][2] * p_mat1->R[0][2]);
+    len_full = LbSqrL((ulong)(p_mat1->R[0][0] * p_mat1->R[0][0]
+      + p_mat1->R[0][1] * p_mat1->R[0][1]
+      + p_mat1->R[0][2] * p_mat1->R[0][2]));
+
+    if (len_xz > 0) {
+        cos_yaw = (((s64)p_mat1->R[0][2] << 16) / len_xz);
+        sin_yaw = (((s64)p_mat1->R[0][0] << 16) / len_xz);
+    } else {
+        cos_yaw = 0;
+        sin_yaw = 0x10000;
+    }
+    sin_pitch = (((s64)p_mat1->R[0][1] << 16) / len_full);
+    cos_pitch = (((s64)len_xz << 16) / len_full);
+
+    // Apply yaw, then pitch, overwriting mat1 with the Pitch(Yaw(mat1)).
+    matrix_rotate_yaw_copy(p_mat1, p_mat2, cos_yaw, sin_yaw);
+    matrix_rotate_pitch_copy(p_mat2, p_mat1, cos_pitch, -sin_pitch);
+
+    // The roll angle is derived from row1 of the matrix AFTER the
+    // yaw+pitch rotations above were applied.
+    len_roll = LbSqrL(p_mat1->R[1][1] * p_mat1->R[1][1]
+      + p_mat1->R[1][2] * p_mat1->R[1][2]);
+    if (len_roll > 0) {
+        cos_roll = (((s64)p_mat1->R[1][2] << 16) / len_roll);
+        sin_roll = (((s64)p_mat1->R[1][1] << 16) / len_roll);
+    } else {
+        cos_roll = 0;
+        sin_roll = 0x10000;
+    }
+
+    // Build a clean rotation matrix in mat1 by creating an identity matrix,
+    // then applyint angle transformations: Yaw(Pitch(Roll(identity))).
+    matrix_identity_fill(p_mat2);
+    matrix_rotate_roll_copy(p_mat2, p_mat1, -cos_roll, sin_roll);
+    matrix_rotate_pitch_copy(p_mat1, p_mat2, cos_pitch, sin_pitch);
+    matrix_rotate_yaw_copy(p_mat2, p_mat1, -cos_yaw, sin_yaw);
+
+    // Final precision cleanup: re-normalise each row to unit length.
+    mech12_norm_vec3_q14(&p_mat1->R[0][0], &p_mat1->R[0][1], &p_mat1->R[0][2]);
+    mech12_norm_vec3_q14(&p_mat1->R[1][0], &p_mat1->R[1][1], &p_mat1->R[1][2]);
+    mech12_norm_vec3_q14(&p_mat1->R[2][0], &p_mat1->R[2][1], &p_mat1->R[2][2]);
+
+    return 0;
+}
+
+int mech_unkn_func_11(struct unkn_mech_struc4 *p_itm4,
+  struct M31 *p_bodypos, struct M33 *p_mat)
+{
+    struct M33 locmat2;
+    int i;
+    struct M31 locvec1, locvec2;
+    ubyte n_func12;
+
+    locvec1 = p_itm4->field_61;
+    locvec2 = p_itm4->field_61;
+    n_func12 = 0;
+    locvec2.R[0] += p_itm4->field_6D.R[0];
+    locvec2.R[1] += p_itm4->field_6D.R[1];
+    locvec2.R[2] += p_itm4->field_6D.R[2];
+    vectors_mul_by_transposed_matrix(1, p_mat, &locvec2, &locvec1);
+
+    locvec2.R[0] = (locvec1.R[0] >> 14) + p_bodypos->R[0];
+    locvec2.R[1] = (locvec1.R[1] >> 14) + p_bodypos->R[1];
+    locvec2.R[2] = (locvec1.R[2] >> 14) + p_bodypos->R[2];
+
+    p_itm4->mat25.R[0][0] = p_mat->R[0][0];
+    p_itm4->mat25.R[0][1] = p_mat->R[0][1];
+    p_itm4->mat25.R[0][2] = p_mat->R[0][2];
+    p_itm4->mat25.R[1][0] = p_mat->R[1][0];
+    p_itm4->mat25.R[1][1] = p_mat->R[1][1];
+    p_itm4->mat25.R[1][2] = p_mat->R[1][2];
+    p_itm4->mat25.R[2][0] = p_mat->R[2][0];
+    p_itm4->mat25.R[2][1] = p_mat->R[2][1];
+    p_itm4->mat25.R[2][2] = p_mat->R[2][2];
+
+    if (p_itm4->angle_49
+      && (p_itm4->mat25.R[0][0] || p_itm4->mat25.R[0][1] || p_itm4->mat25.R[0][2])
+      && (p_itm4->mat25.R[1][0] || p_itm4->mat25.R[1][1] || p_itm4->mat25.R[1][2])
+      && (p_itm4->mat25.R[2][0] || p_itm4->mat25.R[2][1] || p_itm4->mat25.R[2][2]))
+    {
+        mech_unkn_func_12(&p_itm4->mat25, &locmat2, lbSinTable[p_itm4->angle_49], lbSinTable[p_itm4->angle_49 + 512], 0);
+        ++n_func12;
+    }
+    if (p_itm4->angle_4D
+      && (p_itm4->mat25.R[0][0] || p_itm4->mat25.R[0][1] || p_itm4->mat25.R[0][2])
+      && (p_itm4->mat25.R[1][0] || p_itm4->mat25.R[1][1] || p_itm4->mat25.R[1][2])
+      && (p_itm4->mat25.R[2][0] || p_itm4->mat25.R[2][1] || p_itm4->mat25.R[2][2]))
+    {
+        mech_unkn_func_12(&p_itm4->mat25, &locmat2, lbSinTable[p_itm4->angle_4D], lbSinTable[p_itm4->angle_4D + 512], 1u);
+        ++n_func12;
+    }
+    if (p_itm4->angle_51
+      && (p_itm4->mat25.R[0][0] || p_itm4->mat25.R[0][1] || p_itm4->mat25.R[0][2])
+      && (p_itm4->mat25.R[1][0] || p_itm4->mat25.R[1][1] || p_itm4->mat25.R[1][2])
+      && (p_itm4->mat25.R[2][0] || p_itm4->mat25.R[2][1] || p_itm4->mat25.R[2][2]))
+    {
+        mech_unkn_func_12(&p_itm4->mat25, &locmat2, lbSinTable[p_itm4->angle_51], lbSinTable[p_itm4->angle_51 + 512], 2u);
+        ++n_func12;
+    }
+    if (n_func12 > 0) {
+        mech_unkn_func_13(&p_itm4->mat25, &locmat2);
+    }
+    {
+        struct Thing *p_thing;
+        struct M33 *p_rmat;
+
+        p_thing = &things[p_itm4->thing];
+        p_rmat = &local_mats[p_thing->U.UObject.MatrixIndex];
+        matrix_transpose_copy(&p_itm4->mat25, p_rmat);
+        p_thing->X = locvec2.R[0];
+        p_thing->Y = locvec2.R[1];
+        p_thing->Z = locvec2.R[2];
+    }
+    if (p_itm4->field_23 == 5)
+    {
+        mech_rocket1_launch_cor_x = locvec2.R[0];
+        mech_rocket1_launch_cor_y = locvec2.R[1];
+        mech_rocket1_launch_cor_z = locvec2.R[2];
+    }
+    if (p_itm4->field_23 == 6)
+    {
+        mech_rocket2_launch_cor_x = locvec2.R[0];
+        mech_rocket2_launch_cor_y = locvec2.R[1];
+        mech_rocket2_launch_cor_z = locvec2.R[2];
+    }
+
+    if (p_itm4->field_79 == 1)
+    {
+        struct Thing *p_thing;
+        struct SingleObject *p_sobj;
+
+        p_thing = &things[p_itm4->thing];
+        p_sobj = &game_objects[p_thing->U.UObject.Object];
+        draw_rot_object(
+          p_thing->X - engn_xc,
+          p_thing->Y - engn_yc,
+          p_thing->Z - engn_zc,
+          p_sobj, p_thing);
+    }
+
+    for (i = 0; i < p_itm4->field_2; i++)
+    {
+        mech_unkn_func_11(p_itm4->field_3[i], &locvec2, &p_itm4->mat25);
+    }
+    return 0;
+}
+
+int mech_unkn_func_03(struct Thing *p_thing)
+{
+#if 0
+    int ret;
+    asm volatile ("call ASM_mech_unkn_func_03\n"
+        : "=r" (ret) : "a" (p_thing));
+    return ret;
+#endif
+    struct M31 bodypos;
+    int mechno;
+
+    mechno = p_thing->Owner;
+    bodypos.R[0] = PRCCOORD_TO_MAPCOORD(p_thing->X);
+    bodypos.R[2] = PRCCOORD_TO_MAPCOORD(p_thing->Z);
+    bodypos.R[1] = PRCCOORD_TO_YCOORD(p_thing->Y) + 600;
+    return mech_unkn_func_11(unkn_mech_arr3[mechno].mech3_arr4_ptr,
+      &bodypos, &unkn_mech_arr3[mechno].mech3_unkn_mat_C);
+}
+
+void draw_vehicle_health(struct Thing *p_thing, int bckt)
+{
+    int cor_x, cor_y, cor_z;
+    int depth_shift;
+    TbPixel lvl_col, bar_col;
+
+    depth_shift = - 2 * p_thing->Radius;
+
+    if (ingame.PanelPermutation == -3) {
+        lvl_col = 33;
+        bar_col = 42;
+    } else {
+        lvl_col = 15;
+        bar_col = 19;
+    }
+
+    cor_x = PRCCOORD_TO_MAPCOORD(p_thing->X);
+    cor_y = PRCCOORD_TO_YCOORD(p_thing->Y);
+    cor_z = PRCCOORD_TO_MAPCOORD(p_thing->Z);
+
+    enlist_draw_long_health_bar(cor_x, cor_y, cor_z, depth_shift,
+      bckt, p_thing->Health, p_thing->U.UVehicle.MaxHealth,
+      (intptr_t)p_thing, lvl_col, bar_col);
+}
+
+/******************************************************************************/

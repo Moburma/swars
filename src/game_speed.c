@@ -21,13 +21,24 @@
 #include <assert.h>
 #include "bfkeybd.h"
 #include "bftime.h"
+#include "enginprops.h"
 #include "game.h"
 #include "keyboard.h"
 #include "swlog.h"
 
 /******************************************************************************/
 
+GameTurn gameturn = 0;
+GameTurn prev_gameturn = 0;
+
+ulong turns_delta = 0;
+
 short frameskip = 0;
+
+GameTurn drawturn = 1;
+
+ulong curr_tick_time = 0;
+ulong prev_tick_time = 0;
 
 // TODO implement separate turns per second, when drawing frames will get separated from game loop
 ushort game_num_fps = 16;
@@ -35,6 +46,17 @@ ushort game_num_fps = 16;
 ushort fifties_per_gameturn = 3;
 
 /******************************************************************************/
+
+void render_clock_set_turn(ulong turn)
+{
+    render_anim_turn = (u32)turn << RENDER_ANIM_TURN_SHIFT;
+}
+
+void render_clock_next_frame(u32 anim_turn_incr)
+{
+    drawturn++;
+    render_anim_turn += anim_turn_incr;
+}
 
 void frameskip_clip(void)
 {

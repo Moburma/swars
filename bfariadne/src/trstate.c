@@ -25,6 +25,45 @@
 #include "trlog.h"
 /******************************************************************************/
 
+struct Triangulation triangulation[TRIANGULATIONS_COUNT];
+int triangulation_initied = 0;
+
+/******************************************************************************/
+
+static void triangulation_init_single(int trglno)
+{
+    struct Triangulation *p_trgl;
+    p_trgl = &triangulation[trglno];
+
+    p_trgl->tri_allocated = 0;
+    p_trgl->tri_initialised = 0;
+    p_trgl->last_tri = -1;
+    p_trgl->ix_Triangles = 0;
+    p_trgl->count_Triangles = 0;
+    p_trgl->free_Triangles = -1;
+    p_trgl->triangle_top = 0;
+    p_trgl->max_Triangles = 0;
+    p_trgl->Triangles = 0;
+    p_trgl->ix_Points = 0;
+    p_trgl->count_Points = 0;
+    p_trgl->free_Points = -1;
+    p_trgl->point_top = 0;
+    p_trgl->max_Points = 0;
+    p_trgl->Points = 0;
+}
+
+void triangulation_initialize(void)
+{
+    int n;
+
+    for (n = 0; n < TRIANGULATIONS_COUNT; n++)
+    {
+        triangulation_init_single(n);
+    }
+
+    triangulation_initied = 1;
+}
+
 void triangulation_select(int trglno)
 {
     asm volatile ("call ASM_triangulation_select\n"

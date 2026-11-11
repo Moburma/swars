@@ -21,9 +21,10 @@
 #include "bfkeybd.h"
 #include "bftext.h"
 #include "bfutility.h"
-#include "bflib_joyst.h"
+#include "bfjoyst.h"
 #include "ssampply.h"
 
+#include "campaign.h"
 #include "femain.h"
 #include "feshared.h"
 #include "guiboxes.h"
@@ -35,75 +36,55 @@
 #include "game_sprts.h"
 #include "game.h"
 #include "keyboard.h"
-#include "network.h"
+#include "mydraw.h"
 #include "player.h"
+#include "plyr_net.h"
 #include "purpldrw.h"
 #include "sound.h"
 #include "swlog.h"
 /******************************************************************************/
-extern struct ScreenBox controls_joystick_box;
-struct ScreenTextBox controls_list_box;
-extern struct ScreenButton controls_defaults_button;
-extern struct ScreenButton controls_save_button;
-extern struct ScreenButton controls_calibrate_button;
+struct ScreenBox controls_joystick_box = {0};
+struct ScreenTextBox controls_list_box = {0};
+struct ScreenButton controls_defaults_button = {0};
+struct ScreenButton controls_save_button = {0};
+struct ScreenButton controls_calibrate_button = {0};
 
-extern ubyte byte_1C4970;
-extern ubyte controls_hlight_gkey;
+ubyte byte_1C4970 = 0;
+ubyte controls_hlight_gkey = 1;
 
 short sheet_columns_x[] = {4, 200, 300};
-
-ubyte ac_do_controls_defaults(ubyte click);
-ubyte ac_do_controls_save(ubyte click);
-ubyte ac_do_controls_calibrate(ubyte click);
-ubyte ac_show_menu_controls_list_box(struct ScreenTextBox *p_box);
 
 /** Game key currently being edited in the controls screen.
  * Max value is 2x max GameKey index - because it also stored distinction
  * between entering keyboard key and joystick key.
  */
-extern ubyte controls_edited_gkey;
+ubyte controls_edited_gkey = 0;
+
+ubyte net_unkn_pos_02 = 0;
 
 /******************************************************************************/
 
 ubyte do_controls_defaults(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_controls_defaults\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     set_default_user_settings();
     return 1;
 }
 
 ubyte do_controls_save(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_controls_save\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     const char *msg_str;
     if (save_user_settings())
-        msg_str = gui_strings[578];
+        msg_str = gui_strings[GSTR_CONTROLS_SAVED_FAIL];
     else
-        msg_str = gui_strings[577];
+        msg_str = gui_strings[GSTR_CONTROLS_SAVED_SUCC];
     alert_box_text_fmt("%s", msg_str);
     return 1;
 }
 
 ubyte do_controls_calibrate(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_controls_calibrate\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     net_unkn_pos_02 = 1;
-    alert_box_text_fmt("%s", gui_strings[574]);
+    alert_box_text_fmt("%s", gui_strings[GSTR_JOY_CAL_TOP_LEFT]);
     return 1;
 }
 
@@ -114,12 +95,6 @@ TbBool is_defining_control_key(void)
 
 ubyte show_controls_joystick_box(struct ScreenBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_show_controls_joystick_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     char locstr[52];
     struct ScreenRect active_rect;
     PlayerInfo *p_locplayer;
@@ -132,26 +107,26 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
 
     lbFontPtr = small_med_font;
     my_set_text_window(p_box->X + 4, p_box->Y + 4, p_box->Width - 8, p_box->Height - 8);
-    ln_height = font_height('A');
+    ln_height = my_char_height('A');
+    wpos_x = 6;
 
     if ((p_box->Flags & GBxFlg_BkgndDrawn) == 0)
     {
         lbFontPtr = med_font;
         lbDisplay.DrawFlags |= Lb_TEXT_HALIGN_CENTER;
-        text = gui_strings[489];
+        text = gui_strings[GSTR_JOYSTICK_TYPE];
         draw_text_purple_list2(0, 110, text, 0);
         lbDisplay.DrawFlags &= ~Lb_TEXT_HALIGN_CENTER;
 
         lbFontPtr = small_med_font;
-        wpos_x = 6;
         wpos_y = 10;
-        text = gui_strings[459];
+        text = gui_strings[GSTR_PLAYERS];
         draw_text_purple_list2(wpos_x, wpos_y, text, 0);
         wpos_y += ln_height + 8;
 
         for (i = 0; i < 4; i++)
         {
-            sprintf(locstr, "%s %d", gui_strings[460], i + 1);
+            sprintf(locstr, "%s %d", gui_strings[GSTR_PLAYER], i + 1);
             text = loctext_to_gtext(locstr);
             draw_text_purple_list2(wpos_x, wpos_y, text, 0);
             wpos_y += ln_height + 4;
@@ -162,14 +137,15 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
         p_box->Flags |= GBxFlg_BkgndDrawn;
 
         lbFontPtr = small_med_font;
-        ln_height = font_height('A');
+        ln_height = my_char_height('A');
     }
     wpos_y = 126;
+    tx_width = text_window_x2 - text_window_x1;
 
     lbDisplay.DrawFlags |= 0x8000;
     if (ctl_joystick_type == JTyp_EXT_DRIVER)
     {
-      if (joy_func_063(locstr) != -1)
+      if (JoyGetDeviceName(locstr) != -1)
       {
         text = loctext_to_gtext(locstr);
         tx_width = my_string_width(locstr);
@@ -190,35 +166,38 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
     active_rect.Width = tx_width;
     active_rect.Y = text_window_y1 + wpos_y;
     active_rect.Height = ln_height;
+#if defined(DOS) || defined(GO32)
+    // In DOS builds, allow cycling through different joystick driver types
     if (mouse_down_over_box(&active_rect))
     {
         if (lbDisplay.LeftButton)
         {
-            sbyte v23;
-            ubyte v24;
+            sbyte setup_ret;
+            ubyte last_type;
 
             if (ctl_joystick_type != JTyp_NONE)
-                joy_func_066(&joy);
+                JoyRefreshDevices(&joy);
             lbDisplay.LeftButton = 0;
 
-            v23 = -1;
-            v24 = ctl_joystick_type;
-            while (v23 != 1)
+            setup_ret = -1;
+            last_type = ctl_joystick_type;
+            while (setup_ret != 1)
             {
                 if (++ctl_joystick_type >= JTyp_TYPES_COUNT)
                     ctl_joystick_type = JTyp_ANALG_2BTN; // first one
-                if (v24 == ctl_joystick_type)
-                {
-                    v23 = 1;
+                if (last_type == ctl_joystick_type) {
+                    setup_ret = 1;
                     ctl_joystick_type = JTyp_NONE;
                 }
-                if (unkn01_maskarr[ctl_joystick_type])
-                    v23 = joy_func_067(&joy, ctl_joystick_type);
-                if (!v24)
-                    v24 = 1;
+                if (joy_types_available[ctl_joystick_type]) {
+                    setup_ret = JoySetupDevice(&joy, ctl_joystick_type);
+                }
+                if (last_type == JTyp_NONE)
+                    last_type = JTyp_ANALG_2BTN;
             }
         }
     }
+#endif
     p_locplayer = &players[local_player_no];
 
     wpos_x = 140;
@@ -240,10 +219,10 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
         if (lbDisplay.LeftButton)
         {
             lbDisplay.LeftButton = 0;
-            if (login_control__State != LognCt_Unkn5 || nsvc.I.Type == NetSvc_IPX)
+            if (login_control[0].State != LognCt_NetStarted || netgame_service_is_multi_client_capable())
             {
                 p_locplayer->DoubleMode++;
-                if (p_locplayer->DoubleMode > 3)
+                if (p_locplayer->DoubleMode >= LOCAL_USERS_MAX_COUNT)
                     p_locplayer->DoubleMode = 0;
             }
             else
@@ -251,7 +230,7 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
                 p_locplayer->DoubleMode = 0;
             }
 
-            for (dmuser = p_locplayer->DoubleMode + 1; dmuser < 4; dmuser++)
+            for (dmuser = p_locplayer->DoubleMode + 1; dmuser < LOCAL_USERS_MAX_COUNT; dmuser++)
             {
                 p_locplayer->UserInput[dmuser].ControlMode = UInpCtr_Mouse;
             }
@@ -262,13 +241,12 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
     wpos_y = ln_height + 18;
     lbDisplay.DrawFlags |= 0x8000;
 
-    active_rect.Y = text_window_y1 + wpos_y;
     active_rect.Height = ln_height;
     for (dmuser = 0; dmuser < p_locplayer->DoubleMode + 1; dmuser++)
     {
         ushort ctlmode;
 
-        ctlmode = p_locplayer->UserInput[dmuser].ControlMode;
+        ctlmode = user_input_control_mode_get(local_player_no, dmuser);
         if (ctlmode >= UInpCtr_Joystick0)
         {
             int n_found;
@@ -281,19 +259,20 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
                     n_found++;
                 i++;
             }
-            sprintf(locstr, "%s %d", gui_strings[463], i);
+            sprintf(locstr, "%s %d", gui_strings[GSTR_CONTROLS_TYPES + 2], i);
             text = loctext_to_gtext(locstr);
             draw_text_purple_list2(wpos_x, wpos_y, text, 0);
         }
         else
         {
-            sprintf(locstr, "%s", gui_strings[461 + ctlmode]);
+            sprintf(locstr, "%s", gui_strings[GSTR_CONTROLS_TYPES + ctlmode]); // Keyboard or Mouse
             text = loctext_to_gtext(locstr);
             draw_text_purple_list2(wpos_x, wpos_y, text, 0);
         }
         tx_width = LbTextStringWidth(locstr);
 
         active_rect.X = text_window_x1 + wpos_x;
+        active_rect.Y = text_window_y1 + wpos_y;
         active_rect.Width = tx_width;
         if (mouse_down_over_box(&active_rect))
         {
@@ -313,16 +292,11 @@ ubyte show_controls_joystick_box(struct ScreenBox *p_box)
     }
     lbDisplay.DrawFlags &= ~0x8000;
 
-    //controls_calibrate_button.DrawFn(&controls_calibrate_button); -- incompatible calling convention
-    {
-        ubyte drawn;
-        asm volatile ("call *%2\n"
-            : "=r" (drawn) : "a" (&controls_calibrate_button), "g" (controls_calibrate_button.DrawFn));
-    }
+    controls_calibrate_button.DrawFn(&controls_calibrate_button);
     return 0;
 }
 
-void set_controls_key(ushort hlight_gkey, ushort key)
+void set_controls_key(ushort hlight_gkey, uint32_t key)
 {
     GameKey gkey;
     TbBool is_joystick;
@@ -386,7 +360,7 @@ ubyte menu_controls_inputs(struct ScreenTextBox *p_box, short *p_tx_kbd_width, s
     ret = 0;
 
     lbFontPtr = p_box->Font;
-    ln_height = font_height('A');
+    ln_height = my_char_height('A');
 
     if (lbDisplay.LeftButton || joy.Buttons[0])
     {
@@ -543,7 +517,7 @@ ubyte menu_controls_inputs(struct ScreenTextBox *p_box, short *p_tx_kbd_width, s
         {
             if (is_joy_pressed_any(0))
             {
-                ushort jskey;
+                JoyButtonSet jskey;
 
                 jskey = get_joy_pressed_key(0);
                 set_controls_key(edited_gkey, jskey);
@@ -641,11 +615,11 @@ ubyte show_menu_controls_list_box(struct ScreenTextBox *p_box)
         const char *text;
 
         lbFontPtr = med_font;
-        text = gui_strings[486];
+        text = gui_strings[GSTR_CONTROLS];
         draw_text_purple_list2(sheet_columns_x[0], 4, text, 0);
-        text = gui_strings[487];
+        text = gui_strings[GSTR_KEYS];
         draw_text_purple_list2(sheet_columns_x[1], 4, text, 0);
-        text = gui_strings[488];
+        text = gui_strings[GSTR_JOYSTICK2];
         draw_text_purple_list2(sheet_columns_x[2], 4, text, 0);
 
         lbDisplay.DrawFlags = 0;
@@ -787,7 +761,7 @@ ubyte update_settings_controls_alert(struct ScreenTextBox *p_box)
     case 2:
         if (joy.Buttons[0])
             break;
-        alert_box_text_fmt("%s", gui_strings[575]);
+        alert_box_text_fmt("%s", gui_strings[GSTR_JOY_CAL_BOTTOM_RIGHT]);
         net_unkn_pos_02++;
         break;
     case 3:
@@ -803,7 +777,7 @@ ubyte update_settings_controls_alert(struct ScreenTextBox *p_box)
     case 4:
         if (joy.Buttons[0])
             break;
-        alert_box_text_fmt("%s", gui_strings[576]);
+        alert_box_text_fmt("%s", gui_strings[GSTR_JOY_CAL_LEAVE_CENTRE]);
         net_unkn_pos_02++;
         break;
     case 5:
@@ -831,14 +805,10 @@ ubyte show_options_controls_screen(void)
 {
     ubyte drawn;
 
-    //drawn = controls_list_box.DrawFn(&controls_list_box); -- incompatible calling convention
-    asm volatile ("call *%2\n"
-        : "=r" (drawn) : "a" (&controls_list_box), "g" (controls_list_box.DrawFn));
+    drawn = controls_list_box.DrawFn(&controls_list_box);
     if (drawn == 3) {
         update_settings_controls_alert(&controls_list_box);
-        //drawn = controls_joystick_box.DrawFn(&controls_joystick_box); -- incompatible calling convention
-        asm volatile ("call *%2\n"
-            : "=r" (drawn) : "a" (&controls_joystick_box), "g" (controls_joystick_box.DrawFn));
+        drawn = controls_joystick_box.DrawFn(&controls_joystick_box);
     }
     return drawn;
 }
@@ -862,7 +832,7 @@ void init_controls_screen_boxes(void)
 #endif
 
     init_screen_text_box(&controls_list_box, 213u, 72u, 420u, 354, 6, small_med_font, 1);
-    controls_list_box.DrawTextFn = ac_show_menu_controls_list_box;
+    controls_list_box.DrawTextFn = show_menu_controls_list_box;
     controls_list_box.ScrollWindowHeight = 296;
     controls_list_box.Lines = GKey_KEYS_COUNT;
     controls_list_box.Flags |= (GBxFlg_RadioBtn | GBxFlg_IsMouseOver);
@@ -870,10 +840,10 @@ void init_controls_screen_boxes(void)
     controls_list_box.ScrollWindowOffset += 27;
     init_screen_button(&controls_defaults_button, 219u, 405u,
       gui_strings[484], 6, med2_font, 1, 0);
-    controls_defaults_button.CallBackFn = ac_do_controls_defaults;
+    controls_defaults_button.CallBackFn = do_controls_defaults;
     init_screen_button(&controls_save_button, 627u, 405u,
       gui_strings[439], 6, med2_font, 1, 0x80);
-    controls_save_button.CallBackFn = ac_do_controls_save;
+    controls_save_button.CallBackFn = do_controls_save;
 
     controls_list_box.Buttons[0] = &controls_defaults_button;
     controls_list_box.Buttons[1] = &controls_save_button;
@@ -882,7 +852,7 @@ void init_controls_screen_boxes(void)
     controls_joystick_box.SpecialDrawFn = show_controls_joystick_box;
     init_screen_button(&controls_calibrate_button, 57u, 405u,
       gui_strings[485], 6, med2_font, 1, 0);
-    controls_calibrate_button.CallBackFn = ac_do_controls_calibrate;
+    controls_calibrate_button.CallBackFn = do_controls_calibrate;
 
     // Reposition the components to current resolution
 

@@ -18,14 +18,18 @@
 /******************************************************************************/
 #include "building.h"
 
+#include <assert.h>
 #include "bfmath.h"
 #include "bfmemory.h"
 #include "bfutility.h"
 
+#include "enginprops.h"
+#include "enginsngobjs.h"
+
 #include "ssampply.h"
 #include "bigmap.h"
 #include "bmbang.h"
-#include "enginsngobjs.h"
+#include "bmcrater.h"
 #include "game_options.h"
 #include "game_speed.h"
 #include "game.h"
@@ -137,11 +141,20 @@ TbBool building_can_transform_open(ThingIdx bldng)
 struct Thing *create_building_thing(int x, int y, int z, ushort obj, ushort nobj, ushort a6)
 {
     struct Thing *ret;
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[2];
+
+    stkargs[0] = (int)(intptr_t)nobj;
+    stkargs[1] = (int)(intptr_t)a6;
+
     asm volatile (
-      "push %6\n"
-      "push %5\n"
+      "push 4(%5)\n"
+      "push 0(%5)\n"
       "call ASM_create_building_thing\n"
-        : "=r" (ret) : "a" (x), "d" (y), "b" (z), "c" (obj), "g" (nobj), "g" (a6));
+        : "=r" (ret)
+        : "a" (x), "d" (y), "b" (z), "c" (obj), "S" (stkargs)
+        : "cc", "memory");
     return ret;
 }
 
@@ -511,7 +524,7 @@ void collapse_building(short x, short y, short z, struct Thing *p_building)
         struct SingleObject *p_sobj;
 
         p_sobj = &game_objects[p_building->U.UObject.Object];
-        if (((p_sobj->field_1C & 0x0100) == 0) || current_map == 9) // map009 Singapore on-water map
+        if (((p_sobj->field_1C & 0x0100) == 0) || ((render_floor_flags & RendFlrF_WobblyTerrain) != 0))
         {
             short cra_cor_x, cra_cor_z;
 
@@ -551,11 +564,19 @@ void process_shuttle_loader(struct Thing *p_building)
 
 void bul_hit_vector(int x, int y, int z, short col, int hp, int type)
 {
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[2];
+
+    stkargs[0] = (int)(intptr_t)hp;
+    stkargs[1] = (int)(intptr_t)type;
+
     asm volatile (
-      "push %5\n"
-      "push %4\n"
+      "push 4(%4)\n"
+      "push 0(%4)\n"
       "call ASM_bul_hit_vector\n"
-        : : "a" (x), "d" (y), "b" (z), "c" (col), "g" (hp), "g" (type));
+        : : "a" (x), "d" (y), "b" (z), "c" (col), "S" (stkargs)
+        : "cc", "memory");
 }
 
 void rotate_object(struct Thing *p_object)
@@ -567,11 +588,20 @@ void rotate_object(struct Thing *p_object)
 int mounted_los(int x1, int y1, int z1, int x2, int y2, int z2)
 {
     int ret;
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[2];
+
+    stkargs[0] = (int)(intptr_t)y2;
+    stkargs[1] = (int)(intptr_t)z2;
+
     asm volatile (
-      "push %6\n"
-      "push %5\n"
+      "push 4(%5)\n"
+      "push 0(%5)\n"
       "call ASM_mounted_los\n"
-        : "=r" (ret) : "a" (x1), "d" (y1), "b" (z1), "c" (x2), "g" (y2), "g" (z2));
+        : "=r" (ret)
+        : "a" (x1), "d" (y1), "b" (z1), "c" (x2), "S" (stkargs)
+        : "cc", "memory");
     return ret;
 }
 
@@ -682,9 +712,10 @@ void process_gate1(struct Thing *p_building)
 
 void process_bld36(struct Thing *p_building)
 {
-    struct M33 *mat;
-    mat = &local_mats[p_building->U.UObject.MatrixIndex];
-    rotate_object_axis(mat, 0, 0, 32);
+    struct M33 *p_matx;
+    assert(p_building->U.UObject.MatrixIndex < next_local_mat);
+    p_matx = &local_mats[p_building->U.UObject.MatrixIndex];
+    rotate_object_axis(p_matx, 0, 0, 32);
 }
 
 void process_building(struct Thing *p_building)
@@ -743,8 +774,8 @@ void process_building(struct Thing *p_building)
 int building_hit_by_bullet(struct Thing *p_thing, short hp,
   int vx, int vy, int vz, struct Thing *p_attacker, ushort type)
 {
-    if (p_attacker != NULL) {
-        p_attacker->U.UPerson.Flag3 |= 0x40;
+    if ((p_attacker != NULL) && (p_attacker->Type == TT_PERSON)) {
+        p_attacker->U.UPerson.Flag3 |= PrsF3_Unkn40;
     }
     if (p_thing->SubType != 32)
     {

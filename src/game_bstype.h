@@ -26,6 +26,7 @@
 extern "C" {
 #endif
 /******************************************************************************/
+#pragma pack(1)
 
 /** Game turn number, used for in-game time computations. */
 typedef ulong GameTurn;
@@ -38,6 +39,10 @@ typedef long SGameTurn;
  */
 typedef short ThingIdx;
 
+/** Type which stores result of thing state change request.
+ */
+typedef ubyte StateChRes;
+
 /** Type which stores index/offset of a Player.
  *
  * The value is a valid index in players[] array.
@@ -49,7 +54,7 @@ typedef ubyte PlayerIdx;
 typedef ubyte WeaponType;
 
 /** Coordinate on the screen surface.
- * The type shall allow safety store values beyond (below/above) real screen
+ * The type shall allow safely store values beyond (below/above) real screen
  * coordinates, up to another screen size. This means it needs to allow to
  * store -MAX_SUPPORTED_SCREEN_WIDTH .. 2*MAX_SUPPORTED_SCREEN_WIDTH, or the
  * same for height.
@@ -60,6 +65,11 @@ typedef short ScrCoord;
  */
 typedef ushort GameKey;
 
+/**
+ *  store a set of joystick buttons pressed.
+ */
+typedef u32 JoyButtonSet;
+
 /** Type which stores coordinate on the ingame map.
  *
  * Can be separated into a tile and position within.
@@ -67,6 +77,23 @@ typedef ushort GameKey;
  */
 typedef short MapCoord;
 
+/** Type which stores point position on the ingame map.
+ */
+struct MapCoords {
+    MapCoord X;
+    MapCoord Y;
+    MapCoord Z;
+};
+
+struct SynTime {
+    ubyte Minute;
+    ubyte Hour;
+    ubyte Day;
+    ubyte Month;
+    ubyte Year;
+};
+
+#pragma pack()
 /******************************************************************************/
 #ifdef __cplusplus
 }

@@ -20,7 +20,7 @@ msgstr ""
 "Project-Id-Version: Menu text for SyndWarsFX\n"
 "Report-Msgid-Bugs-To: https://github.com/swfans/syndwarsfx/issues\n"
 "POT-Creation-Date: 2023-09-05 11:43+0200\n"
-"PO-Revision-Date: 2025-12-12 20:12+0100\n"
+"PO-Revision-Date: 2025-12-15 22:05+0100\n"
 "Last-Translator: Mefistotelis <mefistotelis@gmail.com>\n"
 "Language-Team: Syndicate Wars Fans <github.com/swfans>\n"
 "Language: pl_PL\n"
@@ -387,7 +387,7 @@ msgstr "Wyeliminuj Dziewiątkę"
 
 #: scanner.objective:73
 msgctxt "objective text shown on scanner"
-msgid "The Nine have activated the ion gate. you have been defeated."
+msgid "The Nine have activated the ion gate. You have been defeated."
 msgstr "Dziewiątka aktywowała bramę jonową. Zostałeś pokonany."
 
 #: scanner.objective:74
@@ -883,7 +883,7 @@ msgstr "21,13 mln"
 #: mapscreen.city1:3
 msgctxt "map screen location - landscape"
 msgid "Post-industrial"
-msgstr "Postindustrialny"
+msgstr "Post-industrialny"
 
 #: mapscreen.city1:4
 msgctxt "map screen location - language"
@@ -893,12 +893,12 @@ msgstr "Niski angielski"
 #: mapscreen.city1:5
 msgctxt "map screen location - industry"
 msgid "Software Engineering, Financial Services"
-msgstr "Inżynieria oprogramowania, Usługi finansowe"
+msgstr "Inżynieria oprogram., Usługi finansowe"
 
 #: mapscreen.city1:6 mapscreen.city21:6 mapscreen.city34:6
 msgctxt "map screen location - toxicity"
 msgid "Chemical Waste, Human Effluent"
-msgstr "Odpady chemiczne, ścieki ludzkie"
+msgstr "Odpady chemiczne, Ścieki ludzkie"
 
 #: mapscreen.city2:1
 msgctxt "map screen location - name"
@@ -916,12 +916,12 @@ msgstr "10,98 mln"
 #: mapscreen.city38:3 mapscreen.city45:3 mapscreen.city48:3
 msgctxt "map screen location - landscape"
 msgid "Complex Urban"
-msgstr "Złożona zabudowa miejska"
+msgstr "Gęsta miejska"
 
 #: mapscreen.city2:4 mapscreen.city22:4
 msgctxt "map screen location - language"
 msgid "New American"
-msgstr "Nowoamerykański"
+msgstr "Nowo-amerykański"
 
 #: mapscreen.city2:5
 msgctxt "map screen location - industry"
@@ -931,7 +931,7 @@ msgstr "Produkcja pojazdów"
 #: mapscreen.city2:6
 msgctxt "map screen location - toxicity"
 msgid "Heavy Industrial, Radioactive Waste"
-msgstr "Przemysł ciężki, odpady radioaktywne"
+msgstr "Przemysł ciężki, odpady radioaktw."
 
 #: mapscreen.city3:1
 msgctxt "map screen location - name"
@@ -984,12 +984,12 @@ msgstr "Proto-mandaryński"
 #: mapscreen.city4:5
 msgctxt "map screen location - industry"
 msgid "Plastics Fabrication, Hardware Manufacture"
-msgstr "Produkcja tworzyw sztucznych, produkcja sprzętu"
+msgstr "Fabrykacja plastików, Produkcja osprzętu"
 
 #: mapscreen.city4:6
 msgctxt "map screen location - toxicity"
 msgid "Radioactive Waste, Human Effluent"
-msgstr "Odpady radioaktywne, ścieki ludzkie"
+msgstr "Odpady radioaktw., Ścieki ludzkie"
 
 #: mapscreen.city5:1
 msgctxt "map screen location - name"
@@ -1007,17 +1007,17 @@ msgstr "6,99 mln"
 #: mapscreen.city41:3 mapscreen.city42:3 mapscreen.city44:3
 msgctxt "map screen location - landscape"
 msgid "Simple Urban"
-msgstr "Prosta miejska zabudowa"
+msgstr "Prosta miejska"
 
 #: mapscreen.city5:4 mapscreen.city6:4
 msgctxt "map screen location - language"
 msgid "C.C.E. (Common Central European)"
-msgstr "C.C.E. (Wspólny środkowoeuropejski)"
+msgstr "Komunalny Centralno-Europejski"
 
 #: mapscreen.city5:5
 msgctxt "map screen location - industry"
 msgid "Mineral Re-processing"
-msgstr "Przetwarzanie minerałów"
+msgstr "Odzyskiwanie minerałów"
 
 #: mapscreen.city6:1
 msgctxt "map screen location - name"
@@ -1032,12 +1032,12 @@ msgstr "7,65 mln"
 #: mapscreen.city6:5 mapscreen.city18:5 mapscreen.city22:5 mapscreen.city29:5
 msgctxt "map screen location - industry"
 msgid "Water Detoxification, Air Re-processing"
-msgstr "Detoksykacja wody, przetwarzanie powietrza"
+msgstr "Detoks wody, Uzdatnianie powietrza"
 
 #: mapscreen.city6:6 mapscreen.city9:6 mapscreen.city18:6 mapscreen.city29:6
 msgctxt "map screen location - toxicity"
 msgid "Radioactive Waste"
-msgstr "Odpady radioaktywne"
+msgstr "Odpady radioaktw."
 
 #: mapscreen.city7:1
 msgctxt "map screen location - name"
@@ -1077,7 +1077,8 @@ msgstr "Pseudo-malajski"
 #: mapscreen.city8:5
 msgctxt "map screen location - industry"
 msgid "Water Detoxification, Hardware Manufacture"
-msgstr "Detoksykacja wody, Produkcja osprzętu"
+msgstr "Detoks wody, Produkcja osprzętu"
+
 
 #: mapscreen.city8:6
 msgctxt "map screen location - toxicity"
@@ -1184,7 +1185,7 @@ msgstr "Produkcja broni"
 #: mapscreen.city12:6
 msgctxt "map screen location - toxicity"
 msgid "Ultra-Heavy Industrial, Radioactive Waste, Human Effluent"
-msgstr "Przemysł ultra-ciężki, Odpady radioaktywne, Pozostałości ludzkie"
+msgstr "Przemysł ultra-ciężki, Odpady radioaktw., Pozostałości ludzkie"
 
 #: mapscreen.city13:1
 msgctxt "map screen location - name"
@@ -1299,7 +1300,7 @@ msgstr "Gwara Bahasa"
 #: mapscreen.city17:5
 msgctxt "map screen location - industry"
 msgid "Clothing Fabrication, Foodstuff Preparation"
-msgstr "Wytwarzanie odzieży, Przygotowanie żywności"
+msgstr "Wytwarzanie odzieży, Komponenty żywności"
 
 #: mapscreen.city18:1
 msgctxt "map screen location - name"
@@ -1339,7 +1340,7 @@ msgstr "Wytwarzanie odzieży, Destylacja"
 #: mapscreen.city19:6
 msgctxt "map screen location - toxicity"
 msgid "Radioactive Fallout, Human Effluent"
-msgstr "Odpady radioaktywne, Ścieki ludzkie"
+msgstr "Opad radioaktw., Ścieki ludzkie"
 
 #: mapscreen.city20:1
 msgctxt "map screen location - name"
@@ -1524,12 +1525,12 @@ msgstr "Eksperymentalny"
 #: mapscreen.city30:4
 msgctxt "map screen location - language"
 msgid "EuroCorp Technical Multi-State Code"
-msgstr "Wielostanowy Kod Techniczny EuroCorp"
+msgstr "Wielo-stanowy Kod Techniczny EuroCorp"
 
 #: mapscreen.city30:5
 msgctxt "map screen location - industry"
 msgid "Interstellar Transport, Microgravitic Manufacture"
-msgstr "Transport międzygwiezdny, Produkcja w mikrograwitacji"
+msgstr "Transport między-gwiezdny, Produkcja w mikro-grawitacji"
 
 #: mapscreen.city30:6
 msgctxt "map screen location - toxicity"
@@ -1570,7 +1571,7 @@ msgstr "0,023 mln"
 #: mapscreen.city43:3 mapscreen.city47:3
 msgctxt "map screen location - landscape"
 msgid "Sub-Simple Urban"
-msgstr "Pod–prosty miejski"
+msgstr "Mocno Prosty miejski"
 
 #: mapscreen.city32:4
 msgctxt "map screen location - language"
@@ -1650,7 +1651,7 @@ msgstr "Jednokoreański"
 #: mapscreen.city36:5
 msgctxt "map screen location - industry"
 msgid "Chemical Processing, Vehicle Manufacture"
-msgstr "Przetwórstwo chemiczne, produkcja pojazdów"
+msgstr "Przetwórstwo chemiczne, Produkcja pojazdów"
 
 #: mapscreen.city36:6
 msgctxt "map screen location - toxicity"
@@ -1675,12 +1676,12 @@ msgstr "Mandaryński strefowy"
 #: mapscreen.city37:5
 msgctxt "map screen location - industry"
 msgid "Animal Husbandry, Vegetative Re-processing"
-msgstr "Hodowla zwierząt, Przetwórstwo roślinne"
+msgstr "Hodowla zwierząt, Odtwórstwo wegetatywne"
 
 #: mapscreen.city37:6
 msgctxt "map screen location - toxicity"
 msgid "Animal Effluent, Chemical Waste"
-msgstr "Ścieki zwierzęce, Odpady chemiczne"
+msgstr "Odpady pozwierzęce, Odpady chemiczne"
 
 #: mapscreen.city38:1
 msgctxt "map screen location - name"
@@ -1715,7 +1716,7 @@ msgstr "Gwara Afrykanerska"
 #: mapscreen.city39:5
 msgctxt "map screen location - industry"
 msgid "Ore Processing"
-msgstr "Przetwarzanie minerałów"
+msgstr "Przetwarzanie rudy"
 
 #: mapscreen.city40:1
 msgctxt "map screen location - name"
@@ -1783,7 +1784,7 @@ msgstr "0,86 mln"
 #: mapscreen.city44:4
 msgctxt "map screen location - language"
 msgid "Anglo-Cyrillic"
-msgstr "Anglocyrylica"
+msgstr "Anglo-cyrylica"
 
 #: mapscreen.city44:5
 msgctxt "map screen location - industry"
@@ -1793,7 +1794,7 @@ msgstr "Manipulacja pogodą"
 #: mapscreen.city44:6
 msgctxt "map screen location - toxicity"
 msgid "High Radioactive, Light Industrial"
-msgstr "Odpady wysoce radioaktywne, Przemysł lekki"
+msgstr "Prom. jonizujące, Przemysł lekki"
 
 #: mapscreen.city45:1
 msgctxt "map screen location - name"
@@ -1838,7 +1839,7 @@ msgstr "Powietrze"
 #: mapscreen.city46:6
 msgctxt "map screen location - toxicity"
 msgid "Low Radioactive"
-msgstr "Nisko radioaktywne"
+msgstr "Nisko jonizujące"
 
 #: mapscreen.city47:1
 msgctxt "map screen location - name"
@@ -1873,7 +1874,7 @@ msgstr "3,4 mln"
 #: mapscreen.city48:6
 msgctxt "map screen location - toxicity"
 msgid "High Radioactive Waste, Heavy Industrial"
-msgstr "Odpady wysoce radioaktywne, Przemysł ciężki"
+msgstr "Odpady wysoce radioaktw., Przemysł ciężki"
 
 #: mapscreen.city49:1
 msgctxt "map screen location - name"
@@ -1893,7 +1894,7 @@ msgstr "Portugalski (Dawny)"
 #: mapscreen.city49:6
 msgctxt "map screen location - toxicity"
 msgid "Radioactive Waste, Light Industrial"
-msgstr "Odpady radioaktywne, Przemysł lekki"
+msgstr "Odpady radioaktw., Przemysł lekki"
 
 #: sci.death.reason:1
 msgctxt "scientists death reason"

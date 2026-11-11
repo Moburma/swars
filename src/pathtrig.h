@@ -28,8 +28,21 @@ extern "C" {
 /******************************************************************************/
 #pragma pack(1)
 
-struct Path;
 struct Thing;
+
+struct WayPoint {
+    s32 x8;
+    s32 y8;
+};
+
+struct Path { // sizeof=0x814
+    s32 ax8;
+    s32 ay8;
+    s32 bx8;
+    s32 by8;
+    s32 PathLength;
+    struct WayPoint WayPoints[256];
+};
 
 #pragma pack()
 /******************************************************************************/
@@ -63,7 +76,11 @@ void print_mapel_collision_columns(void);
  */
 void print_collision_vects(void);
 
-int unkn_path_func_001(struct Thing *p_thing, ubyte a2);
+void unkn_path_func_001(struct Thing *p_thing, ubyte a2);
+
+/** Checks whether line segment (x1,y1)-(x2,y2) intersects segment (x3,y3)-(x4,y4).
+ */
+TbBool two4_line_intersection(int x1, int y1, int x2, int y2, int x3, int y3, int x4, int y4);
 
 void init_col_vects_linked_list(void);
 

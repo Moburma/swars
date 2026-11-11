@@ -46,6 +46,9 @@ uint32_t AIL_indent;
 
 int32_t AIL_startup(void)
 {
+#if LB_FILENAME_TRANSFORM
+    char real_fname[FILENAME_MAX];
+#endif
     const char *logfname;
     int32_t ret;
 
@@ -59,7 +62,17 @@ int32_t AIL_startup(void)
     if (logfname != NULL) {
         if (getenv("AIL_SYS_DEBUG"))
             AIL_sys_debug = 1;
-        AIL_debugfile = fopen(logfname, "w+t");
+#if LB_FILENAME_TRANSFORM
+        if (lbFileNameTransform != NULL)
+        {
+            lbFileNameTransform(real_fname, logfname);
+            AIL_debugfile = fopen(real_fname, "w+t");
+        }
+        else
+#endif
+        {
+            AIL_debugfile = fopen(logfname, "w+t");
+        }
     }
 
     if (AIL_debugfile != NULL) {

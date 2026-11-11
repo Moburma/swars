@@ -32,6 +32,10 @@ extern "C" {
 
 /******************************************************************************/
 
+void * RADAPI RADMALLOC(uint32_t size);
+void RADAPI RADFREE(void *mem_ptr);
+uint32_t RADAPI SmackTimerRead(void);
+
 /** Link Smacker audio output to AIL library interface.
  *
  * @param speed Frequency of the timer sending buffers to AIL output.

@@ -30,6 +30,18 @@ extern "C" {
 
 #define VEHICLE_PASSENGER_LIMIT 500
 
+/** Distance from bottom of the mech body to where the barrel is, for beam weapons.
+ *
+ * Used as starting point of shots.
+ */
+#define MECH_BOTTOM_TO_BEAM_WEAPON_HEIGHT 24
+
+/** Length from mech body center to tip of the mech weapon, for beam weapons.
+ *
+ * Used as starting point of shots.
+ */
+#define MECH_CENTER_TO_BEAM_WEAPON_TIP_MAPCOORD -96
+
 enum SubTypeVehicle {
   SubTT_VEH_TRAIN = 0x1D,
   SubTT_VEH_UNKN30 = 0x1E,
@@ -63,6 +75,34 @@ enum SubTypeVehicle {
   SubTT_VEH_UNKN58 = 0x3A,
   SubTT_VEH_MECH = 0x3B,
   SubTT_VEH_UNKN60 = 0x3C,
+};
+
+enum VehicleObjectModel {
+  VehOM_CIVIL_CAR_BLACK = 0x00,
+  VehOM_DELOREAN_GREY = 0x01,
+  VehOM_BIKE_CLOSED_BROWN = 0x02,
+  VehOM_ZEALOT_POINTY_RED = 0x03,
+  VehOM_IML_TRAIN = 0x04,
+  VehOM_ARMORED_SM_GREEN = 0x06,
+  VehOM_ARMORED_LG_GREEN = 0x07,
+  VehOM_POLICE_CAR = 0x08,
+  VehOM_POLICE_TRUCK = 0x09,
+  VehOM_UTILITY_SM_YELLOW = 0x0a,
+  VehOM_BRANDED_TRUCK_BF = 0x0b,
+  VehOM_FIRE_TRUCK = 0x0c,
+  VehOM_ABULANCE_CAR = 0x0d,
+  VehOM_TAXI_YELLOW = 0x0e,
+  VehOM_MERCH_BOAT = 0x0f,
+  VehOM_ROCKET_BOAT = 0x10,
+  VehOM_YACHT_WHITE = 0x11,
+  VehOM_MBTANK = 0x12,
+  VehOM_CIVIL_CAR_RED = 0x15,
+  VehOM_DELOREAN_YELLOW = 0x16,
+  VehOM_SHUTTLE_LG_WHITE = 0x17,
+  VehOM_TAXI_RED = 0x18,
+  VehOM_BIKE_CLOSED_BROWN_ACCEL = 0x1c,
+  VehOM_CLAWTANK = 0x1d,
+  VehOM_BRANDED_TRUCK_MG = 0x1f,
 };
 
 enum VehicleState {
@@ -171,6 +211,8 @@ enum VehWorkPlaceFlags {
 };
 
 struct Thing;
+struct unkn_mech_struc7;
+struct unkn_mech_struc3;
 
 /** Stores configuration for a state of a vehicle.
  */
@@ -182,7 +224,27 @@ struct VehStateConfig
 
 #pragma pack()
 /******************************************************************************/
+
+extern struct unkn_mech_struc7 *unkn_mech_stct7;
+extern void *dword_177750;
+
+extern s32 mech_rocket1_launch_cor_x;
+extern s32 mech_rocket1_launch_cor_y;
+extern s32 mech_rocket1_launch_cor_z;
+extern s32 mech_rocket2_launch_cor_x;
+extern s32 mech_rocket2_launch_cor_y;
+extern s32 mech_rocket2_launch_cor_z;
+
+extern struct unkn_mech_struc3 *unkn_mech_arr3;
+
+/******************************************************************************/
+
 void init_mech(void);
+
+/** Reinit per-gameturn state of mech vehicles.
+ */
+void mech_gameturn_reinit(void);
+
 void mech_unkn_func_02(void);
 void mech_unkn_func_09(ThingIdx thing);
 void init_mech_explode(struct Thing *p_vehicle);

@@ -21,11 +21,12 @@
 
 #include <assert.h>
 #include "bfkeybd.h"
-#include "bflib_joyst.h"
+#include "bfjoyst.h"
 #include "ssampply.h"
 
-#include "display.h"
+#include "engincam.h"
 #include "engintrns.h"
+
 #include "game.h"
 #include "game_options.h"
 #include "game_speed.h"
@@ -35,8 +36,12 @@
 #include "sound.h"
 #include "swlog.h"
 #include "thing.h"
+#include "vehicle.h"
 /******************************************************************************/
 
+struct UnkPlayerGroup unkn_player_groups[8][5];
+
+/******************************************************************************/
 short get_agent_move_direction_delta_x(const struct SpecialUserInput *p_usrinp)
 {
     return (sbyte)(p_usrinp->Bits >> 0);
@@ -83,6 +88,126 @@ void do_user_input_bits_control_clear_nonmove(struct SpecialUserInput *p_usrinp)
     p_usrinp->Bits &= ~SpUIn_AllNonMoveBits;
 }
 
+void reset_user_groups(void)
+{
+    PlayerIdx plyr;
+
+    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
+    {
+        ushort plgroup;
+
+        for (plgroup = 0; plgroup < 5; plgroup++) {
+            unkn_player_groups[plyr][plgroup].GroupActive = 0;
+        }
+    }
+}
+
+void reset_user_input(void)
+{
+    PlayerIdx plyr;
+
+    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
+    {
+        PlayerInfo *p_player;
+        struct SpecialUserInput *p_usrinp;
+        ushort dmuser;
+
+        p_player = &players[plyr];
+
+        for (dmuser = 0; dmuser < LOCAL_USERS_MAX_COUNT; dmuser++) {
+            p_player->State[dmuser] = 0;
+            p_player->SubState[dmuser] = 0;
+
+            p_usrinp = &p_player->UserInput[dmuser];
+            do_user_input_bits_control_clear_all(p_usrinp);
+        }
+    }
+}
+
+void user_input_control_mode_set(PlayerIdx plyr, ubyte dmuser, ushort ctrmode)
+{
+    PlayerInfo *p_player;
+
+    p_player = &players[plyr];
+    p_player->UserInput[dmuser].ControlMode = ctrmode;
+}
+
+ushort user_input_control_mode_get(PlayerIdx plyr, ubyte dmuser)
+{
+    PlayerInfo *p_player;
+
+    p_player = &players[plyr];
+    return p_player->UserInput[dmuser].ControlMode & ~UInpCtr_AllFlagsMask;
+}
+
+void user_input_control_flags_raise(PlayerIdx plyr, ubyte dmuser, ushort ctrflags)
+{
+    PlayerInfo *p_player;
+
+    p_player = &players[plyr];
+    p_player->UserInput[dmuser].ControlMode |= ctrflags;
+}
+
+void user_input_control_flags_clear(PlayerIdx plyr, ubyte dmuser, ushort ctrflags)
+{
+    PlayerInfo *p_player;
+
+    p_player = &players[plyr];
+    p_player->UserInput[dmuser].ControlMode &= ~ctrflags;
+}
+
+TbBool user_input_control_flags_check(PlayerIdx plyr, ubyte dmuser, ushort ctrflags)
+{
+    PlayerInfo *p_player;
+
+    p_player = &players[plyr];
+    return (p_player->UserInput[dmuser].ControlMode & ctrflags) == ctrflags;
+}
+
+void init_user_input_local_controls(void)
+{
+    PlayerInfo *p_locplayer;
+    ushort ctlmode;
+
+    p_locplayer = &players[local_player_no];
+
+    if (p_locplayer->DoubleMode == 0) {
+        my_build_packet = build_packet;
+        mouser = 0;
+        return;
+    }
+
+    ctlmode = user_input_control_mode_get(local_player_no, 0);
+    if (ctlmode == UInpCtr_Mouse) {
+        mouser = 0;
+        my_build_packet = build_packet;
+        return;
+    }
+
+    ctlmode = user_input_control_mode_get(local_player_no, 1);
+    if (ctlmode == UInpCtr_Mouse) {
+        mouser = 1;
+        my_build_packet = build_packet2;
+        return;
+    }
+
+    ctlmode = user_input_control_mode_get(local_player_no, 2);
+    if (ctlmode == UInpCtr_Mouse) {
+        mouser = 2;
+        my_build_packet = build_packet3;
+        return;
+    }
+
+    ctlmode = user_input_control_mode_get(local_player_no, 3);
+    if (ctlmode == UInpCtr_Mouse) {
+        mouser = 3;
+        my_build_packet = build_packet4;
+        return;
+    }
+
+    LOGWARN("Unusual control mode - no user with mouse control");
+}
+
 void do_user_input_bits_direction_from_kbd(struct SpecialUserInput *p_usrinp)
 {
     short dt;
@@ -106,7 +231,7 @@ void do_user_input_bits_direction_from_joy(struct SpecialUserInput *p_usrinp, ub
         set_agent_move_direction_delta_x(p_usrinp, dt);
     }
     if (get_agent_move_direction_delta_z(p_usrinp) == 0) {
-        dt = joy.DigitalY[channel];
+        dt = -joy.DigitalY[channel];
         set_agent_move_direction_delta_z(p_usrinp, dt);
     }
 }
@@ -236,7 +361,7 @@ ubyte input_user_control_agent(ushort plyr, short dmuser)
 {
     PlayerInfo *p_player;
     struct Packet *p_pckt;
-    void (*loc_build_packet)(struct Packet *, ushort, ulong, long, long, long);
+    void (*loc_build_packet)(struct Packet *, ushort, u32, s32, s32, s32);
     struct Thing *p_dcthing;
     int dx, dy, dz;
     ThingIdx dcthing;
@@ -327,12 +452,28 @@ ubyte input_user_control_agent(ushort plyr, short dmuser)
     if ((p_player->UserInput[dmuser].Bits & SpUIn_DoTrigger) != 0)
     {
         p_dcthing = &things[dcthing];
-        if ((p_dcthing->Flag & TngF_InVehicle) != 0)
+        if (!person_is_in_a_vehicle(p_dcthing) && person_is_standing_on_vehicle(p_dcthing))
         {
-            p_player->UserInput[dmuser].Bits &= ~SpUIn_DoTrigger;
-            loc_build_packet(p_pckt, PAct_ENTER_VEHICLE, dcthing,
-              p_dcthing->U.UPerson.Vehicle, 0, 0);
-            return GINPUT_PACKET;
+            struct Thing *p_vehicle;
+            p_vehicle = &things[p_dcthing->U.UPerson.StandOnThing];
+
+            if (can_i_enter_vehicle(p_dcthing, p_vehicle))
+            {
+                p_player->UserInput[dmuser].Bits &= ~SpUIn_DoTrigger;
+                loc_build_packet(p_pckt, PAct_ENTER_VEHICLE, dcthing,
+                  p_dcthing->U.UPerson.StandOnThing, 0, 0);
+                return GINPUT_PACKET;
+            }
+            else
+            {
+                if ((debug_log_things & 0x01) != 0) {
+                    LOGSYNC_F("Person %s %d state %d.%d cannot enter %s %d state %d.%d",
+                      person_type_name(p_dcthing->SubType), (int)p_dcthing->ThingOffset,
+                      p_dcthing->State, p_dcthing->SubState,
+                      vehicle_type_name(p_vehicle->SubType), (int)p_vehicle->ThingOffset,
+                      p_vehicle->State, p_vehicle->SubState);
+                }
+            }
         }
     }
 
@@ -419,9 +560,9 @@ ubyte input_user_control_agent(ushort plyr, short dmuser)
     {
         ushort flg;
         if ((p_player->UserInput[dmuser].Bits & SpUIn_DoTrigger) != 0)
-            flg = 0x8000;
+            flg = PActF_TriggerUse;
         else
-            flg = 0x0;
+            flg = PActF_None;
         loc_build_packet(p_pckt, PAct_NONE | flg, dcthing, dx, dy, dz);
         return GINPUT_PACKET;
     }
@@ -432,9 +573,9 @@ ubyte input_user_control_agent(ushort plyr, short dmuser)
     {
         ushort flg;
         if ((p_player->UserInput[dmuser].Bits & SpUIn_DoTrigger) != 0)
-            flg = 0x8000;
+            flg = PActF_TriggerUse;
         else
-            flg = 0x0;
+            flg = PActF_None;
         loc_build_packet(p_pckt, PAct_AGENT_GOTO_GND_PT_REL_FF | flg, dcthing, dx, dy, dz);
         return GINPUT_PACKET;
     }
@@ -442,9 +583,9 @@ ubyte input_user_control_agent(ushort plyr, short dmuser)
     {
         ushort flg;
         if ((p_player->UserInput[dmuser].Bits & SpUIn_DoTrigger) != 0)
-            flg = 0x8000;
+            flg = PActF_TriggerUse;
         else
-            flg = 0x0;
+            flg = PActF_None;
         loc_build_packet(p_pckt, PAct_AGENT_GOTO_GND_PT_REL | flg, dcthing, dx, dy, dz);
         return GINPUT_PACKET;
     }

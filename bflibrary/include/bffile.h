@@ -34,9 +34,6 @@
 extern "C" {
 #endif
 
-//TODO change to build system param
-#define LB_FILENAME_TRANSFORM 1
-
 /* File system separator. Use when concatenating path; when checking existing
  * path, it is better to try both separators rather than use these defines.
  */

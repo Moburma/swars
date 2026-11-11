@@ -18,11 +18,13 @@
 /******************************************************************************/
 #include "vehicle.h"
 
-#include <assert.h>
 #include "bfmath.h"
 #include "bfmemut.h"
 #include "bfutility.h"
 #include "ssampply.h"
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "bigmap.h"
 #include "bmbang.h"
@@ -42,11 +44,95 @@
 
 #pragma pack(1)
 
-struct CarGlare { // sizeof=7
-    short Dix;
-    short Diy;
-    short Diz;
-    ubyte Flag;
+// TODO Maybe this is the same as players count, maybe not; owner field does not typically store player number
+#define MECH_OWNER_LIMIT 8
+
+struct unkn_mech_struc1 { // sizeof=0x11
+    ubyte field_0;
+    s32 field_1;
+    s32 field_5;
+    s32 field_9;
+    s32 field_D;
+};
+
+struct unkn_mech_struc2 { // sizeof=0x89
+    s32 field_0;
+    ubyte field_4[132];
+    ubyte field_88;
+};
+
+struct unkn_mech_struc3 { // sizeof=0x76
+    struct unkn_mech_struc4 *mech3_arr4_ptr;
+    s32 mech3_unkn_arr4_idx;
+    s32 mech3_unkn_fld_8;
+    struct M33 mech3_unkn_mat_C;
+    s32 mech3_unkn_X;
+    s32 mech3_unkn_Y;
+    s32 mech3_unkn_Z;
+    ubyte mech3_unkn_fld_3C[13];
+    s32 mech3_unkn_fld_49;
+    ubyte mech3_unkn_fld_4D[7];
+    s32 mech3_unkn_fld_54[3];
+    ubyte field_60;
+    ubyte field_61[3];
+    s32 field_64;
+    s32 field_68;
+    s32 field_6C;
+    ubyte field_70[2];
+    ubyte field_72[2];
+    ubyte field_74;
+    ubyte field_75;
+};
+
+struct unkn_mech_struc4 { // sizeof=0x7A
+    short thing;
+    ubyte field_2[33];
+    short field_23;
+    s32 field_25;
+    s32 field_29;
+    s32 field_2D;
+    s32 field_31;
+    s32 field_35;
+    s32 field_39;
+    s32 field_3D;
+    s32 field_41;
+    s32 field_45;
+    s32 angle_49;
+    s32 angle_4D;
+    s32 angle_51;
+    s32 field_55;
+    s32 field_59;
+    ubyte field_5D[4];
+    struct M31 field_61;
+    struct M31 field_6D;
+    ubyte field_79;
+};
+
+struct unkn_mech_struc5_s1 { // sizeof=24
+    s32 unkst5sub_04;
+    s32 unkst5sub_08;
+    s32 unkst5sub_0C;
+    s32 unkst5sub_10;
+    s32 unkst5sub_14;
+    ubyte unkst5sub_18[4];
+};
+
+struct unkn_mech_struc5 { // sizeof=0x1A9
+    s32 field_0;
+    struct unkn_mech_struc5_s1 field_4[16];
+    ubyte field_184[8];
+    ubyte field_18C[24];
+    ubyte field_1A4[4];
+    ubyte field_1A8;
+};
+
+struct unkn_mech_struc7 { // sizeof=0x13488
+    struct unkn_mech_struc3 field_0[MECH_OWNER_LIMIT];
+    struct unkn_mech_struc4 field_3B0[256];
+    struct unkn_mech_struc5 field_7DB0[64];
+    struct unkn_mech_struc1 field_E7F0[1024];
+    ubyte field_12BF0[8];
+    struct unkn_mech_struc2 field_12BF8[16];
 };
 
 #pragma pack()
@@ -139,49 +225,36 @@ struct VehStateConfig vehicle_states[] = {
   {"UNKN_52",},
 };
 
-struct CarGlare car_glare[] = {
-  {0, 16, 336, 0},
-  {-96, -64, 400, 0},
-  {128, -64, 400, 0},
-  {0, -96, 304, 0},
-  {-208, -32, -240, 0},
-  {208, -32, -240, 0},
-  {128, -144, 240, 0},
-  {-112, -144, 240, 0},
-  {96, -32, 304, 0},
-  {-80, -32, 304, 0},
-  {96, -96, 528, 0},
-  {-80, -96, 528, 0},
-  {-128, -16, 288, 1},
-  {144, -16, 288, 2},
-  {112, -112, -96, 2},
-  {-96, -112, -96, 1},
-  {-80, -368, 48, 1},
-  {96, -368, 48, 2},
-  {-32, -64, 160, 0},
-  {112, -16, 304, 0},
-  {-96, -16, 304, 0},
-  {-96, -224, 224, 1},
-  {80, -224, 224, 2},
-  {-96, -224, -288, 2},
-  {80, -224, -288, 1},
-  {-144, 0, 224, 1},
-  {176, 0, 224, 2},
-  {-112, -32, 448, 0},
-  {144, -32, 448, 0},
-  {-224, -176, 576, 0},
-  {224, -176, 576, 0},
-  {0, 16, 336, 0},
-  {-96, -64, 400, 0},
-  {128, -64, 400, 0},
-  {-160, -672, -688, 0},
-  {160, -672, -688, 0},
-  {-112, -32, 448, 0},
-  {144, -32, 448, 0},
-  {0, -96, 304, 0},
-  {112, -16, 304, 0},
-  {-96, -16, 304, 0},
-};
+void *dword_177750 = NULL;
+struct unkn_mech_struc7 *unkn_mech_stct7 = NULL;
+
+struct unkn_mech_struc3 *unkn_mech_arr3 = NULL;
+struct unkn_mech_struc4 *unkn_mech_arr4 = NULL;
+struct unkn_mech_struc5 *unkn_mech_arr5 = NULL;
+struct unkn_mech_struc1 *unkn_mech_arr1 = NULL;
+ubyte *unkn_mech_arr6 = NULL;
+struct unkn_mech_struc2 *unkn_mech_arr2 = NULL;
+struct M33 unkn_mech_mat8;
+
+s32 mech_last_cor_x = TILE_TO_MAPCOORD(MAP_TILE_WIDTH/2, 127);
+s32 mech_last_cor_y = TILE_TO_MAPCOORD(1, 0);
+s32 mech_last_cor_z = TILE_TO_MAPCOORD(MAP_TILE_WIDTH/2, 127);
+
+// to be removed after ASM use is gone
+s32 mech_unkn_tile_y2;
+s32 mech_unkn_tile_x3;
+s32 mech_unkn_tile_y3;
+
+s32 mech_rocket1_launch_cor_x = TILE_TO_MAPCOORD(MAP_TILE_WIDTH/2, 127);
+s32 mech_rocket1_launch_cor_y = TILE_TO_MAPCOORD(1, 0);
+s32 mech_rocket1_launch_cor_z = TILE_TO_MAPCOORD(MAP_TILE_WIDTH/2, 127);
+
+s32 mech_rocket2_launch_cor_x = TILE_TO_MAPCOORD(MAP_TILE_WIDTH/2, 127);
+s32 mech_rocket2_launch_cor_y = TILE_TO_MAPCOORD(1, 0);
+s32 mech_rocket2_launch_cor_z = TILE_TO_MAPCOORD(MAP_TILE_WIDTH/2, 127);
+
+s32 unkn_mech_var10 = 0;
+s32 unkn_mech_var11 = 0;
 
 const char *vehicle_type_name(ushort vtype)
 {
@@ -234,11 +307,123 @@ void snprint_vehicle_state(char *buf, ulong buflen, struct Thing *p_thing)
     snprintf(s, buflen - (s-buf), " )");
 }
 
+void mech_clear_all_fld72(void)
+{
+    ushort i;
+    ushort owner;
+
+    for (owner = 0; owner < MECH_OWNER_LIMIT; owner++)
+    {
+        struct unkn_mech_struc3 *p_u3itm;
+
+        p_u3itm = &unkn_mech_arr3[owner];
+        for (i = 0; i < 2; i++) {
+            p_u3itm->field_72[i] = 0;
+        }
+    }
+}
+
+void mech_unkn_func_02(void)
+{
+#if 0
+    asm volatile ("call ASM_mech_unkn_func_02\n"
+        :  :  : "eax" );
+    return;
+#endif
+    unkn_mech_var10 = 0;
+    unkn_mech_var11 = 0;
+
+    mech_clear_all_fld72();
+}
+
+int load_mech_dat(const char *fname)
+{
+#if 0
+    int ret;
+    asm volatile ("call ASM_load_mech_dat\n"
+        : "=r" (ret) : "a" (fname));
+    return ret;
+#endif
+    TbFileHandle fh;
+    int i, k;
+
+    fh = LbFileOpen(fname, Lb_FILE_MODE_READ_ONLY);
+    if (fh == INVALID_FILE) {
+        return 0;
+    }
+
+    for (i = 0; i < 64; i++)
+    {
+        struct unkn_mech_struc5 *p_u5itm;
+
+        p_u5itm = &unkn_mech_arr5[i];
+        LbFileRead(fh, p_u5itm, sizeof(struct unkn_mech_struc5));
+
+        for (k = 0; k < 17; k++)
+        {
+            p_u5itm->field_4[k].unkst5sub_0C = 0x800 - p_u5itm->field_4[k].unkst5sub_0C;
+            p_u5itm->field_4[k].unkst5sub_14 = 0x800 - p_u5itm->field_4[k].unkst5sub_14;
+            p_u5itm->field_4[k].unkst5sub_0C &= 0x7FF;
+            p_u5itm->field_4[k].unkst5sub_10 &= 0x7FF;
+            p_u5itm->field_4[k].unkst5sub_14 &= 0x7FF;
+            p_u5itm->field_4[k].unkst5sub_04 = -p_u5itm->field_4[k].unkst5sub_04;
+        }
+    }
+
+    for (i = 0; i < 16; i++) {
+        LbFileRead(fh, &unkn_mech_arr2[i], sizeof(struct unkn_mech_struc2));
+    }
+
+    for (i = 0; i < 1024; i++) {
+        LbFileRead(fh, &unkn_mech_arr1[i], sizeof(struct unkn_mech_struc1));
+    }
+
+    LbFileClose(fh);
+    return 1;
+}
 
 void init_mech(void)
 {
+#if 0
     asm volatile ("call ASM_init_mech\n"
         :  :  : "eax" );
+#endif
+    u32 a1idx;
+
+    unkn_mech_arr4 = &unkn_mech_stct7->field_3B0[0];
+    unkn_mech_arr5 = &unkn_mech_stct7->field_7DB0[0];
+    unkn_mech_arr1 = &unkn_mech_stct7->field_E7F0[0];
+    unkn_mech_arr6 = unkn_mech_stct7->field_12BF0;
+    unkn_mech_arr2 = &unkn_mech_stct7->field_12BF8[0];
+    unkn_mech_arr3 = &unkn_mech_stct7->field_0[0];
+    memset(unkn_mech_stct7, 0, sizeof(struct unkn_mech_struc7));
+
+    memset(&unkn_mech_mat8, 0, sizeof(struct M33));
+    unkn_mech_mat8.R[0][0] = 0x4000;
+    unkn_mech_mat8.R[1][1] = 0x4000;
+    unkn_mech_mat8.R[2][2] = 0x4000;
+
+    load_mech_dat("data/mech.dat");
+
+    mech_clear_all_fld72();
+    unkn_mech_arr3->field_6C = 0;
+    a1idx = unkn_mech_arr2[unkn_mech_arr3->field_6C].field_0;
+    unkn_mech_arr3->field_64 = a1idx;
+    unkn_mech_arr3->mech3_unkn_fld_54[2] = unkn_mech_arr1[a1idx].field_9;
+}
+
+void mech_gameturn_reinit(void)
+{
+    // Mech rocket coordinates should be recomputed later using proper matrix
+    // transforms; but to avoid them being unset, init to last body location
+    //TODO why do we think there is a chance of the coords not being properly updated from things?
+    mech_rocket1_launch_cor_x = mech_last_cor_x;
+    mech_rocket1_launch_cor_y = mech_last_cor_y;
+    mech_rocket1_launch_cor_z = mech_last_cor_z;
+
+    mech_rocket2_launch_cor_x = mech_last_cor_x;
+    mech_rocket2_launch_cor_y = mech_last_cor_y;
+    mech_rocket2_launch_cor_z = mech_last_cor_z;
 }
 
 TbBool vehicle_is_destroyed(ThingIdx thing)
@@ -250,12 +435,6 @@ TbBool vehicle_is_destroyed(ThingIdx thing)
 
     p_thing = &things[thing];
     return thing_is_destroyed(thing) || (p_thing->Type != TT_VEHICLE);
-}
-
-void mech_unkn_func_02(void)
-{
-    asm volatile ("call ASM_mech_unkn_func_02\n"
-        :  :  : "eax" );
 }
 
 void mech_unkn_func_09(ThingIdx thing)
@@ -275,96 +454,105 @@ void veh_add(struct Thing *p_vehicle, short frame)
     struct SingleObject *p_snobj;
     short coord_x, coord_y, coord_z;
     short mgun;
-    ushort obj;
-    ushort mat;
+    ushort snobj;
+    ushort matx;
 
     switch (frame)
     {
-    case 18:
+    case VehOM_MBTANK:
         mgun = get_new_thing();
+        if (mgun <= 0) {
+            LOGERR("No thing slots for mounted gun");
+            break;
+        }
         p_vehicle->U.UVehicle.SubThing = mgun;
         p_vehicle->SubType = SubTT_VEH_TANK;
 
         p_mgun = &things[mgun];
         p_mgun->U.UMGun.NextThing = 0;
         p_mgun->U.UVehicle.SubThing = 0;
-        mat = next_local_mat;
-        next_local_mat++;
-        LbMemoryCopy(&local_mats[mat], &local_mats[p_vehicle->U.UVehicle.MatrixIndex], sizeof(struct M33));
-        p_mgun->U.UMGun.MatrixIndex = mat;
+        assert(p_vehicle->U.UVehicle.MatrixIndex < next_local_mat);
+        assert(next_local_mat < LOCAL_MATS_COUNT);
+        matx = next_local_mat++;
+        LbMemoryCopy(&local_mats[matx], &local_mats[p_vehicle->U.UVehicle.MatrixIndex], sizeof(struct M33));
+        p_mgun->U.UMGun.MatrixIndex = matx;
         p_mgun->StartFrame = frame;
 
         coord_x = PRCCOORD_TO_MAPCOORD(p_vehicle->X);
         coord_y = PRCCOORD_TO_MAPCOORD(p_vehicle->Y);
         coord_z = PRCCOORD_TO_MAPCOORD(p_vehicle->Z);
-        byte_1C83D1 = 0;
-        sub_6031C(coord_x, coord_z, -19 - prim_unknprop01, coord_y + 20);
+        snobj = copy_prim_obj_to_game_object(coord_x, coord_z, -19 - prim_unknprop01, coord_y + 20);
         p_mgun->X = 0;
         p_mgun->Y = 0x2800;
         p_mgun->Z = 0;
-        obj = next_object - 1;
-        unkn_object_shift_03(obj);
-        p_mgun->Type = TT_UNKN33;
-        p_mgun->U.UMGun.Object = obj;
-        p_snobj = &game_objects[obj];
+        unkn_object_shift_03(snobj);
+        p_mgun->Type = TT_VEH_TURRET;
+        p_mgun->U.UMGun.Object = snobj;
+        p_snobj = &game_objects[snobj];
         p_snobj->ThingNo = p_mgun - things;
         break;
-    case 26:
+    case 26: // Replaced tank (object slots reused for mech)
         mgun = get_new_thing();
+        if (mgun <= 0) {
+            LOGERR("No thing slots for mounted gun");
+            break;
+        }
         p_vehicle->U.UVehicle.SubThing = mgun;
         p_vehicle->SubType = SubTT_VEH_TANK;
 
         p_mgun = &things[mgun];
         p_mgun->U.UMGun.NextThing = 0;
         p_mgun->U.UVehicle.SubThing = 0;
-        mat = next_local_mat;
-        next_local_mat++;
-        LbMemoryCopy(&local_mats[mat], &local_mats[p_vehicle->U.UVehicle.MatrixIndex], sizeof(struct M33));
-        p_mgun->U.UMGun.MatrixIndex = mat;
+        assert(p_vehicle->U.UVehicle.MatrixIndex < next_local_mat);
+        assert(next_local_mat < LOCAL_MATS_COUNT);
+        matx = next_local_mat++;
+        LbMemoryCopy(&local_mats[matx], &local_mats[p_vehicle->U.UVehicle.MatrixIndex], sizeof(struct M33));
+        p_mgun->U.UMGun.MatrixIndex = matx;
         p_mgun->StartFrame = frame;
 
         coord_x = PRCCOORD_TO_MAPCOORD(p_vehicle->X);
         coord_y = PRCCOORD_TO_MAPCOORD(p_vehicle->Y);
         coord_z = PRCCOORD_TO_MAPCOORD(p_vehicle->Z);
-        byte_1C83D1 = 0;
-        sub_6031C(coord_x, coord_z, -27 - prim_unknprop01, coord_y + 20);
+        snobj = copy_prim_obj_to_game_object(coord_x, coord_z, -27 - prim_unknprop01, coord_y + 20);
         p_mgun->X = 0;
         p_mgun->Y = 0x1E00;
         p_mgun->Z = 0;
-        obj = next_object - 1;
-        unkn_object_shift_03(obj);
-        p_mgun->Type = TT_UNKN33;
-        p_mgun->U.UMGun.Object = obj;
-        p_snobj = &game_objects[obj];
+        unkn_object_shift_03(snobj);
+        p_mgun->Type = TT_VEH_TURRET;
+        p_mgun->U.UMGun.Object = snobj;
+        p_snobj = &game_objects[snobj];
         p_snobj->ThingNo = p_mgun - things;
         break;
-    case 29:
+    case VehOM_CLAWTANK:
         mgun = get_new_thing();
+        if (mgun <= 0) {
+            LOGERR("No thing slots for mounted gun");
+            break;
+        }
         p_vehicle->U.UVehicle.SubThing = mgun;
         p_vehicle->SubType = SubTT_VEH_TANK;
 
         p_mgun = &things[mgun];
         p_mgun->U.UMGun.NextThing = 0;
         p_mgun->U.UVehicle.SubThing = 0;
-        mat = next_local_mat;
-        next_local_mat++;
-        LbMemoryCopy(&local_mats[mat], &local_mats[p_vehicle->U.UVehicle.MatrixIndex], sizeof(struct M33));
-        p_mgun->U.UMGun.MatrixIndex = mat;
+        assert(p_vehicle->U.UVehicle.MatrixIndex < next_local_mat);
+        assert(next_local_mat < LOCAL_MATS_COUNT);
+        matx = next_local_mat++;
+        LbMemoryCopy(&local_mats[matx], &local_mats[p_vehicle->U.UVehicle.MatrixIndex], sizeof(struct M33));
+        p_mgun->U.UMGun.MatrixIndex = matx;
         p_mgun->StartFrame = frame;
 
-        byte_1C83D1 = 0;
-        coord_x = (p_vehicle->X >> 8);
-        coord_y = (p_vehicle->Y >> 8);
-        coord_z = (p_vehicle->Z >> 8);
-        sub_6031C(coord_x, coord_z, -30 - prim_unknprop01, coord_y + 20);
+        coord_x = PRCCOORD_TO_MAPCOORD(p_vehicle->X);
+        coord_y = PRCCOORD_TO_MAPCOORD(p_vehicle->Y);
+        coord_z = PRCCOORD_TO_MAPCOORD(p_vehicle->Z);
+        snobj = copy_prim_obj_to_game_object(coord_x, coord_z, -30 - prim_unknprop01, coord_y + 20);
         p_mgun->X = 0;
         p_mgun->Y = 0x1E00;
         p_mgun->Z = 0;
-        obj = next_object - 1;
-        unkn_object_shift_03(obj);
-        p_mgun->Type = TT_UNKN33;
-        p_mgun->U.UMGun.Object = obj;
-        p_snobj = &game_objects[obj];
+        unkn_object_shift_03(snobj);
+        p_mgun->Type = TT_VEH_TURRET;
+        p_mgun->U.UMGun.Object = snobj;
+        p_snobj = &game_objects[snobj];
         p_snobj->ThingNo = p_mgun - things;
         break;
     default:
@@ -419,11 +607,11 @@ void person_hit_by_car(struct Thing *p_person, struct Thing *p_vehicle)
 static TbBool vehicle_check_collide_with_area(struct Thing *p_vehA,
   int posBx, int posBy, int posBz, int radB, int matBid)
 {
-    struct M33 *matA;
+    struct M33 *p_matA;
     int radA_incl_speed, matA02, matA22;
     int futureAx, futureAz;
     int posAx, posAz;
-    struct M33 *matB;
+    struct M33 *p_matB;
     int radB_incl_speed, matB02, matB22;
     int futureBx, futureBz;
     int posB_beg_x, posB_beg_z;
@@ -432,9 +620,10 @@ static TbBool vehicle_check_collide_with_area(struct Thing *p_vehA,
     int dist_endX, dist_endZ;
     int distXZ_sq;
 
-    matA = &local_mats[p_vehA->U.UVehicle.MatrixIndex];
-    matA02 = -4 * matA->R[0][2];
-    matA22 = -4 * matA->R[2][2];
+    assert(p_vehA->U.UVehicle.MatrixIndex < next_local_mat);
+    p_matA = &local_mats[p_vehA->U.UVehicle.MatrixIndex];
+    matA02 = -4 * p_matA->R[0][2];
+    matA22 = -4 * p_matA->R[2][2];
     radA_incl_speed = (386 * p_vehA->Radius >> 8)
       + (p_vehA->Speed >> 3) + (p_vehA->Speed >> 4);
     futureAx = radA_incl_speed * matA02 >> 8;
@@ -449,9 +638,10 @@ static TbBool vehicle_check_collide_with_area(struct Thing *p_vehA,
     if ((p_vehA->X >> 16 == posBx >> 16) && (p_vehA->Z >> 16 == posBz >> 16))
         return true;
 
-    matB = &local_mats[matBid];
-    matB02 = -4 * matB->R[0][2];
-    matB22 = -4 * matB->R[2][2];
+    assert(matBid < next_local_mat);
+    p_matB = &local_mats[matBid];
+    matB02 = -4 * p_matB->R[0][2];
+    matB22 = -4 * p_matB->R[2][2];
     radB_incl_speed = (384 * radB >> 9);
     futureBx = radB_incl_speed * matB02 >> 8;
     futureBz = radB_incl_speed * matB22 >> 8;
@@ -556,7 +746,7 @@ TbBool vehicle_first_has_right_of_way(struct Thing *p_vehA, struct Thing *p_vehB
 static TbBool check_vehicle_col_with_veh(struct Thing *p_vehA, struct Thing *p_vehB,
   int posAx, int posAy, int posAz)
 {
-    struct M33 *matB;
+    struct M33 *p_matB;
     int radB_incl_speed, matB02, matB22;
     int futureBx, futureBz;
     int posB_beg_x, posB_beg_z;
@@ -576,9 +766,10 @@ static TbBool check_vehicle_col_with_veh(struct Thing *p_vehA, struct Thing *p_v
     if (abs(p_vehB->Y - posAy) >= 2048)
         return false;
 
-    matB = &local_mats[p_vehB->U.UVehicle.MatrixIndex];
-    matB02 = -4 * matB->R[0][2];
-    matB22 = -4 * matB->R[2][2];
+    assert(p_vehB->U.UVehicle.MatrixIndex < next_local_mat);
+    p_matB = &local_mats[p_vehB->U.UVehicle.MatrixIndex];
+    matB02 = -4 * p_matB->R[0][2];
+    matB22 = -4 * p_matB->R[2][2];
     radB_incl_speed = 384 * p_vehB->Radius >> 9;
     futureBx = radB_incl_speed * matB02 >> 8;
     futureBz = radB_incl_speed * matB22 >> 8;
@@ -785,7 +976,7 @@ TbBool check_vehicle_col(struct Thing *p_vehicle)
     return ret;
 #endif
     ushort r;
-    struct M33 *matA;
+    struct M33 *p_matA;
     int rad_incl_speed, matA02, matA22;
     int tile_ctr_x, tile_ctr_z;
     int tile_x, tile_z;
@@ -795,13 +986,14 @@ TbBool check_vehicle_col(struct Thing *p_vehicle)
         return false;
 
     r = p_vehicle->Radius;
-    matA = &local_mats[p_vehicle->U.UVehicle.MatrixIndex];
+    assert(p_vehicle->U.UVehicle.MatrixIndex < next_local_mat);
+    p_matA = &local_mats[p_vehicle->U.UVehicle.MatrixIndex];
     pos_x = p_vehicle->X;
     pos_y = p_vehicle->Y;
     pos_z = p_vehicle->Z;
     rad_incl_speed = (p_vehicle->Speed >> 4) + (p_vehicle->Speed >> 3) + (386 * r >> 8);
-    matA02 = -4 * matA->R[0][2];
-    matA22 = -4 * matA->R[2][2];
+    matA02 = -4 * p_matA->R[0][2];
+    matA22 = -4 * p_matA->R[2][2];
     pos_x = (matA02 * rad_incl_speed >> 8) + pos_x - (matA22 >> 2);
     pos_z = (matA22 * rad_incl_speed >> 8) + pos_z + (matA02 >> 2);
     tile_ctr_z = pos_z >> 16;
@@ -892,7 +1084,7 @@ void process_tank_turret(struct Thing *p_tank)
         return;
     }
     p_turret = &things[turret];
-    if ((p_tank->Flag & TngF_Unkn20000000) != 0)
+    if ((p_tank->Flag & TngF_ShootAtPos) != 0)
     {
         target_x = p_tank->U.UVehicle.TargetDX;
         target_y = p_tank->U.UVehicle.TargetDZ;

@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 AC_PREREQ([2.69])
 
-m4_define([bflibrary_version], [0.1.2.0])
+m4_define([bflibrary_version], [0.1.3.0])
 
 AC_INIT([bullfrog-library], [bflibrary_version], [mefistotelis@gmail.com], [bflibrary])
 
@@ -27,27 +27,71 @@ AC_ARG_WITH([sdl2],
 AC_ARG_ENABLE([lb-wscreen-control],
     AS_HELP_STRING([--disable-lb-wscreen-control],
         [disallow the bflibrary to change value of lbDisplay.WScreen]),
-    [lb_wscreen_control=$enableval], [lb_wscreen_control=no])
+    [lb_wscreen_control=$enableval], [lb_wscreen_control=yes])
 
 AS_IF([test "$lb_wscreen_control" = "yes"], [
     AC_DEFINE([WSCREEN_CONTROL], 1,
         [Define to 1 if the bflibrary should change value of lbDisplay.WScreen])
 ])
 
+AC_ARG_ENABLE([lb-filename-transform],
+    AS_HELP_STRING([--disable-lb-filename-transform],
+        [do not transform filenames received by bflibrary file handling routines]),
+    [lb_filename_transform=$enableval], [lb_filename_transform=yes])
+
+AS_IF([test "$lb_filename_transform" = "yes"], [
+    AC_DEFINE([FILENAME_TRANSFORM], 1,
+        [Define to 1 if the bflibrary file handling should transform filenames])
+])
+
 AC_ARG_ENABLE([lb-shadow-colour],
-    AS_HELP_STRING([--enable-lb-shadow-colour],
-        [make the bflibrary define and use lbDisplay.ShadowColour property]),
-    [lb_shadow_colour=$enableval], [lb_shadow_colour=no])
+    AS_HELP_STRING([--disable-lb-shadow-colour],
+        [make the bflibrary to not define lbDisplay.ShadowColour property]),
+    [lb_shadow_colour=$enableval], [lb_shadow_colour=yes])
 
 AS_IF([test "$lb_shadow_colour" = "yes"], [
     AC_DEFINE([ENABLE_SHADOW_COLOUR], 1,
         [Define to 1 if the bflibrary should define and use lbDisplay.ShadowColour property])
 ])
 
+AC_ARG_ENABLE([lb-memory-arenas],
+    AS_HELP_STRING([--disable-lb-memory-arenas],
+        [make the bflibrary to not maintain list of memory blocks and arenas, rely on standard C malloc instead]),
+    [lb_memory_arenas=$enableval], [lb_memory_arenas=yes])
+
+AS_IF([test "$lb_memory_arenas" = "yes"], [
+    AC_DEFINE([MEMORY_ARENAS], 1,
+        [Define to 1 if the bflibrary should maintain list of memory blocks and arenas within the library, rather than relying on standard C memory allocation interface])
+])
+
+AC_ARG_WITH([lb-memory-available],
+    [AS_HELP_STRING([--with-lb-memory-available=N],
+        [set amount of memory available for allocations in above 1MB arena to N KB (default: 16384)])],
+    [lb_memory_available="$withval"], [lb_memory_available=16384])
+
+AC_DEFINE_UNQUOTED([MEMORY_AVAILABLE], [$lb_memory_available],
+    [Set to amount of memory available for allocations in above 1MB arena, in kilobytes; only used in memory arenas mode])
+
+AC_ARG_WITH([lb-memory-low-available],
+    [AS_HELP_STRING([--with-lb-memory-low-available=N],
+        [set amount of memory available for allocations in below 1MB arena to N KB (default: 512)])],
+    [lb_memory_low_available="$withval"], [lb_memory_low_available=512])
+
+AC_DEFINE_UNQUOTED([MEMORY_LOW_AVAILABLE], [$lb_memory_low_available],
+    [Set to amount of memory available for allocations in below 1MB arena, in kilobytes; only used in memory arenas mode])
+
+AC_ARG_WITH([lb-large-delay-time],
+    [AS_HELP_STRING([--with-lb-large-delay-time=N],
+        [set the sleep period used while waiting for time to pass to N milliseconds (default: 20)])],
+    [lb_large_delay_time="$withval"], [lb_large_delay_time=20])
+
+AC_DEFINE_UNQUOTED([LARGE_DELAY_TIME], [$lb_large_delay_time],
+    [Set to the length of the sleep period used while waiting for time to pass, in milliseconds])
+
 AC_ARG_ENABLE([lb-mouse-wheel],
-    AS_HELP_STRING([--enable-lb-mouse-wheel],
-        [make the bflibrary maintain mouse wheel properties within lbDisplay]),
-    [lb_mouse_wheel=$enableval], [lb_mouse_wheel=no])
+    AS_HELP_STRING([--disable-lb-mouse-wheel],
+        [make the bflibrary to not define mouse wheel properties within lbDisplay]),
+    [lb_mouse_wheel=$enableval], [lb_mouse_wheel=yes])
 
 AS_IF([test "$lb_mouse_wheel" = "yes"], [
     AC_DEFINE([ENABLE_MOUSE_WHEEL], 1,
@@ -55,9 +99,9 @@ AS_IF([test "$lb_mouse_wheel" = "yes"], [
 ])
 
 AC_ARG_ENABLE([lb-mouse-move-ratio],
-    AS_HELP_STRING([--enable-lb-mouse-move-ratio],
-        [make the bflibrary support MouseMoveRatio properties within lbDisplay]),
-    [lb_mouse_move_ratio=$enableval], [lb_mouse_move_ratio=no])
+    AS_HELP_STRING([--disable-lb-mouse-move-ratio],
+        [make the bflibrary to not define MouseMoveRatio properties within lbDisplay]),
+    [lb_mouse_move_ratio=$enableval], [lb_mouse_move_ratio=yes])
 
 AS_IF([test "$lb_mouse_move_ratio" = "yes"], [
     AC_DEFINE([ENABLE_MOUSE_MOVE_RATIO], 1,

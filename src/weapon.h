@@ -54,6 +54,18 @@ extern "C" {
  */
 #define WEP_AIRSTRIKE_DELAY_GTURNS 20
 
+/** Speed at which rockets move, in map coords.
+ */
+#define SHOT_ROCKED_SPEED 256
+
+/** Gravitational pull of throwable weapons, in map coords.
+ */
+#define SHOT_THROWN_GRAVITY 500
+
+/** Gravitational pull of throwable weapons, in map coords.
+ */
+#define SHOT_GRENADE_FLIGHT_GTURNS 16
+
 enum WeaponType
 {
   WEP_NULL = 0x0,
@@ -167,16 +179,20 @@ struct WeaponsFourPack {
 extern struct WeaponDef weapon_defs[33];
 extern struct TbNamedEnum weapon_names[33];
 extern ubyte weapon_tech_level[33];
-extern ubyte weapon_sound[32];
-extern ubyte weapon_sound_z[32];
+extern ushort weapon_nrg[WEP_TYPES_COUNT];
+extern ushort weapon_range[WEP_TYPES_COUNT];
+extern ushort weapon_damage[WEP_TYPES_COUNT];
 extern short persuaded_person_weapons_sell_cost_permil;
 
 void read_weapons_conf_file(void);
-void init_weapon_text(void);
 
-/** Gives a string which names the weapon.
+/** Gives a string which names the weapon for internal and debug purposes.
  */
 const char *weapon_codename(WeaponType wtype);
+
+/** Gives a string with national weapon name to be shown to the player.
+ */
+const char *weapon_full_name(WeaponType wtype);
 
 /** Returns if the weapon should be used by throwing.
  */
@@ -199,9 +215,19 @@ TbBool weapon_is_for_spreading_on_ground(WeaponType wtype);
  */
 TbBool weapon_is_deployed_at_wielder_pos(WeaponType wtype);
 
+/** Returns if the weapon is for restoring parameters (ie. health) rather than inflicting damage.
+ */
+TbBool weapon_is_for_restoration(WeaponType wtype);
+
 /** Returns if the weapon is targeted at / affects the wielding person.
  */
 TbBool weapon_is_self_affecting(WeaponType wtype);
+
+/** Returns if a weapon effects are not additive/stackable.
+ *
+ * Effects are unstackable if a single shot gives the same effect as multiple simultaneous shots.
+ */
+TbBool weapon_has_unstackable_effect(WeaponType wtype);
 
 /** Returns if a weapon has limited amount of uses before disappearing.
  */
@@ -218,58 +244,68 @@ TbBool weapon_can_be_charged(WeaponType wtype);
  */
 TbBool weapon_has_targetting(WeaponType wtype);
 
+/** Returns flags for whether leader shooting a weapon should cause follower shoot his weapon as well.
+ */
+ubyte weapon_simultaneous_fire_in_group(WeaponType lead_wtype, WeaponType follwr_wtype);
+
 /** Returns panel sprite index to be used to represent the weapon.
  */
 ushort weapon_sprite_index(WeaponType wtype, TbBool enabled);
 
-TbBool weapons_has_weapon(ulong weapons, WeaponType wtype);
+/** Returns index of the speech sample telling weapon name.
+ */
+ushort weapon_sound_name_speech_index(WeaponType wtype);
+
+TbBool weapons_has_weapon(u32 weapons, WeaponType wtype);
 
 /** Returns weapon set in given flags with index below last.
  */
-ushort weapons_prev_weapon(ulong weapons, WeaponType last_wtype);
+ushort weapons_prev_weapon(u32 weapons, WeaponType last_wtype);
 
 /** Returns how many weapon slots are occupied in given weapons flags.
  */
-ushort weapons_count_used_slots(ulong weapons);
+ushort weapons_count_used_slots(u32 weapons);
 
 ushort weapon_fourpack_index(WeaponType wtype);
-void weapons_remove_weapon(ulong *p_weapons,
+void weapons_remove_weapon(u32 *p_weapons,
   struct WeaponsFourPack *p_fourpacks, WeaponType wtype);
 
 /** Remove one weapon from an npc person in-game.
  * NPCs have no FourPacks, meaning removing one consumable weapon does nothing.
  * For non-consumable weapons, this removes the related weapon normally.
  */
-TbBool weapons_remove_one_from_npc(ulong *p_weapons, WeaponType wtype);
+TbBool weapons_remove_one_from_npc(u32 *p_weapons, WeaponType wtype);
 
 /** Remove one weapon from a player character, in Cryo Chamber.
  * Currently this is only for cryo chamber, as in-game fourpacks have different format.
  */
-TbBool weapons_remove_one(ulong *p_weapons,
+TbBool weapons_remove_one(u32 *p_weapons,
   struct WeaponsFourPack *p_fourpacks, WeaponType wtype);
-
-/** Reset previously selected weapon visible in the players panel.
- */
-void person_weapons_reset_previous(struct Thing *p_person);
 
 /** Remove one weapon from player-controlled person in-game.
  * Player struct contains dumb own array rather than uniform WeaponsFourPack, so it requires
  * this special function.
  * DEPRECATED: To be removed when possible.
  */
-TbBool weapons_remove_one_for_player(ulong *p_weapons,
+TbBool weapons_remove_one_for_player(u32 *p_weapons,
   ubyte p_plfourpacks[][4], ushort plagent, WeaponType wtype);
 
-TbBool weapons_add_one(ulong *p_weapons,
+void give_take_me_weapon(struct Thing *p_person, int item, int giveortake, short id);
+
+TbBool weapons_add_one_for_npc(u32 *p_weapons, WeaponType wtype);
+
+TbBool weapons_add_one(u32 *p_weapons,
   struct WeaponsFourPack *p_fourpacks, WeaponType wtype);
 
-TbBool weapons_add_one_for_player(ulong *p_weapons,
+TbBool weapons_add_one_for_player(u32 *p_weapons,
   ubyte p_plfourpacks[][4], ushort plagent, WeaponType wtype);
 
-void sanitize_weapon_quantities(ulong *p_weapons,
+void sanitize_weapon_quantities(u32 *p_weapons,
   struct WeaponsFourPack *p_fourpacks);
 
-ubyte find_nth_weapon_held(ushort index, ubyte n);
+/** Return type on n-th weapon held by a person.
+ */
+WeaponType find_nth_weapon_held(ThingIdx person, ubyte n);
 
 /** Gives range (in normal map coord points) of given weapon when wielded by given person.
  *
@@ -290,6 +326,8 @@ short current_hand_weapon_range(struct Thing *p_person);
  * Implements modifications for vehicle weapons and throwing weapons.
  */
 int get_weapon_range(struct Thing *p_person);
+
+int get_weapon_zoom_min(WeaponType wtype);
 
 void choose_best_weapon_for_range(struct Thing *p_person, int dist);
 
@@ -313,7 +351,12 @@ short process_persuadertron(struct Thing *p_person, ubyte target_select, ushort 
 void process_weapon_wind_down(struct Thing *p_person);
 int gun_out_anim(struct Thing *p_person, ubyte shoot_flag);
 
-s32 laser_hit_at(s32 x1, s32 y1, s32 z1, s32 *x2, s32 *y2, s32 *z2, struct Thing *p_shot);
+ushort set_player_weapon_turn(struct Thing *p_person, ushort delay_turns);
+
+s32 laser_hit_at(s32 cor1_x, s32 cor1_y, s32 cor1_z,
+  s32 *p_cor2_x, s32 *p_cor2_y, s32 *p_cor2_z,
+  struct Thing *p_shot);
+
 void finalise_razor_wire(struct Thing *p_person);
 void init_lay_razor(struct Thing *p_thing, short x, short y, short z, int flag);
 void init_mgun_laser(struct Thing *p_owner, ushort start_age);

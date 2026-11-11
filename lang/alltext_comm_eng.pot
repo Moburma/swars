@@ -388,7 +388,7 @@ msgstr ""
 
 #: scanner.objective:73
 msgctxt "objective text shown on scanner"
-msgid "The Nine have activated the ion gate. you have been defeated."
+msgid "The Nine have activated the ion gate. You have been defeated."
 msgstr ""
 
 #: scanner.objective:74

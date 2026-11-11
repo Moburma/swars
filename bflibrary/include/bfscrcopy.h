@@ -7,7 +7,10 @@
  * @par Purpose:
  *     Unknown.
  * @par Comment:
- *     None.
+ *     Functions for saving screen data to a simple buffer, or blitting such
+ *     buffer to the screen.
+ *     When possible, screen surfaces should be used instead of this simple
+ *     copy - see `bfscrsurf.h`.
  * @author   Tomasz Lis
  * @date     12 Nov 2008 - 05 Nov 2021
  * @par  Copying and copyrights:

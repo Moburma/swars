@@ -51,12 +51,34 @@
 #include "util.h"
 #include "swlog.h"
 
+/******************************************************************************/
+
+#pragma pack(1)
+
+struct HeapMgrHeader { // sizeof=0x24
+    void *field_0;
+    void *field_4;
+    int field_8;
+    int samples_count;
+    int field_10;
+    int field_14;
+    int field_18;
+    int field_1C;
+    int field_20;
+};
+
+#pragma pack()
+
 extern long sound_heap_size;
 extern struct SampleTable *sound_heap_memory;
 extern TbFileHandle sound_file; // = INVALID_FILE;
 extern struct HeapMgrHeader *hmhead;
 extern long samples_in_bank;
 extern struct SampleTable *sample_table;
+
+short startscr_samplevol;
+short startscr_midivol;
+short startscr_cdvolume;
 
 /******************************************************************************/
 
@@ -95,15 +117,25 @@ void sfx_apply_cdvolume(void)
 }
 
 struct SampleInfo *play_sample_using_heap(ulong bank_id, short smptbl_id,
-  ulong volume, ulong pan, ulong pitch, sbyte loop_count, ubyte type)
+  ulong volume, ulong pan, ulong pitch, sbyte loop_count, ubyte stype)
 {
     struct SampleInfo *ret;
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[3];
+
+    stkargs[0] = (int)(intptr_t)pitch;
+    stkargs[1] = (int)(intptr_t)loop_count;
+    stkargs[2] = (int)(intptr_t)stype;
+
     asm volatile (
-      "push %7\n"
-      "push %6\n"
-      "push %5\n"
+      "push 8(%5)\n"
+      "push 4(%5)\n"
+      "push 0(%5)\n"
       "call ASM_play_sample_using_heap\n"
-        : "=r" (ret) : "a" (bank_id), "d" (smptbl_id), "b" (volume), "c" (pan), "g" (pitch), "g" (loop_count), "g" (type));
+        : "=r" (ret)
+        : "a" (bank_id), "d" (smptbl_id), "b" (volume), "c" (pan), "S" (stkargs)
+        : "cc", "memory");
     return ret;
 }
 
@@ -114,39 +146,61 @@ void stop_sample_using_heap(long source_id, ulong sample_number)
         : : "a" (source_id), "d" (sample_number));
 }
 
-int play_dist_speech(struct Thing *p_thing, ushort speech_no, ushort vol, ushort pan, int pitch, int loop, ubyte type)
+int play_dist_speech(struct Thing *p_thing, ushort speech_no, ushort vol,
+  ushort pan, int pitch, int loop, ubyte stype)
 {
     if ((p_thing <= &things[0]) || (p_thing >= &things[THINGS_LIMIT])) {
         LOGERR("Speech %hu playback requested on invalid thing", speech_no);
         return -1;
     }
-    play_dist_sample(p_thing, 129 + speech_no,  vol, pan, pitch, loop, type);
+    play_dist_sample(p_thing, 129 + speech_no,  vol, pan, pitch, loop, stype);
     return 0;
 }
 
-void play_disk_sample(short id, ushort sample, short vol, short pan, int pitch, int loop, int type)
+void play_disk_sample(short id, ushort sample, short vol,
+  short pan, int pitch, int loop, int stype)
 {
-    play_sample_using_heap(9999, 129 + sample, vol, pan, pitch, loop, type);
+    play_sample_using_heap(9999, 129 + sample, vol, pan, pitch, loop, stype);
 }
 
-void play_dist_sample(struct Thing *p_thing, ushort smptbl_id, ushort vol, ushort pan, int pitch, int loop, ubyte type)
+void play_dist_sample(struct Thing *p_thing, ushort smptbl_id, ushort vol,
+  ushort pan, int pitch, int loop, ubyte stype)
 {
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[3];
+
+    stkargs[0] = (int)(intptr_t)pitch;
+    stkargs[1] = (int)(intptr_t)loop;
+    stkargs[2] = (int)(intptr_t)stype;
+
     asm volatile (
-      "push %6\n"
-      "push %5\n"
-      "push %4\n"
+      "push 8(%4)\n"
+      "push 4(%4)\n"
+      "push 0(%4)\n"
       "call ASM_play_dist_sample\n"
-        : : "a" (p_thing), "d" (smptbl_id), "b" (vol), "c" (pan), "g" (pitch), "g" (loop), "g" (type));
+        : : "a" (p_thing), "d" (smptbl_id), "b" (vol), "c" (pan), "S" (stkargs)
+        : "cc", "memory");
 }
 
-void play_dist_ssample(struct SimpleThing *p_sthing, ushort smptbl_id, ushort vol, ushort pan, int pitch, int loop, ubyte type)
+void play_dist_ssample(struct SimpleThing *p_sthing, ushort smptbl_id, ushort vol,
+  ushort pan, int pitch, int loop, ubyte stype)
 {
+    // Pushed through a register holding them: a "g" operand may be placed
+    // relative to the stack pointer, which each push moves.
+    int stkargs[3];
+
+    stkargs[0] = (int)(intptr_t)pitch;
+    stkargs[1] = (int)(intptr_t)loop;
+    stkargs[2] = (int)(intptr_t)stype;
+
     asm volatile (
-      "push %6\n"
-      "push %5\n"
-      "push %4\n"
+      "push 8(%4)\n"
+      "push 4(%4)\n"
+      "push 0(%4)\n"
       "call ASM_play_dist_ssample\n"
-        : : "a" (p_sthing), "d" (smptbl_id), "b" (vol), "c" (pan), "g" (pitch), "g" (loop), "g" (type));
+        : : "a" (p_sthing), "d" (smptbl_id), "b" (vol), "c" (pan), "S" (stkargs)
+        : "cc", "memory");
 }
 
 void stop_looped_weapon_sample(struct Thing *p_person, short weapon)
@@ -183,15 +237,38 @@ void wait_for_sound_sample_finish(ushort smpl_id)
     }
 }
 
-struct HeapMgrHeader *heapmgr_init(struct HeapMgrHeader *head, int a2, int a3)
+struct HeapMgrHeader *heapmgr_init(void *p_buf, int buf_size, int n_samples)
 {
+#if 0
     struct HeapMgrHeader *ret;
     asm volatile ("call ASM_heapmgr_init\n"
-        : "=r" (ret) : "a" (head), "d" (a2), "b" (a3));
+        : "=r" (ret) : "a" (p_buf), "d" (buf_size), "b" (n_samples));
     return ret;
+#endif
+    struct HeapMgrHeader *p_hmhead;
+    uint offs_after_samples;
+    int offs3;
+
+    p_hmhead = (struct HeapMgrHeader *)p_buf;
+    offs_after_samples = 0x1C * n_samples + sizeof(struct HeapMgrHeader);
+    offs3 = buf_size - offs_after_samples;
+    if (offs3 <= 0)
+        return NULL;
+
+    p_hmhead->field_10 = 0;
+    p_hmhead->field_14 = 0;
+    p_hmhead->field_18 = 0;
+    p_hmhead->field_1C = 0;
+    p_hmhead->field_20 = 0;
+    p_hmhead->field_8 = offs3;
+    p_hmhead->samples_count = n_samples;
+    p_hmhead->field_0 = (ubyte *)p_hmhead + offs_after_samples;
+    p_hmhead->field_4 = (ubyte *)p_hmhead + buf_size;
+    return p_hmhead;
 }
 
-int setup_heap_manager(struct SampleTable *smptable, size_t smptb_len, const char *fname, ushort sndtype)
+int setup_heap_manager(struct SampleTable *smptable, size_t smptb_len,
+  const char *fname, ushort sndtype)
 {
     TbFileHandle fh;
     ubyte tpno;
@@ -256,7 +333,7 @@ int setup_heap_manager(struct SampleTable *smptable, size_t smptb_len, const cha
     p_smptb_end = (ubyte *)smptable + tab_smptb_len;
     if (smptb_len_diff <= 0)
         return 0;
-    hmhead = heapmgr_init((struct HeapMgrHeader *)p_smptb_end, smptb_len_diff, samples_in_bank);
+    hmhead = heapmgr_init(p_smptb_end, smptb_len_diff, samples_in_bank);
     if (hmhead == NULL) {
         reset_heaps();
         return 0;
@@ -354,6 +431,12 @@ void setup_heaps(short setup_cmd, const char *lang)
         sound_heap_size = sz;
         break;
     }
+}
+
+void process_sound_heap(void)
+{
+    asm volatile ("call ASM_process_sound_heap\n"
+        :  :  : "eax" );
 }
 
 /******************************************************************************/

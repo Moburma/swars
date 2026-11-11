@@ -24,6 +24,7 @@
 #include "bftext.h"
 
 #include "display.h"
+#include "mydraw.h"
 #include "purpldrw.h"
 #include "swlog.h"
 /******************************************************************************/
@@ -227,33 +228,10 @@ short mouse_move_y_coord_over_box_base(struct ScreenBoxBase *box)
     return ms_y - box->Y;
 }
 
-TbResult ApDrawSlantBox(ScrCoord x, ScrCoord y, ushort w, ushort h, TbPixel col)
-{
-    short cx, cy;
-    short ch;
-
-    cx = x;
-    cy = y;
-    for (ch = h; ch > 0; ch--)
-    {
-        LbDrawLine(cx, cy, cx + w, cy, col);
-        --cx;
-        ++cy;
-    }
-    return Lb_SUCCESS;
-}
-
 void init_screen_box(struct ScreenBox *p_box, ScrCoord x, ScrCoord y, ushort width, ushort height, int drawspeed)
 {
-#if 0
-    asm volatile (
-      "push %5\n"
-      "push %4\n"
-      "call ASM_init_screen_box\n"
-        : : "a" (p_box), "d" (x), "b" (y), "c" (width), "g" (height), "g" (drawspeed));
-#endif
     p_box->Flags = GBxFlg_Unkn0001;
-    p_box->DrawFn = ac_flashy_draw_purple_box;
+    p_box->DrawFn = flashy_draw_purple_box;
     p_box->SpecialDrawFn = NULL;
     p_box->Colour = 0xF7;
     p_box->BGColour = 0x38;
@@ -267,17 +245,8 @@ void init_screen_box(struct ScreenBox *p_box, ScrCoord x, ScrCoord y, ushort wid
 void init_screen_text_box(struct ScreenTextBox *p_box, ScrCoord x, ScrCoord y,
   ushort width, ushort height, int drawspeed, struct TbSprite *p_font, ushort textspeed)
 {
-#if 0
-    asm volatile (
-      "push %7\n"
-      "push %6\n"
-      "push %5\n"
-      "push %4\n"
-      "call ASM_init_screen_text_box\n"
-        : : "a" (box), "d" (x), "b" (y), "c" (width), "g" (height), "g" (drawspeed), "g" (p_font), "g" (textspeed));
-#endif
     p_box->Flags = GBxFlg_Unkn0001;
-    p_box->DrawFn = ac_flashy_draw_purple_text_box;
+    p_box->DrawFn = flashy_draw_purple_text_box;
     p_box->Text = 0;
     p_box->LineSpacing = 4;
     p_box->DrawTextFn = NULL;
@@ -302,27 +271,18 @@ void init_screen_text_box(struct ScreenTextBox *p_box, ScrCoord x, ScrCoord y,
 void init_screen_button(struct ScreenButton *p_box, ScrCoord x, ScrCoord y,
   const char *text, int drawspeed, struct TbSprite *p_font, int textspeed, int flags)
 {
-#if 0
-    asm volatile (
-      "push %7\n"
-      "push %6\n"
-      "push %5\n"
-      "push %4\n"
-      "call ASM_init_screen_button\n"
-        : : "a" (p_box), "d" (x), "b" (y), "c" (text), "g" (drawspeed), "g" (p_font), "g" (textspeed), "g" (flags));
-#endif
     lbFontPtr = p_font;
     p_box->Y = y;
     p_box->Width = my_string_width(text) + 4;
-    p_box->Height = font_height('A') + 6;
+    p_box->Height = my_char_height('A') + 6;
     p_box->DrawSpeed = drawspeed;
     p_box->Font = p_font;
     p_box->Flags = flags | GBxFlg_Unkn0001;
     if ((flags & 0x80) != 0)
         x -= p_box->Width;
     p_box->X = x;
-    p_box->DrawFn = ac_flashy_draw_purple_button;
-    p_box->DrawTextFn = ac_button_text;
+    p_box->DrawFn = flashy_draw_purple_button;
+    p_box->DrawTextFn = button_text;
     p_box->CallBackFn = NULL;
     p_box->Border = 1;
     p_box->Colour = 0xAE;
@@ -339,23 +299,12 @@ void init_screen_button(struct ScreenButton *p_box, ScrCoord x, ScrCoord y,
 void init_screen_info_box(struct ScreenInfoBox *p_box, ScrCoord x, ScrCoord y, ushort width,
   char *text1, char *text2, int drawspeed, struct TbSprite *p_font1, struct TbSprite *p_font2, int textspeed)
 {
-#if 0
-    asm volatile (
-      "push %9\n"
-      "push %8\n"
-      "push %7\n"
-      "push %6\n"
-      "push %5\n"
-      "push %4\n"
-      "call ASM_init_screen_info_box\n"
-        : : "a" (p_box), "d" (x), "b" (y), "c" (width), "g" (text1), "g" (text2), "g" (drawspeed), "g" (font1), "g" (font2), "g" (textspeed));
-#endif
     short font1_h, font2_h, font_h;
 
     lbFontPtr = p_font1;
-    font1_h = font_height('A');
+    font1_h = my_char_height('A');
     lbFontPtr = p_font2;
-    font2_h = font_height('A');
+    font2_h = my_char_height('A');
     if (font1_h <= font2_h)
         font_h = font2_h;
     else
@@ -366,8 +315,8 @@ void init_screen_info_box(struct ScreenInfoBox *p_box, ScrCoord x, ScrCoord y, u
     p_box->Width = width;
     p_box->Height = font_h + 6;
     p_box->Flags = GBxFlg_Unkn0001;
-    p_box->DrawFn = ac_flashy_draw_purple_info_box;
-    p_box->DrawTextFn = ac_info_box_text;
+    p_box->DrawFn = flashy_draw_purple_info_box;
+    p_box->DrawTextFn = info_box_text;
     p_box->Colour = 0xF7;
     p_box->BGColour = 0x38;
     p_box->DrawSpeed = drawspeed;

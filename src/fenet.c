@@ -22,6 +22,7 @@
 
 #include "bffont.h"
 #include "bfkeybd.h"
+#include "bfline.h"
 #include "bfmemut.h"
 #include "bfscrcopy.h"
 #include "bfsprite.h"
@@ -43,72 +44,73 @@
 #include "game_sprts.h"
 #include "game.h"
 #include "keyboard.h"
+#include "mydraw.h"
 #include "network.h"
 #include "packetfe.h"
 #include "purpldrw.h"
 #include "purpldrwlst.h"
 #include "player.h"
+#include "plyr_net.h"
 #include "sound.h"
 #include "swlog.h"
 #include "util.h"
 /******************************************************************************/
+#define MONITORED_SESSIONS_COUNT 20
 
-extern struct ScreenButton net_INITIATE_button;
-extern struct ScreenButton net_groups_LOGON_button;
-extern struct ScreenButton unkn8_EJECT_button;
-extern struct ScreenButton net_protocol_select_button;
-extern struct ScreenButton net_unkn40_button;
-extern struct ScreenButton net_SET2_button;
-extern struct ScreenButton net_SET_button;
-extern struct ScreenBox net_groups_box;
-extern struct ScreenBox net_users_box;
-extern struct ScreenBox net_faction_box;
-extern struct ScreenBox net_team_box;
-extern struct ScreenBox net_benefits_box;
-extern struct ScreenBox net_comms_box;
-extern struct ScreenBox net_grpaint;
-extern struct ScreenBox net_protocol_box;
-extern struct ScreenButton net_protocol_option_button;
+const uint starting_cash_amounts[] = {
+  20000, 50000, 200000, 500000, 2000000, 5000000, 20000000, 100000000,
+};
 
-extern char net_unkn40_text[];
-extern char net_baudrate_text[8];
-extern char net_proto_param_text[8];
-extern ubyte byte_155174; // = 166;
-extern ubyte byte_155175[];
-extern ubyte byte_155180; // = 109;
-extern ubyte byte_155181[];
-extern struct TbSprite *fe_icons_sprites;
-extern int unkn_rate; // = 19200;
-extern int serial_speeds[8];
-extern char net_baudrate_text[8];
-extern ubyte byte_1C47EA;
-extern ubyte byte_1C4805;
-extern ubyte byte_1C4806;
-extern ubyte byte_1C4994;
-extern ubyte net_autostart_done;
-extern ubyte byte_155170[4];
-extern char net_unkn1_text[25];
-extern char byte_1811E2[16];
-extern uint32_t sessionlist_last_update[20];
-extern ubyte byte_1C6D48;
-extern struct TbNetworkSessionList unkstruct04_arr[20];
+const int serial_speeds[] = {
+  9600, 14400, 19200, 28800, 38400, 57600, 76800, 115200,
+};
 
-ubyte ac_do_net_protocol_option(ubyte click);
-ubyte ac_do_net_unkn40(ubyte click);
-ubyte ac_do_serial_speed_switch(ubyte click);
-ubyte ac_do_net_SET2(ubyte click);
-ubyte ac_do_net_SET(ubyte click);
-ubyte ac_do_net_INITIATE(ubyte click);
-ubyte ac_do_net_groups_LOGON(ubyte click);
-ubyte ac_do_unkn8_EJECT(ubyte click);
-ubyte ac_show_net_benefits_box(struct ScreenBox *box);
-ubyte ac_show_net_grpaint(struct ScreenBox *box);
-ubyte ac_show_net_comms_box(struct ScreenBox *box);
-ubyte ac_do_net_protocol_select(ubyte click);
-ubyte ac_show_net_protocol_box(struct ScreenBox *box);
+const TbPixel byte_155170[] = {
+    50, 174, 87, 244,
+};
+struct ScreenButton net_INITIATE_button = {0};
+struct ScreenButton net_groups_LOGON_button = {0};
+struct ScreenButton unkn8_EJECT_button = {0};
+struct ScreenButton net_protocol_select_button = {0};
+struct ScreenButton net_unkn40_button = {0};
+struct ScreenButton net_SET2_button = {0};
+struct ScreenButton net_SET_button = {0};
+struct ScreenBox net_groups_box = {0};
+struct ScreenBox net_users_box = {0};
+struct ScreenBox net_faction_box = {0};
+struct ScreenBox net_team_box = {0};
+struct ScreenBox net_benefits_box = {0};
+struct ScreenBox net_comms_box = {0};
+struct ScreenBox net_grpaint = {0};
+struct ScreenBox net_protocol_box = {0};
+struct ScreenButton net_protocol_option_button = {0};
 
-void ac_purple_unkn1_data_to_screen(void);
-void ac_purple_unkn3_data_to_screen(void);
+char net_proto_param_text[8] = "0000";
+
+int unkn_rate = 19200;
+char net_baudrate_text[8] = "19200";
+
+char net_unkn2_text[20] = "";
+
+ubyte byte_1C47EA = 0;
+ubyte byte_1C4805 = 0;
+ubyte byte_1C4806 = 0;
+ubyte byte_1C4994 = 0;
+ubyte net_autostart_done = 0;
+char net_unkn1_text[NET_CHAT_MSG_LEN];
+char byte_1811E2[16];
+TbClockMSec sessionlist_last_update[MONITORED_SESSIONS_COUNT] = {0};
+ubyte byte_1C6D48 = 0;
+struct TbNetworkSessionList unkstruct04_arr[MONITORED_SESSIONS_COUNT];
+
+sbyte selected_net_session = -1;
+sbyte selected_net_user = -1;
+
+ushort grpaint_last_pt_x[8];
+ushort grpaint_last_pt_y[8];
+
+ubyte do_net_protocol_option(ubyte click);
+ubyte do_serial_speed_switch(ubyte click);
 
 void net_sessionlist_clear(void)
 {
@@ -174,16 +176,7 @@ void net_sessionlist_update_latest_one(void)
     LOGSYNC("Updating session %d", sess_no);
     p_nslist = &unkstruct04_arr[sess_no];
     LbMemoryCopy(p_nslist, &locsesslst, sizeof(struct TbNetworkSessionList));
-    sessionlist_last_update[sess_no] = dos_clock();
-}
-
-void net_unkn2_names_clear(void)
-{
-    ushort plyr;
-
-    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++) {
-        unkn2_names[plyr][0] = '\0';
-    }
+    sessionlist_last_update[sess_no] = LbTimerClock();
 }
 
 void net_service_gui_switch(void)
@@ -194,7 +187,7 @@ void net_service_gui_switch(void)
     {
     case NetSvc_IPX:
         net_protocol_option_button.Text = net_proto_param_text;
-        net_protocol_option_button.CallBackFn = ac_do_net_protocol_option;
+        net_protocol_option_button.CallBackFn = do_net_protocol_option;
         text = gui_strings[GSTR_NET_PROTO_NAMES + nsvc.I.Type];
         net_protocol_select_button.Text = text;
         break;
@@ -203,8 +196,8 @@ void net_service_gui_switch(void)
     case NetSvc_COM3:
     case NetSvc_COM4:
         net_protocol_option_button.Text = net_baudrate_text;
-        net_protocol_option_button.CallBackFn = ac_do_serial_speed_switch;
-        if (byte_1C4A6F)
+        net_protocol_option_button.CallBackFn = do_serial_speed_switch;
+        if (net_serial_uses_modem)
             text = gui_strings[GSTR_NET_PROTO_MODEM_NAMES - NetSvc_COM1 + nsvc.I.Type];
         else
             text = gui_strings[GSTR_NET_PROTO_NAMES + nsvc.I.Type];
@@ -218,7 +211,7 @@ void net_service_switch(ushort svctp)
     nsvc.I.Type = svctp;
     if (nsvc.I.Type == NetSvc_IPX) {
         net_sessionlist_clear();
-        net_unkn2_names_clear();
+        net_player_names_clear();
     }
     net_service_gui_switch();
 }
@@ -229,7 +222,7 @@ TbBool net_service_restart(void)
 {
     LOGSYNC("Restart");
     net_sessionlist_clear();
-    net_unkn2_names_clear();
+    net_player_names_clear();
 
     if (LbNetworkServiceStart(&nsvc.I) != Lb_SUCCESS)
     {
@@ -275,12 +268,6 @@ TbBool net_sessions_init(void)
 
 ubyte do_net_protocol_option(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_net_protocol_option\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     short param, dt;
 
     net_service_stop();
@@ -319,12 +306,6 @@ ubyte do_net_protocol_option(ubyte click)
 
 ubyte do_net_unkn40(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_net_unkn40\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     byte_1C4994 = (byte_1C4994 == 0);
     return 1;
 }
@@ -345,12 +326,6 @@ short serial_speeds_idx(int boud_rate)
 
 ubyte do_serial_speed_switch(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_serial_speed_switch\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     short cur_idx, nxt_idx;
 
     cur_idx = serial_speeds_idx(unkn_rate);
@@ -374,13 +349,7 @@ ubyte do_serial_speed_switch(ubyte click)
 
 ubyte do_net_SET2(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_net_SET2\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
-    if (!net_local_player_hosts_the_game() || login_control__State != LognCt_Unkn5)
+    if (!net_local_player_hosts_the_game() || login_control[0].State != LognCt_NetStarted)
         return 0;
 
     net_game_play_flags |= NGPF_Unkn02;
@@ -390,13 +359,7 @@ ubyte do_net_SET2(ubyte click)
 
 ubyte do_net_SET(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_net_SET\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
-    if (!net_local_player_hosts_the_game() || login_control__State != LognCt_Unkn5)
+    if (!net_local_player_hosts_the_game() || login_control[0].State != LognCt_NetStarted)
         return 0;
 
     net_game_play_flags |= NGPF_Unkn01;
@@ -406,18 +369,14 @@ ubyte do_net_SET(ubyte click)
 
 ubyte net_unkn_func_32(void)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_net_unkn_func_32\n"
-        : "=r" (ret) : );
-    return ret;
-#else
     int ret;
     TbBool modem_on_line;
 
     modem_on_line = 0;
-    if (LbNetworkSessionActive())
+    if (LbNetworkSessionActive()) {
+        LOGERR("Already have active session");
         return 0;
+    }
 
     if (nsvc.I.Type == NetSvc_IPX)
         goto skip_modem_init;
@@ -428,7 +387,7 @@ ubyte net_unkn_func_32(void)
     LbNetworkSetBaud(unkn_rate);
     players[local_player_no].DoubleMode = 0;
 
-    if (!byte_1C4A6F)
+    if (!net_serial_uses_modem)
         goto skip_modem_init;
 
     if (LbNetworkInit() != Lb_SUCCESS) {
@@ -461,15 +420,17 @@ ubyte net_unkn_func_32(void)
 
 skip_modem_init:
     if (!net_sessions_init())
+    {
         goto out_fail;
+    }
 
-    login_control__State = LognCt_Unkn5;
+    login_control[0].State = LognCt_NetStarted;
     net_host_player_no = LbNetworkHostPlayerNumber();
     net_players_num = LbNetworkSessionNumberPlayers();
-    byte_15516C = -1;
-    byte_15516D = -1;
+    selected_net_session = -1;
+    selected_net_user = -1;
 
-    if (nsvc.I.Type != NetSvc_IPX) {
+    if (!netgame_service_is_multi_client_capable()) {
         players[local_player_no].DoubleMode = 0;
     }
     load_missions(99);
@@ -492,17 +453,10 @@ out_fail:
         net_service_stop();
     }
     return 0;
-#endif
 }
 
 ubyte net_unkn_func_31(struct TbNetworkSession *p_nsession)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_net_unkn_func_31\n"
-        : "=r" (ret) : "a" (p_nsession));
-    return ret;
-#else
     TbBool modem_on_line;
     int ret;
 
@@ -515,7 +469,8 @@ ubyte net_unkn_func_31(struct TbNetworkSession *p_nsession)
 
     LbNetworkSetBaud(unkn_rate);
     players[local_player_no].DoubleMode = 0;
-    if (!byte_1C4A6F)
+
+    if (!net_serial_uses_modem)
         goto skip_modem_init;
 
     if (LbNetworkInit() != Lb_SUCCESS) {
@@ -554,13 +509,13 @@ skip_modem_init:
         alert_box_text_fmt("%s", gui_strings[579]);
         goto out_fail;
     }
-    login_control__State = LognCt_Unkn5;
+    login_control[0].State = LognCt_NetStarted;
     net_host_player_no = LbNetworkHostPlayerNumber();
     net_players_num = LbNetworkSessionNumberPlayers();
     byte_1C6D4A = 1;
     LbMemoryCopy(&nsvc.S, p_nsession, sizeof(struct TbNetworkSession));
 
-    if (nsvc.I.Type != NetSvc_IPX) {
+    if (!netgame_service_is_multi_client_capable()) {
         players[local_player_no].DoubleMode = 0;
     }
     load_missions(99);
@@ -583,7 +538,6 @@ out_fail:
         net_service_stop();
     }
     return 0;
-#endif
 }
 
 void netgame_state_enter_5(void)
@@ -591,83 +545,78 @@ void netgame_state_enter_5(void)
     PlayerIdx plyr;
 
     switch_net_screen_boxes_to_execute();
-    init_variables();
-    init_agents();
+
+    reset_frontend_player_state();
+    global_date_new_game_reset();
+    init_unkn6_adjustable_variables();
     srm_reset_research();
-    login_control__State = LognCt_Unkn5;
-    for (plyr = 0; plyr < 8; plyr++) {
-        player_mission_agents_reset(plyr);
+    init_agents();
+
+    login_control[0].State = LognCt_NetStarted;
+    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++) {
+        player_mission_agents_toggle_reset(plyr);
     }
 }
 
 
 ubyte do_net_INITIATE(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_net_INITIATE\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     if (nsvc.I.Type == NetSvc_IPX && !net_service_started) {
         LOGWARN("Cannot init protocol %d - not ready", (int)nsvc.I.Type);
         return 0;
     }
-    if (login_control__State == LognCt_Unkn6)
+    if (login_control[0].State == LognCt_Unkn6)
     {
-        if (net_unkn_func_32())
-        {
+        if (net_unkn_func_32()) {
             netgame_state_enter_5();
+            LOGSYNC("Enter NetStarted from Unkn6, %s", "success");
+        } else {
+            LOGWARN("Enter NetStarted from Unkn6, %s", "fail");
         }
     }
-    else if (login_control__State == LognCt_Unkn5)
+    else if (login_control[0].State == LognCt_NetStarted)
     {
         int plyr;
         plyr = LbNetworkPlayerNumber();
         if (plyr == net_host_player_no)
         {
-            if (login_control__City == -1) {
+            if (login_control[0].City == -1) {
                 LOGWARN("Cannot init protocol %d player %d - city not selected", (int)nsvc.I.Type, plyr);
                 return 0;
             }
             net_schedule_local_player_reset();
-            byte_15516D = -1;
-            byte_15516C = -1;
+            selected_net_user = -1;
+            selected_net_session = -1;
         }
+        LOGSYNC("In Unkn6, host=%d, local=%d", (int)net_host_player_no, (int)plyr);
     }
     return 1;
 }
 
 ubyte do_net_groups_LOGON(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_net_groups_LOGON\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     if ((nsvc.I.Type == NetSvc_IPX) && !net_service_started) {
         LOGWARN("Cannot abort protocol %d - not ready", (int)nsvc.I.Type);
         return 0;
     }
 
-    if (login_control__State == LognCt_Unkn5)
+    if (login_control[0].State == LognCt_NetStarted)
     {
         net_schedule_local_player_logout();
-        byte_15516D = -1;
-        byte_15516C = -1;
+        selected_net_user = -1;
+        selected_net_session = -1;
         switch_net_screen_boxes_to_initiate();
         net_unkn_func_33();
     }
-    else if (login_control__State == LognCt_Unkn6)
+    else if (login_control[0].State == LognCt_Unkn6)
     {
         struct TbNetworkSession *p_nsession;
 
         p_nsession = NULL;
         if (nsvc.I.Type == NetSvc_IPX)
         {
-            if (byte_15516C != -1) {
-                p_nsession = &unkstruct04_arr[byte_15516C].Session;
+            if (selected_net_session != -1) {
+                p_nsession = &unkstruct04_arr[selected_net_session].Session;
             }
         }
         else
@@ -752,7 +701,7 @@ void show_net_benefits_sub2(short x0, short y0, TbPixel *colours)
         short delta;
 
         p_sprite = &fe_icons_sprites[spridx];
-        if (i < login_control__TechLevel)
+        if (i < login_control[0].TechLevel)
         {
             lbDisplay.DrawFlags = Lb_TEXT_ONE_COLOR;
             lbDisplay.DrawColour = colours[i];
@@ -765,8 +714,8 @@ void show_net_benefits_sub2(short x0, short y0, TbPixel *colours)
             {
                 lbDisplay.LeftButton = 0;
                 if (net_local_player_hosts_the_game() && ((net_game_play_flags & NGPF_Unkn02) == 0)
-                  && (login_control__State == LognCt_Unkn5))
-                    login_control__TechLevel = i + 1;
+                  && (login_control[0].State == LognCt_NetStarted))
+                    login_control[0].TechLevel = i + 1;
             }
         }
         if (i < 2)
@@ -800,11 +749,11 @@ void show_net_benefits_sub3(struct ScreenBox *box)
             {
                 lbDisplay.LeftButton = 0;
                 if (net_local_player_hosts_the_game() && ((net_game_play_flags & NGPF_Unkn02) == 0)
-                  && (login_control__State == LognCt_Unkn5))
+                  && (login_control[0].State == LognCt_NetStarted))
                 {
-                    login_control__TechLevel--;
-                    if (login_control__TechLevel < 1)
-                        login_control__TechLevel = 1;
+                    login_control[0].TechLevel--;
+                    if (login_control[0].TechLevel < 1)
+                        login_control[0].TechLevel = 1;
                 }
             }
         }
@@ -826,11 +775,11 @@ void show_net_benefits_sub4(struct ScreenBox *box)
             {
                 lbDisplay.LeftButton = 0;
                 if (net_local_player_hosts_the_game() && ((net_game_play_flags & NGPF_Unkn02) == 0)
-                    && (login_control__State == LognCt_Unkn5))
+                    && (login_control[0].State == LognCt_NetStarted))
                 {
-                    login_control__TechLevel++;
-                    if (login_control__TechLevel > 8)
-                        login_control__TechLevel = 8;
+                    login_control[0].TechLevel++;
+                    if (login_control[0].TechLevel > 8)
+                        login_control[0].TechLevel = 8;
                 }
             }
         }
@@ -846,7 +795,7 @@ ubyte get_current_starting_cash_level(void)
     lv_curr = 0;
     for (i = 0; i < 8; i++)
     {
-      if (login_control__Money == starting_cash_amounts[i])
+      if (login_control[0].Money == starting_cash_amounts[i])
           break;
       lv_curr++;
     }
@@ -855,12 +804,6 @@ ubyte get_current_starting_cash_level(void)
 
 uint reinit_starting_credits(sbyte change)
 {
-#if 0
-    ulong ret;
-    asm volatile ("call ASM_reinit_starting_credits\n"
-        : "=r" (ret) : "a" (change));
-    return ret;
-#endif
   int lv, lv_curr;
   uint creds;
 
@@ -872,7 +815,7 @@ uint reinit_starting_credits(sbyte change)
         lv = 7;
 
     creds = starting_cash_amounts[lv];
-    login_control__Money = creds;
+    login_control[0].Money = creds;
     ingame.Credits = creds;
     ingame.CashAtStart = creds;
     ingame.Expenditure = 0;
@@ -895,7 +838,7 @@ void show_net_benefits_sub5(short x0, short y0, TbPixel *colours)
         short delta;
 
         p_sprite = &fe_icons_sprites[spridx];
-        if (login_control__Money >= starting_cash_amounts[i])
+        if (login_control[0].Money >= starting_cash_amounts[i])
         {
             lbDisplay.DrawFlags = Lb_TEXT_ONE_COLOR;
             lbDisplay.DrawColour = colours[i];
@@ -908,10 +851,10 @@ void show_net_benefits_sub5(short x0, short y0, TbPixel *colours)
             {
                 lbDisplay.LeftButton = 0;
                 if (net_local_player_hosts_the_game() && ((net_game_play_flags & NGPF_Unkn01) == 0)
-                  && (login_control__State == LognCt_Unkn5))
+                  && (login_control[0].State == LognCt_NetStarted))
                 {
-                    login_control__Money = starting_cash_amounts[i];
-                    ingame.Credits = login_control__Money;
+                    login_control[0].Money = starting_cash_amounts[i];
+                    ingame.Credits = login_control[0].Money;
                 }
             }
         }
@@ -946,7 +889,7 @@ void show_net_benefits_sub6(struct ScreenBox *box)
             {
                 lbDisplay.LeftButton = 0;
                 if (net_local_player_hosts_the_game() && ((net_game_play_flags & NGPF_Unkn01) == 0)
-                    && (login_control__State == LognCt_Unkn5))
+                    && (login_control[0].State == LognCt_NetStarted))
                 {
                     reinit_starting_credits(-1);
                 }
@@ -972,7 +915,7 @@ void show_net_benefits_sub7(struct ScreenBox *box)
             {
                 lbDisplay.LeftButton = 0;
                 if (net_local_player_hosts_the_game() && ((net_game_play_flags & NGPF_Unkn01) == 0)
-                    && (login_control__State == LognCt_Unkn5))
+                    && (login_control[0].State == LognCt_NetStarted))
                 {
                     reinit_starting_credits(1);
                 }
@@ -988,7 +931,7 @@ void show_net_benefits_sub7(struct ScreenBox *box)
 
 ubyte show_net_benefits_box(struct ScreenBox *box)
 {
-    ubyte drawn = true;
+    ubyte drawn = 1;
 
     my_set_text_window(box->X + 4, box->Y + 4, box->Width - 8, box->Height - 8);
     if ((box->Flags & GBxFlg_TextCopied) == 0)
@@ -1016,14 +959,10 @@ ubyte show_net_benefits_box(struct ScreenBox *box)
     show_net_benefits_sub7(box);
 
     lbDisplay.DrawFlags = 0;
-    if (net_local_player_hosts_the_game() && (login_control__State == LognCt_Unkn5))
+    if (net_local_player_hosts_the_game() && (login_control[0].State == LognCt_NetStarted))
     {
-        //net_SET2_button.DrawFn(&net_SET2_button); -- incompatible calling convention
-        asm volatile ("call *%2\n"
-            : "=r" (drawn) : "a" (&net_SET2_button), "g" (net_SET2_button.DrawFn));
-        //net_SET_button.DrawFn(&net_SET_button); -- incompatible calling convention
-        asm volatile ("call *%2\n"
-            : "=r" (drawn) : "a" (&net_SET_button), "g" (net_SET_button.DrawFn));
+        drawn = net_SET2_button.DrawFn(&net_SET2_button);
+        drawn = net_SET_button.DrawFn(&net_SET_button);
     }
     return drawn;
 }
@@ -1051,27 +990,40 @@ void purple_unkn4_data_to_screen(void)
         lbDisplay.GraphicsScreenHeight);
 }
 
-void net_grpaint_draw_op(short scr_x2, short scr_y2, ubyte colno, sbyte op, ubyte a5)
+void net_grpaint_draw_op(short scr_x2, short scr_y2, ubyte colno, sbyte op, ubyte plyr)
 {
-    asm volatile (
-      "push %4\n"
-      "call ASM_net_grpaint_draw_op\n"
-        : : "a" (scr_x2), "d" (scr_y2), "b" (colno), "c" (op), "g" (a5));
+    struct ScreenBufBkp bkp;
+
+    switch (op)
+    {
+    case 0:
+        dword_1C6DE4[255 * scr_y2 + scr_x2] = byte_155170[colno];
+        break;
+    case 1:
+        screen_switch_to_custom_buffer(&bkp, dword_1C6DE4, 255, 96);
+        LbDrawLine(grpaint_last_pt_x[plyr], grpaint_last_pt_y[plyr],
+          scr_x2, scr_y2, byte_155170[colno]);
+        screen_load_backup_buffer(&bkp);
+        break;
+    case 2:
+        // no extra action
+        break;
+    default:
+        LOGERR("unexpected op=%d", (int)op);
+        break;
+    }
+    grpaint_last_pt_x[plyr] = scr_x2;
+    grpaint_last_pt_y[plyr] = scr_y2;
 }
 
 void net_grpaint_clear_op(void)
 {
-    draw_flic_purple_list(ac_purple_unkn1_data_to_screen);
+    //TODO this is enlisting drawlist item at very strange moment; maybe we should set a variable to rmeember enlist it later?
+    draw_flic_purple_list(purple_unkn1_data_to_screen);
 }
 
 ubyte show_net_grpaint(struct ScreenBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_show_net_grpaint\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     int i;
     short dy;
     short ln_height;
@@ -1087,9 +1039,9 @@ ubyte show_net_grpaint(struct ScreenBox *p_box)
             draw_box_purple_list(p_box->X + 265, p_box->Y + dy + 6, 9, 21, byte_155170[i]);
             dy += 24;
         }
-        draw_flic_purple_list(ac_purple_unkn3_data_to_screen);
-        if (login_control__State != LognCt_Unkn5)
-            draw_flic_purple_list(ac_purple_unkn1_data_to_screen);
+        draw_flic_purple_list(purple_unkn3_data_to_screen);
+        if (login_control[0].State != LognCt_NetStarted)
+            draw_flic_purple_list(purple_unkn1_data_to_screen);
 
         copy_box_purple_list(p_box->X - 3, p_box->Y - 3,
           p_box->Width + 6, p_box->Height + 6);
@@ -1152,12 +1104,6 @@ ubyte show_net_grpaint(struct ScreenBox *p_box)
 
 ubyte show_net_comms_box(struct ScreenBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_show_net_comms_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     char plyrname[20];
     char locstr[40];
     int i;
@@ -1173,7 +1119,7 @@ ubyte show_net_comms_box(struct ScreenBox *p_box)
     if ((p_box->Flags & 0x1000) != 0)
     {
         lbFontPtr = small_med_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
     }
     else
     {
@@ -1183,7 +1129,7 @@ ubyte show_net_comms_box(struct ScreenBox *p_box)
         lbDisplay.DrawFlags = Lb_SPRITE_TRANSPAR4;
         draw_box_purple_list(p_box->X + 4, p_box->Y + 18, p_box->Width - 8, 61, 56);
         lbFontPtr = small_med_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
         draw_box_purple_list(p_box->X + 4, p_box->Y + 87, p_box->Width - 8, tx_height + 6, 56);
         lbDisplay.DrawFlags = 0;
         copy_box_purple_list(p_box->X - 3, p_box->Y -  3, p_box->Width + 6, p_box->Height + 6);
@@ -1191,7 +1137,7 @@ ubyte show_net_comms_box(struct ScreenBox *p_box)
         reset_buffered_keys();
     }
 
-    if (login_control__State != 5)
+    if (login_control[0].State != LognCt_NetStarted)
     {
         edit_flag = 0;
         return 0;
@@ -1201,20 +1147,24 @@ ubyte show_net_comms_box(struct ScreenBox *p_box)
     dx = 14;
     for (i = 0; i < 5; i++)
     {
-        if ((LbNetworkPlayerName(plyrname, byte_1C6DDC[i]) == 1) &&
-          (net_players[i].field_0[0] != '\0'))
+        if ((LbNetworkPlayerName(plyrname, net_player_chat_plyr[i]) == 1) &&
+          (net_player_chat[i].Msg[0] != '\0'))
         {
             const char *text;
 
             plyrname[7] = '\0';
-            snprintf(locstr, sizeof(locstr), "%s: %s", plyrname, net_players[i].field_0);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+            snprintf(locstr, sizeof(locstr)-1, "%s: %s", plyrname, net_player_chat[i].Msg);
+            locstr[sizeof(locstr)-1] = '\0';
+#pragma GCC diagnostic pop
             text = loctext_to_gtext(locstr);
             draw_text_purple_list2(2, dx + 5, text, 0);
             dx += tx_height + 4;
         }
     }
 
-    if (user_read_value(net_unkn1_text, 20, 0) && (login_control__State == 5)
+    if (user_read_value(net_unkn1_text, 20, 0) && (login_control[0].State == LognCt_NetStarted)
       && (net_unkn1_text[0] != '\0'))
     {
         net_schedule_player_chat_message_sync(net_unkn1_text);
@@ -1235,12 +1185,6 @@ ubyte show_net_comms_box(struct ScreenBox *p_box)
 
 ubyte do_net_protocol_select(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_net_protocol_select\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     short proto;
     short pos_x;
 
@@ -1255,18 +1199,18 @@ ubyte do_net_protocol_select(ubyte click)
         if (proto <= NetSvc_NONE)
         {
             proto = NetSvc_COM4;
-            if (data_1c4a70)
+            if (modem_is_configured)
             {
                 net_protocol_select_button.X -= 12;
                 net_unkn40_button.X = pos_x;
-                byte_1C4A6F = 1;
+                net_serial_uses_modem = 1;
             }
         }
         else if (proto == NetSvc_IPX) // IPX needs to be accepted
         {
-            if (byte_1C4A6F)
+            if (net_serial_uses_modem)
             {
-                byte_1C4A6F = 0;
+                net_serial_uses_modem = 0;
                 proto = NetSvc_COM4;
                 net_protocol_select_button.X += 12;
             }
@@ -1277,12 +1221,12 @@ ubyte do_net_protocol_select(ubyte click)
         proto++;
         if (proto > NetSvc_COM4)
         {
-            if (byte_1C4A6F || !data_1c4a70)
+            if (net_serial_uses_modem || !modem_is_configured)
             {
                 proto = NetSvc_IPX;
-                if (byte_1C4A6F)
+                if (net_serial_uses_modem)
                 {
-                    byte_1C4A6F = 0;
+                    net_serial_uses_modem = 0;
                     net_protocol_select_button.X += 12;
                 }
             }
@@ -1291,7 +1235,7 @@ ubyte do_net_protocol_select(ubyte click)
                 proto = NetSvc_COM1;
                 net_protocol_select_button.X -= 12;
                 net_unkn40_button.X = pos_x;
-                byte_1C4A6F = 1;
+                net_serial_uses_modem = 1;
             }
         }
     }
@@ -1309,13 +1253,13 @@ ubyte do_net_protocol_select(ubyte click)
             net_service_switch(NetSvc_COM1);
             break;
         }
-        byte_15516C = -1;
+        selected_net_session = -1;
         break;
     case NetSvc_COM1:
     case NetSvc_COM2:
     case NetSvc_COM3:
     case NetSvc_COM4:
-        byte_15516C = 0;
+        selected_net_session = 0;
         break;
     }
     return 1;
@@ -1323,12 +1267,6 @@ ubyte do_net_protocol_select(ubyte click)
 
 ubyte show_net_protocol_box(struct ScreenBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_show_net_protocol_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     const char *text;
     short tx_height, tx_width;
     short scr_x, scr_y;
@@ -1336,10 +1274,10 @@ ubyte show_net_protocol_box(struct ScreenBox *p_box)
 
     my_set_text_window(p_box->X + 4, p_box->Y + 4, p_box->Width - 8, p_box->Height - 8);
 
-    if (login_control__State == 5)
+    if (login_control[0].State == LognCt_NetStarted)
     {
         lbFontPtr = small_med_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
         lbDisplay.DrawColour = 87;
 
         scr_y = 2;
@@ -1468,7 +1406,7 @@ ubyte show_net_protocol_box(struct ScreenBox *p_box)
         TbBool draw_option;
 
         lbFontPtr = med2_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
         draw_option = true;
 
         if (nsvc.I.Type == NetSvc_IPX)
@@ -1527,11 +1465,9 @@ ubyte show_net_protocol_box(struct ScreenBox *p_box)
         }
         else
         {
-            if (byte_1C4A6F)
+            if (net_serial_uses_modem)
             {
-              //drawn = net_unkn40_button.DrawFn(&net_unkn40_button); -- incompatible calling convention
-              asm volatile ("call *%2\n"
-                  : "=r" (drawn) : "a" (&net_unkn40_button), "g" (net_unkn40_button.DrawFn));
+              drawn = net_unkn40_button.DrawFn(&net_unkn40_button);
               if (drawn == 3)
               {
                   scr_y = net_unkn40_button.Y + 3;
@@ -1592,25 +1528,15 @@ ubyte show_net_protocol_box(struct ScreenBox *p_box)
             }
         }
         if (draw_option) {
-            //net_protocol_option_button.DrawFn(&net_protocol_option_button); -- incompatible calling convention
-            asm volatile ("call *%1\n"
-              :  : "a" (&net_protocol_option_button), "g" (net_protocol_option_button.DrawFn));
+            net_protocol_option_button.DrawFn(&net_protocol_option_button);
         }
-        //net_protocol_select_button.DrawFn(&net_protocol_select_button); -- incompatible calling convention
-        asm volatile ("call *%1\n"
-          :  : "a" (&net_protocol_select_button), "g" (net_protocol_select_button.DrawFn));
+        net_protocol_select_button.DrawFn(&net_protocol_select_button);
     }
     return 0;
 }
 
 ubyte show_net_faction_box(struct ScreenBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_show_net_faction_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     short tx_height;
     short scr_y;
     int i;
@@ -1620,20 +1546,20 @@ ubyte show_net_faction_box(struct ScreenBox *p_box)
     if ((p_box->Flags & 0x1000) == 0)
     {
         lbFontPtr = med2_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
         lbDisplay.DrawFlags = 0x0100;
         draw_text_purple_list2(0, 0, gui_strings[392], 0);
-        scr_y = tx_height + 10;
+        scr_y = tx_height + 6;
 
         lbFontPtr = small_med_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
         lbDisplay.DrawFlags = 0x0004;
 
-        for (i = 0; i < 2; i++)
+        for (i = 0; i < 3; i++)
         {
             draw_box_purple_list(p_box->X + 4, p_box->Y + 4 + scr_y,
               p_box->Width - 8, tx_height + 6, 56);
-            scr_y += tx_height + 9;
+            scr_y += tx_height + 7;
         }
         lbDisplay.DrawFlags = 0;
 
@@ -1643,12 +1569,12 @@ ubyte show_net_faction_box(struct ScreenBox *p_box)
     }
 
     lbFontPtr = small_med_font;
-    tx_height = font_height('A');
+    tx_height = my_char_height('A');
 
-    scr_y = 20;
-    for (i = 0; i < 2; i++)
+    scr_y = 16;
+    for (i = 0; i < 3; i++)
     {
-        if (byte_181183 == i)
+        if (login_control[0].Faction == i)
         {
             lbDisplay.DrawFlags = (0x0040 | 0x0100);
             lbDisplay.DrawColour = 87;
@@ -1661,30 +1587,32 @@ ubyte show_net_faction_box(struct ScreenBox *p_box)
         draw_text_purple_list2(0, scr_y + 3, gui_strings[394 + i], 0);
         lbDisplay.DrawFlags &= ~0x8000;
 
+        scr_y += tx_height + 7;
+    }
+    lbDisplay.DrawFlags = 0;
+
+    // input
+    scr_y = 16;
+    for (i = 0; i < 3; i++)
+    {
         if (mouse_down_over_box_coords(text_window_x1, text_window_y1 - 2,
            text_window_x2, text_window_y1 + scr_y + tx_height + 2))
         {
             if (lbDisplay.LeftButton)
             {
               lbDisplay.LeftButton = 0;
-              byte_181183 = i;
+              login_control[0].Faction = i;
               net_schedule_player_faction_change_sync();
             }
         }
-        scr_y += tx_height + 9;
+        scr_y += tx_height + 7;
     }
-    lbDisplay.DrawFlags = 0;
+
     return 0;
 }
 
 ubyte show_net_team_box(struct ScreenBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_show_net_team_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     short scr_y;
     short tx_height;
     int i;
@@ -1694,19 +1622,19 @@ ubyte show_net_team_box(struct ScreenBox *p_box)
     if ((p_box->Flags & 0x1000) != 0)
     {
         lbFontPtr = small_med_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
     }
     else
     {
         lbFontPtr = med2_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
         scr_y = 0;
         lbDisplay.DrawFlags = 0x0100;
         draw_text_purple_list2(0, scr_y, gui_strings[391], 0);
         scr_y += tx_height + 3;
 
         lbFontPtr = small_med_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
         lbDisplay.DrawFlags = 0x0004;
 
         for (i = 0; i < 4; i++)
@@ -1724,9 +1652,9 @@ ubyte show_net_team_box(struct ScreenBox *p_box)
     scr_y = 13;
     for (i = 0; i < 4; i++)
     {
-        if (byte_181189 == i + 1)
+        if (login_control[0].Team == i + 1)
         {
-            lbDisplay.DrawFlags = 0x140;
+            lbDisplay.DrawFlags = 0x0100|0x0040;
             lbDisplay.DrawColour = 87;
         }
         else
@@ -1737,22 +1665,30 @@ ubyte show_net_team_box(struct ScreenBox *p_box)
         draw_text_purple_list2(0, scr_y + 2, gui_strings[397 + i], 0);
         lbDisplay.DrawFlags &= ~0x8000;
 
+        scr_y += tx_height + 5;
+    }
+    lbDisplay.DrawFlags = 0;
+
+    // input
+    scr_y = 13;
+    for (i = 0; i < 4; i++)
+    {
         if (mouse_down_over_box_coords(text_window_x1, text_window_y1 + scr_y - 2,
            text_window_x2, text_window_y1 + scr_y + tx_height + 2))
         {
             if (lbDisplay.LeftButton)
             {
               lbDisplay.LeftButton = 0;
-              if (byte_181189 == i + 1)
-                  byte_181189 = 0;
+              if (login_control[0].Team == i + 1)
+                  login_control[0].Team = 0;
               else
-                  byte_181189 = i + 1;
+                  login_control[0].Team = i + 1;
               net_schedule_player_team_change_sync();
             }
         }
         scr_y += tx_height + 5;
     }
-    lbDisplay.DrawFlags = 0;
+
     return 0;
 }
 
@@ -1769,12 +1705,6 @@ static const char *net_group_name_to_gtext(const char *name)
 
 ubyte show_net_groups_box(struct ScreenBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_show_net_groups_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     const char *text;
     int i;
     short tx_height;
@@ -1786,7 +1716,7 @@ ubyte show_net_groups_box(struct ScreenBox *p_box)
         my_set_text_window(p_box->X + 2, p_box->Y + 4, p_box->Width - 4, p_box->Height - 8);
 
         lbFontPtr = med2_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
         scr_y = 1;
         lbDisplay.DrawFlags = Lb_TEXT_HALIGN_CENTER;
         text = gui_strings[390];
@@ -1795,7 +1725,7 @@ ubyte show_net_groups_box(struct ScreenBox *p_box)
 
         scr_y += tx_height + 4;
         lbFontPtr = small_med_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
         lines_height = 8 * tx_height;
         lbDisplay.DrawFlags = Lb_SPRITE_TRANSPAR4;
         draw_box_purple_list(p_box->X + 4, p_box->Y + 4 + scr_y, p_box->Width - 8, lines_height + 34, 56);
@@ -1807,11 +1737,11 @@ ubyte show_net_groups_box(struct ScreenBox *p_box)
 
     my_set_text_window(p_box->X + 4, p_box->Y + 4, p_box->Width - 8, p_box->Height - 8);
     lbFontPtr = small_med_font;
-    tx_height = font_height('A');
+    tx_height = my_char_height('A');
 
     scr_y = 19;
     lbDisplay.DrawFlags = Lb_TEXT_HALIGN_CENTER;
-    if (login_control__State == 5)
+    if (login_control[0].State == LognCt_NetStarted)
     {
         text = net_group_name_to_gtext(nsvc.S.Name);
         draw_text_purple_list2(0, scr_y, text, 0);
@@ -1826,7 +1756,7 @@ ubyte show_net_groups_box(struct ScreenBox *p_box)
             {
                 p_nsession = &unkstruct04_arr[i].Session;
 
-                if (byte_15516C == i)
+                if (selected_net_session == i)
                 {
                     lbDisplay.DrawFlags = (Lb_TEXT_HALIGN_CENTER | Lb_TEXT_ONE_COLOR);
                     lbDisplay.DrawColour = 87;
@@ -1846,10 +1776,10 @@ ubyte show_net_groups_box(struct ScreenBox *p_box)
                     if (lbDisplay.LeftButton)
                     {
                         lbDisplay.LeftButton = 0;
-                        if (byte_15516C == i)
-                            byte_15516C = -1;
+                        if (selected_net_session == i)
+                            selected_net_session = -1;
                         else
-                            byte_15516C = i;
+                            selected_net_session = i;
                     }
                 }
                 scr_y += tx_height + 4;
@@ -1859,20 +1789,14 @@ ubyte show_net_groups_box(struct ScreenBox *p_box)
 
     if (net_local_player_hosts_the_game())
     {
-        //net_INITIATE_button.DrawFn(&net_INITIATE_button); -- incompatible calling convention
-        asm volatile ("call *%1\n"
-          :  : "a" (&net_INITIATE_button), "g" (net_INITIATE_button.DrawFn));
-        if (byte_15516D != -1) {
-            //unkn8_EJECT_button.DrawFn(&unkn8_EJECT_button); -- incompatible calling convention
-            asm volatile ("call *%1\n"
-              :  : "a" (&unkn8_EJECT_button), "g" (unkn8_EJECT_button.DrawFn));
+        net_INITIATE_button.DrawFn(&net_INITIATE_button);
+        if (selected_net_user != -1) {
+            unkn8_EJECT_button.DrawFn(&unkn8_EJECT_button);
         }
     }
-    if ((byte_15516C != -1) || (login_control__State == 5))
+    if ((selected_net_session != -1) || (login_control[0].State == LognCt_NetStarted))
     {
-        //net_groups_LOGON_button.DrawFn(&net_groups_LOGON_button); -- incompatible calling convention
-        asm volatile ("call *%1\n"
-          :  : "a" (&net_groups_LOGON_button), "g" (net_groups_LOGON_button.DrawFn));
+        net_groups_LOGON_button.DrawFn(&net_groups_LOGON_button);
     }
     return 0;
 }
@@ -1891,17 +1815,17 @@ int refresh_users_in_net_game(void)
         ret = LbNetworkPlayerName(locstr, plyr);
         if (ret != Lb_SUCCESS)
         {
-            unkn2_names[plyr][0] = '\0';
+            net_player_names[plyr][0] = '\0';
             ingame.InNetGame_UNSURE &= ~(1 << plyr);
             continue;
         }
         if (locstr[0] == '\0')
         {
-            unkn2_names[plyr][0] = '\0';
+            net_player_names[plyr][0] = '\0';
             ingame.InNetGame_UNSURE &= ~(1 << plyr);
             continue;
         }
-        strncpy(unkn2_names[plyr], locstr, sizeof(unkn2_names[0]));
+        net_player_name_set(plyr, locstr);
         n++;
     }
     LOGSYNC("Net players %d", n);
@@ -1910,28 +1834,28 @@ int refresh_users_in_net_game(void)
 
 ubyte show_net_users_box(struct ScreenBox *p_box)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_show_net_users_box\n"
-        : "=r" (ret) : "a" (p_box));
-    return ret;
-#endif
     const char *text;
     short plyr;
     short scr_x, scr_y;
     short tx_width, tx_height;
 
+    // data refresh before draw
+    if (login_control[0].State == LognCt_NetStarted)
+    {
+        refresh_users_in_net_game();
+    }
+
     my_set_text_window(p_box->X + 4, p_box->Y + 4, p_box->Width - 8, p_box->Height - 8);
     if ((p_box->Flags & 0x1000) == 0)
     {
         lbFontPtr = med2_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
         lbDisplay.DrawFlags = 0x0100;
         draw_text_purple_list2(0, 1, gui_strings[389], 0);
         lbDisplay.DrawFlags = 0;
         scr_y = tx_height + 8;
         lbFontPtr = small_med_font;
-        tx_height = font_height('A');
+        tx_height = my_char_height('A');
         lbDisplay.DrawFlags = 0x0004;
         for (plyr = 0; plyr < 8; plyr++)
         {
@@ -1949,20 +1873,18 @@ ubyte show_net_users_box(struct ScreenBox *p_box)
     }
 
     lbFontPtr = small_med_font;
-    tx_height = font_height('A');
+    tx_height = my_char_height('A');
     scr_y = 18;
-    if (login_control__State == 5)
+    if (login_control[0].State == LognCt_NetStarted)
     {
-        refresh_users_in_net_game();
-
         for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
         {
-            text = unkn2_names[plyr];
+            text = net_player_names[plyr];
             if (text[0] == '\0')
             {
                 continue;
             }
-            if (byte_15516D == plyr)
+            if (selected_net_user == plyr)
             {
                 lbDisplay.DrawFlags = Lb_TEXT_ONE_COLOR;
                 lbDisplay.DrawColour = 87;
@@ -1979,39 +1901,25 @@ ubyte show_net_users_box(struct ScreenBox *p_box)
             draw_text_purple_list2(scr_x, scr_y + 3, text, 0);
             lbDisplay.DrawFlags &= ~0x8000;
 
-            text = gui_strings[394 + group_types[plyr]];
+            text = gui_strings[394 + group_factions[plyr]];
             scr_x = 139 + ((64 - my_string_width(text)) >> 1);
             draw_text_purple_list2(scr_x, scr_y + 3, text, 0);
-            if (byte_1C5C28[plyr])
+            if (net_player_teams[plyr])
             {
                 struct TbSprite *p_spr, *p_dspr;
                 p_spr = &fe_icons_sprites[138];
-                p_dspr = &fe_icons_sprites[109 + byte_1C5C28[plyr]];
+                p_dspr = &fe_icons_sprites[109 + net_player_teams[plyr]];
                 draw_sprite_purple_list(p_box->X + (112 + p_spr->SWidth) + 4,
                   p_box->Y + 4 + scr_y + 2, p_dspr);
             }
-            if (net_local_player_hosts_the_game())
-            {
-                if (mouse_down_over_box_coords(text_window_x1, text_window_y1 + scr_y + 1,
-                  text_window_x2, text_window_y1 + tx_height + scr_y + 5))
-                {
-                    if (lbDisplay.LeftButton)
-                    {
-                        lbDisplay.LeftButton = 0;
-                        if (byte_15516D == plyr)
-                            byte_15516D = -1;
-                        else
-                            byte_15516D = plyr;
-                    }
-                }
-            }
             scr_y += tx_height + 9;
         }
+
     }
-    else if (byte_15516C != -1)
+    else if (selected_net_session != -1)
     {
         struct TbNetworkPlayer *p_netplyr_lst;
-        p_netplyr_lst = unkstruct04_arr[byte_15516C].Player;
+        p_netplyr_lst = unkstruct04_arr[selected_net_session].Player;
         for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
         {
             const char *name;
@@ -2026,6 +1934,32 @@ ubyte show_net_users_box(struct ScreenBox *p_box)
             }
         }
     }
+
+    // input
+    scr_y = 18;
+    if (login_control[0].State == LognCt_NetStarted)
+    {
+        for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++)
+        {
+            if (net_local_player_hosts_the_game())
+            {
+                if (mouse_down_over_box_coords(text_window_x1, text_window_y1 + scr_y + 1,
+                  text_window_x2, text_window_y1 + tx_height + scr_y + 5))
+                {
+                    if (lbDisplay.LeftButton)
+                    {
+                        lbDisplay.LeftButton = 0;
+                        if (selected_net_user == plyr)
+                            selected_net_user = -1;
+                        else
+                            selected_net_user = plyr;
+                    }
+                }
+            }
+            scr_y += tx_height + 9;
+        }
+    }
+
     return 0;
 }
 
@@ -2035,7 +1969,7 @@ void net_sessionlist_remove_old(void)
 
     for (sess_no = 0; sess_no < byte_1C6D48; sess_no++)
     {
-        if (dos_clock() - sessionlist_last_update[sess_no] > 4 * DOS_CLOCKS_PER_SEC)
+        if (LbTimerClock() - sessionlist_last_update[sess_no] > 4000)
         {
             LOGSYNC("Retiring session %d", sess_no);
             net_sessionlist_remove(sess_no);
@@ -2046,39 +1980,27 @@ void net_sessionlist_remove_old(void)
 
 int net_unkn_func_30(void)
 {
-#if 0
-    int ret;
-    asm volatile ("call ASM_net_unkn_func_30\n"
-        : "=r" (ret) : );
-    return ret;
-#endif
     int preval;
 
-    if (byte_1C6D48 < 20)
+    if (byte_1C6D48 < MONITORED_SESSIONS_COUNT)
     {
         net_sessionlist_update_latest_one();
         net_sessionlist_remove_old();
     }
-    preval = byte_15516C;
-    if (byte_15516C == -1 && byte_1C6D48)
-        byte_15516C = 0;
-    if (!byte_1C6D48)
-        byte_15516C = -1;
+    preval = selected_net_session;
+    if (selected_net_session == -1 && byte_1C6D48)
+        selected_net_session = 0;
+    if (byte_1C6D48 == 0)
+        selected_net_session = -1;
     return preval;
 }
 
 ubyte do_unkn8_EJECT(ubyte click)
 {
-#if 0
-    ubyte ret;
-    asm volatile ("call ASM_do_unkn8_EJECT\n"
-        : "=r" (ret) : "a" (click));
-    return ret;
-#endif
     int plyr;
 
     plyr = LbNetworkPlayerNumber();
-    if (byte_15516D == plyr)
+    if (selected_net_user == plyr)
         return 0;
     net_schedule_player_eject_sync();
     return 1;
@@ -2086,12 +2008,6 @@ ubyte do_unkn8_EJECT(ubyte click)
 
 void show_netgame_unkn_case1(void)
 {
-#if 0
-    asm volatile (
-      "call ASM_show_netgame_unkn_case1\n"
-        :  :  : "eax" );
-    return;
-#endif
     if (!net_autostart_done)
     {
         net_autostart_done = 1;
@@ -2109,32 +2025,16 @@ void show_netgame_unkn_case1(void)
             return;
         }
     }
-    //net_protocol_box.DrawFn(&net_protocol_box); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-      :  : "a" (&net_protocol_box), "g" (net_protocol_box.DrawFn));
-    //net_groups_box.DrawFn(&net_groups_box); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-      :  : "a" (&net_groups_box), "g" (net_groups_box.DrawFn));
-    //net_users_box.DrawFn(&net_users_box); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-      :  : "a" (&net_users_box), "g" (net_users_box.DrawFn));
-    //net_faction_box.DrawFn(&net_faction_box); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-      :  : "a" (&net_faction_box), "g" (net_faction_box.DrawFn));
-    //net_team_box.DrawFn(&net_team_box); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-      :  : "a" (&net_team_box), "g" (net_team_box.DrawFn));
-    //net_benefits_box.DrawFn(&net_benefits_box); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-      :  : "a" (&net_benefits_box), "g" (net_benefits_box.DrawFn));
-    //net_comms_box.DrawFn(&net_comms_box); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-      :  : "a" (&net_comms_box), "g" (net_comms_box.DrawFn));
-    //net_grpaint.DrawFn(&net_grpaint); -- incompatible calling convention
-    asm volatile ("call *%1\n"
-      :  : "a" (&net_grpaint), "g" (net_grpaint.DrawFn));
+    net_protocol_box.DrawFn(&net_protocol_box);
+    net_groups_box.DrawFn(&net_groups_box);
+    net_users_box.DrawFn(&net_users_box);
+    net_faction_box.DrawFn(&net_faction_box);
+    net_team_box.DrawFn(&net_team_box);
+    net_benefits_box.DrawFn(&net_benefits_box);
+    net_comms_box.DrawFn(&net_comms_box);
+    net_grpaint.DrawFn(&net_grpaint);
 
-    if ((login_control__State == 6) && (nsvc.I.Type == NetSvc_IPX)) {
+    if ((login_control[0].State == 6) && (nsvc.I.Type == NetSvc_IPX)) {
         net_unkn_func_30();
     }
 }
@@ -2154,43 +2054,43 @@ void init_net_screen_boxes(void)
     scr_h = 432;
 #endif
 
-    init_screen_box(&net_groups_box, 213u, 72u, 171u, 155, 6);
-    init_screen_box(&net_users_box, 393u, 72u, 240u, 155, 6);
+    init_screen_box(&net_groups_box, 213, 72, 171, 155, 6);
+    init_screen_box(&net_users_box, 393, 72, 240, 155, 6);
 
-    init_screen_box(&net_faction_box, 213u, 236u, 73u, 67, 6);
-    init_screen_box(&net_team_box, 295u, 236u, 72u, 67, 6);
-    init_screen_box(&net_benefits_box, 376u, 236u, 257u, 67, 6);
-    init_screen_box(&net_protocol_box, 7u, 252u, 197u, 51, 6);
+    init_screen_box(&net_faction_box, 213, 236, 73, 67, 6);
+    init_screen_box(&net_team_box, 295, 236, 72, 67, 6);
+    init_screen_box(&net_benefits_box, 376, 236, 257, 67, 6);
+    init_screen_box(&net_protocol_box, 7, 252, 197, 51, 6);
 
-    init_screen_box(&net_grpaint, 7u, 312u, 279u, 104, 6);
-    init_screen_box(&net_comms_box, 295u, 312u, 336u, 104, 6);
+    init_screen_box(&net_grpaint, 7u, 312, 279, 104, 6);
+    init_screen_box(&net_comms_box, 295u, 312, 336, 104, 6);
 
-    init_screen_button(&net_INITIATE_button, 218u, 185u, gui_strings[385], 6,
-        med2_font, 1, 0);
-    init_screen_button(&net_groups_LOGON_button, 218u, 206u, gui_strings[386],
+    init_screen_button(&net_INITIATE_button, 218, 185, gui_strings[385],
         6, med2_font, 1, 0);
-    init_screen_button(&unkn8_EJECT_button, 308u, 206u, gui_strings[403], 6,
-        med2_font, 1, 0);
-
-    init_screen_button(&net_SET2_button, 562u, 251u, gui_strings[440], 6,
-        med2_font, 1, 0);
-    init_screen_button(&net_SET_button, 562u, 284u, gui_strings[440], 6,
-        med2_font, 1, 0);
-
-    init_screen_button(&net_protocol_select_button, 37u, 256u, gui_strings[498],
+    init_screen_button(&net_groups_LOGON_button, 218, 206, gui_strings[386],
         6, med2_font, 1, 0);
-    init_screen_button(&net_unkn40_button, 37u, 256u, net_unkn40_text, 6,
-        med2_font, 1, 0);
-    init_screen_button(&net_protocol_option_button, 7u, 275u,
-        net_proto_param_text, 6, med2_font, 1, 0);
+    init_screen_button(&unkn8_EJECT_button, 308, 206, gui_strings[403],
+        6, med2_font, 1, 0);
+
+    init_screen_button(&net_SET2_button, 562, 251, gui_strings[440],
+        6, med2_font, 1, 0);
+    init_screen_button(&net_SET_button, 562, 284, gui_strings[440],
+        6, med2_font, 1, 0);
+
+    init_screen_button(&net_protocol_select_button, 37, 256, gui_strings[498],
+        6, med2_font, 1, 0);
+    init_screen_button(&net_unkn40_button, 37, 256, "",
+        6, med2_font, 1, 0);
+    init_screen_button(&net_protocol_option_button, 7, 275, net_proto_param_text,
+        6, med2_font, 1, 0);
 
     net_groups_LOGON_button.Width = 85;
     net_INITIATE_button.Width = 85;
     net_unkn40_button.Width = 21;
     net_protocol_select_button.Width = 157;
     net_protocol_option_button.Width = net_protocol_select_button.Width;
-    net_protocol_option_button.CallBackFn = ac_do_net_protocol_option;
-    net_INITIATE_button.CallBackFn = ac_do_net_INITIATE;
+    net_protocol_option_button.CallBackFn = do_net_protocol_option;
+    net_INITIATE_button.CallBackFn = do_net_INITIATE;
     net_faction_box.SpecialDrawFn = show_net_faction_box;
     net_team_box.SpecialDrawFn = show_net_team_box;
     net_groups_box.Flags |= GBxFlg_RadioBtn|GBxFlg_IsMouseOver;
@@ -2198,15 +2098,15 @@ void init_net_screen_boxes(void)
     net_groups_box.SpecialDrawFn = show_net_groups_box;
     net_users_box.SpecialDrawFn = show_net_users_box;
     net_benefits_box.SpecialDrawFn = show_net_benefits_box;
-    net_unkn40_button.CallBackFn = ac_do_net_unkn40;
-    net_SET_button.CallBackFn = ac_do_net_SET;
-    net_protocol_select_button.CallBackFn = ac_do_net_protocol_select;
-    unkn8_EJECT_button.CallBackFn = ac_do_unkn8_EJECT;
+    net_unkn40_button.CallBackFn = do_net_unkn40;
+    net_SET_button.CallBackFn = do_net_SET;
+    net_protocol_select_button.CallBackFn = do_net_protocol_select;
+    unkn8_EJECT_button.CallBackFn = do_unkn8_EJECT;
     net_comms_box.SpecialDrawFn = show_net_comms_box;
     net_users_box.Flags |= GBxFlg_RadioBtn|GBxFlg_IsMouseOver;
-    net_groups_LOGON_button.CallBackFn = ac_do_net_groups_LOGON;
+    net_groups_LOGON_button.CallBackFn = do_net_groups_LOGON;
     net_grpaint.SpecialDrawFn = show_net_grpaint;
-    net_SET2_button.CallBackFn = ac_do_net_SET2;
+    net_SET2_button.CallBackFn = do_net_SET2;
     net_protocol_box.SpecialDrawFn = show_net_protocol_box;
 
     // Reposition the components to current resolution
@@ -2340,7 +2240,7 @@ void switch_net_screen_boxes_to_execute(void)
     const char *text;
 
     net_INITIATE_button.Text = gui_strings[387];
-    if (byte_1C4A6F)
+    if (net_serial_uses_modem)
         text = gui_strings[520];
     else
         text = gui_strings[388];

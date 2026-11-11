@@ -30,10 +30,17 @@ extern "C" {
 
 #pragma pack()
 /******************************************************************************/
+extern const uint starting_cash_amounts[];
+
+extern sbyte selected_net_session;
+extern sbyte selected_net_user;
+
+extern char net_unkn2_text[];
+
+/******************************************************************************/
 
 void init_net_screen_boxes(void);
 void net_sessionlist_clear(void);
-void net_unkn2_names_clear(void);
 void show_netgame_unkn_case1(void);
 void reset_net_screen_boxes_flags(void);
 void reset_net_screen_EJECT_flags(void);

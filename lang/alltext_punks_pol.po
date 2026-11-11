@@ -20,8 +20,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Menu text for SyndWarsFX\n"
 "Report-Msgid-Bugs-To: https://github.com/swfans/syndwarsfx/issues\n"
-"POT-Creation-Date: 2023-09-10 23:59+0200\n"
-"PO-Revision-Date: 2023-09-02 12:00+0100\n"
+"POT-Creation-Date: 2025-12-15 22:09+0100\n"
+"PO-Revision-Date: 2025-12-15 22:55+0100\n"
 "Last-Translator: Mefistotelis <mefistotelis@gmail.com>\n"
 "Language-Team: Syndicate Wars Fans <github.com/swfans>\n"
 "Language: pl_PL\n"
@@ -76,21 +76,19 @@ msgstr ""
 #: mission.brief.mail19.par1.h mission.brief.mail21.par1.h
 #: mission.brief.mail23.par1.h mission.brief.mail25.par1.h
 #: mission.brief.mail26.par1.h mission.brief.mail27.par1.h
-#: mission.brief.mail30.par1.h mission.brief.mail30.par1.h
+#: mission.brief.mail30.par1.h
 msgctxt "mission brief email header"
 msgid "Mission Objectives:"
 msgstr ""
 
 #: mission.brief.mail1.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Kill the Zealots "
+msgid "1. Kill the Zealots "
 msgstr ""
 
 #: mission.brief.mail1.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2. Return to the IML link "
+msgid "2. Return to the Detroit IML link"
 msgstr ""
 
 #: mission.brief.mail1.map35.level4:1
@@ -105,14 +103,12 @@ msgstr ""
 
 #: mission.brief.mail2.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Protect civilian groups from Eurocorp agents"
+msgid "1. Protect civilian groups from Eurocorp agents"
 msgstr ""
 
 #: mission.brief.mail2.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2. Kill remaining defending agents"
+msgid "2. Kill remaining defending agents"
 msgstr ""
 
 #: mission.brief.mail2.map35.level7:1
@@ -132,8 +128,7 @@ msgstr ""
 
 #: mission.brief.mail3.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Kill Eurocorp agents"
+msgid "1. Kill Eurocorp agents (m07l22)"
 msgstr ""
 
 #: mission.brief.mail3.map7.level22:1
@@ -148,14 +143,12 @@ msgstr ""
 
 #: mission.brief.mail4.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Kill the zealot scientist"
+msgid "1. Kill the zealot scientist"
 msgstr ""
 
 #: mission.brief.mail4.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2. Return to the IML link "
+msgid "2. Return to the Riyadh IML link"
 msgstr ""
 
 #: mission.brief.mail4.map20.level7:1
@@ -165,31 +158,27 @@ msgstr ""
 
 #: mission.title:60
 msgctxt "mission title"
-msgid "Guns Guns Guns"
+msgid "Guns Guns Guns 2"
 msgstr ""
 
 #: mission.brief.mail5.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Gather unguided comrades"
+msgid "1. Gather unguided comrades"
 msgstr ""
 
 #: mission.brief.mail5.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2 Raid Eurocorp armoury"
+msgid "2 Raid Eurocorp armoury"
 msgstr ""
 
 #: mission.brief.mail5.par4.c2
 msgctxt "mission brief email orders"
-msgid ""
-"3. Kill all Eurocorp Agents"
+msgid "3. Kill all Eurocorp Agents"
 msgstr ""
 
 #: mission.brief.mail5.par5.c2
 msgctxt "mission brief email orders"
-msgid ""
-"4. Recover unguided bike"
+msgid "4. Recover unguided bike"
 msgstr ""
 
 #: mission.brief.mail5.map20.level2:1
@@ -219,25 +208,22 @@ msgstr ""
 
 #: mission.brief.mail6.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Kill the Church of the New Epoch scientist"
+msgid "1. Kill the Church of the New Epoch scientist"
 msgstr ""
 
 #: mission.brief.mail6.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2. Eliminate all Zealots "
+msgid "2. Eliminate all Zealots "
 msgstr ""
 
 #: mission.brief.mail6.par4.c2
 msgctxt "mission brief email orders"
-msgid ""
-"3. Evacuate via the IML link "
+msgid "3. Evacuate via the IML link "
 msgstr ""
 
 #: mission.brief.mail6.map3.level22:1
 msgctxt "mission brief tactical information"
-msgid "Scientist Location"
+msgid "Scientist Location (m03l22)"
 msgstr ""
 
 #: mission.brief.mail6.map3.level22:2
@@ -254,27 +240,23 @@ msgstr ""
 # msgctxt "mission title"
 # msgid "Need Some Prep"
 # msgstr ""
-
 #: mission.brief.mail7.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Eliminate Eurocorp agents"
+msgid "1. Eliminate Eurocorp agents"
 msgstr ""
 
 #: mission.brief.mail7.map47.level30:1
 msgctxt "mission brief tactical information"
-msgid "Eurocorp Compound"
+msgid "Eurocorp Compound (m47l30)"
 msgstr ""
 
 # #: mission.title:1
 # msgctxt "mission title"
 # msgid "General Takeout"
 # msgstr ""
-
 #: mission.brief.mail8.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Kill the soldiers before they escape"
+msgid "1. Kill the soldiers before they escape"
 msgstr ""
 
 #: mission.brief.mail8.map4.level7:1
@@ -289,26 +271,22 @@ msgstr ""
 
 #: mission.brief.mail12.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Kill Eurocorp agents"
+msgid "1. Kill Eurocorp agents"
 msgstr ""
 
 #: mission.brief.mail12.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2. Collect Explosives"
+msgid "2. Collect Explosives"
 msgstr ""
 
 #: mission.brief.mail12.par4.c2
 msgctxt "mission brief email orders"
-msgid ""
-"3. Destroy building"
+msgid "3. Destroy building"
 msgstr ""
 
 #: mission.brief.mail12.par5.c2
 msgctxt "mission brief email orders"
-msgid ""
-"4. Evacuate"
+msgid "4. Evacuate"
 msgstr ""
 
 #: mission.title:70
@@ -318,14 +296,12 @@ msgstr ""
 
 #: mission.brief.mail13.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Destroy the statue"
+msgid "1. Destroy the statue"
 msgstr ""
 
 #: mission.brief.mail13.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-" Hint: Explosives are hidden somewhere in the level "
+msgid " Hint: Explosives are hidden somewhere in the level "
 msgstr ""
 
 #: mission.brief.mail13.map1.level7:1
@@ -340,13 +316,12 @@ msgstr ""
 
 #: mission.brief.mail14.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Kill Eurocorp agents"
+msgid "1. Kill Eurocorp agents (m09l07)"
 msgstr ""
 
 #: mission.brief.mail14.map44.level30:1
 msgctxt "mission brief tactical information"
-msgid "Eurocorp Compound"
+msgid "Eurocorp Compound (m44l30)"
 msgstr ""
 
 #: mission.title:81
@@ -356,8 +331,7 @@ msgstr ""
 
 #: mission.brief.mail15.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Kill the Godfather"
+msgid "1. Kill the Godfather"
 msgstr ""
 
 #: mission.brief.mail15.map9.level7:1
@@ -373,25 +347,25 @@ msgstr ""
 #: mission.brief.mail17.par2.c2
 msgctxt "mission brief email orders"
 msgid ""
-"1. Kill Eurocorp scientist and recover location of our imprisoned scientist ally"
+"1. Kill Eurocorp scientist and recover location of our imprisoned scientist "
+"ally"
 msgstr ""
 
 #: mission.brief.mail17.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2. Rescue imprisoned scientist and evacuate with him"
+msgid "2. Rescue imprisoned scientist and evacuate with him"
 msgstr ""
 
 #: mission.brief.mail17.par4.c2
 msgctxt "mission brief email orders"
 msgid ""
-"Hint: Eurocorp will likely kill the scientist once they know we are coming. Time is of the essence"
+"Hint: Eurocorp will likely kill the scientist once they know we are coming. "
+"Time is of the essence"
 msgstr ""
 
 #: mission.brief.mail17.par5.c2
 msgctxt "mission brief email orders"
-msgid ""
-"Try saving the scientist first"
+msgid "Try saving the scientist first"
 msgstr ""
 
 #: mission.brief.mail17.map28.level2:1
@@ -416,8 +390,7 @@ msgstr ""
 
 #: mission.brief.mail19.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Destroy Zealot Vehicles"
+msgid "1. Destroy Zealot Vehicles"
 msgstr ""
 
 #: mission.brief.mail19.map2.level7:1
@@ -432,25 +405,22 @@ msgstr ""
 
 #: mission.brief.mail21.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Kill all Eurocorp agents"
+msgid "1. Kill all Eurocorp agents"
 msgstr ""
 
 #: mission.brief.mail21.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2. Recover weapon"
+msgid "2. Recover weapon"
 msgstr ""
 
 #: mission.brief.mail21.par4.c2
 msgctxt "mission brief email orders"
-msgid ""
-"3. Evacuate"
+msgid "3. Evacuate"
 msgstr ""
 
 #: mission.brief.mail21.map40.level15:1
 msgctxt "mission brief tactical information"
-msgid "Eurocorp Armoury"
+msgid "Eurocorp Armoury (m40l15)"
 msgstr ""
 
 #: mission.brief.mail21.map40.level15:2
@@ -465,8 +435,7 @@ msgstr ""
 
 #: mission.brief.mail23.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Assassinate Eurocorp Executives"
+msgid "1. Assassinate Eurocorp Executives"
 msgstr ""
 
 #: mission.brief.mail23.map30.level23:1
@@ -486,20 +455,17 @@ msgstr ""
 
 #: mission.brief.mail25.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Attend the peace talks"
+msgid "1. Attend the peace talks"
 msgstr ""
 
 #: mission.brief.mail25.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2. Re-arm from weapons cache"
+msgid "2. Re-arm from weapons cache"
 msgstr ""
 
 #: mission.brief.mail25.par4.c2
 msgctxt "mission brief email orders"
-msgid ""
-"3. Eliminate all Eurocorp agents"
+msgid "3. Eliminate all Eurocorp agents"
 msgstr ""
 
 #: mission.brief.mail25.map26.level4:1
@@ -519,26 +485,22 @@ msgstr ""
 
 #: mission.brief.mail26.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Infiltrate Eurocorp Base via stealth"
+msgid "1. Infiltrate Eurocorp Base via stealth"
 msgstr ""
 
 #: mission.brief.mail26.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2. Acquire Clone Shield device"
+msgid "2. Acquire Clone Shield device"
 msgstr ""
 
 #: mission.brief.mail26.par4.c2
 msgctxt "mission brief email orders"
-msgid ""
-"3. Forcibly recover C3 research data from Eurocorp scientist"
+msgid "3. Forcibly recover C3 research data from Eurocorp scientist"
 msgstr ""
 
 #: mission.brief.mail26.par5.c2
 msgctxt "mission brief email orders"
-msgid ""
-"4. Eliminate remaining Eurocorp scientist"
+msgid "4. Eliminate remaining Eurocorp scientist"
 msgstr ""
 
 #: mission.brief.mail26.map79.level4:1
@@ -568,14 +530,12 @@ msgstr ""
 
 #: mission.brief.mail27.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Destroy Church Buildings"
+msgid "1. Destroy Church Buildings"
 msgstr ""
 
 #: mission.brief.mail27.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2. Kill All Zealots"
+msgid "2. Kill All Zealots"
 msgstr ""
 
 #: mission.brief.mail27.map25.level4:1
@@ -595,14 +555,12 @@ msgstr ""
 
 #: mission.brief.mail28.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Kill All Zealots"
+msgid "1. Kill All Zealots"
 msgstr ""
 
 #: mission.brief.mail28.par3.c2
 msgctxt "mission brief email orders"
-msgid ""
-"2. Destroy Building"
+msgid "2. Destroy Building"
 msgstr ""
 
 #: mission.brief.mail28.map36.level4:1
@@ -615,7 +573,6 @@ msgctxt "mission brief tactical information"
 msgid "Unguided reinforcements hiding in bar"
 msgstr ""
 
-
 #: mission.title:103
 msgctxt "mission title"
 msgid "A Tale of Two Cities"
@@ -623,8 +580,7 @@ msgstr ""
 
 #: mission.brief.mail30.par2.c2
 msgctxt "mission brief email orders"
-msgid ""
-"1. Destroy Buildings"
+msgid "1. Destroy Buildings"
 msgstr ""
 
 #: mission.brief.mail30.map60.level15:1

@@ -406,15 +406,9 @@ def enctable_string_to_bytes(cte, s):
 
 
 def waditem_string_national_to_upper(stri):
-    stro = ""
-    for c in stri:
-        if c in "êô":
-            stro = stro + unicodedata.normalize('NFKD', c).encode('ascii', 'ignore').decode('ascii', errors='ignore')
-        elif c in "ìäåéöüñáàèíòúù":
-            stro = stro + c.upper()
-        else:
-            stro = stro + c
-    return stro
+    # currently, there is no need to alter the national character codes
+    # no need to convert to upper() nor normalize('NFKD')
+    return stri
 
 
 def waditem_string_to_bytes(po, fname, s):
@@ -1166,21 +1160,37 @@ def create_lines_for_netscan(lines, pomdict):
 
 
 def create_lines_for_outro(lines, pomdict):
-    for campgn in campaign_names[0:3]:
-        lines.append(f"[{campgn}_win]".lower())
-        noexist = False
-        for k in range(1,256):
-            try:
-                e = pomdict[(campgn,'message.win',f'{k}',)]
-            except:
-                e = polib.POEntry()
-                # Finish if the next entry does not exist as well
-                noexist = (campgn,'message.win',f'{k+1}',) not in pomdict
-            if noexist:
-                break
-            if k > 1:
-                lines.append("")
-            lines.append(e.msgstr)
+    # We expect the input dict to contain only entries for one campaign; so create a dict with smaller key
+    pounidict = {}
+    for (campgn, place, num,), e in pomdict.items():
+        pounidict[ (place,num,) ] = e
+    lines.append(f"[header_win]".lower())
+    for k in range(1,256):
+        try:
+            e = pounidict[('header.win',f'{k}',)]
+        except:
+            e = polib.POEntry()
+            # Finish if the next entry does not exist as well
+            noexist = ('header.win',f'{k+1}',) not in pounidict
+        if noexist:
+            break
+        if k > 1:
+            lines.append("")
+        lines.append(e.msgstr)
+    lines.append(f"[message_win]".lower())
+    noexist = False
+    for k in range(1,256):
+        try:
+            e = pounidict[('message.win',f'{k}',)]
+        except:
+            e = polib.POEntry()
+            # Finish if the next entry does not exist as well
+            noexist = ('message.win',f'{k+1}',) not in pounidict
+        if noexist:
+            break
+        if k > 1:
+            lines.append("")
+        lines.append(e.msgstr)
     lines.append("")
     return
 

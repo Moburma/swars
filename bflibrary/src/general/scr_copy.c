@@ -22,6 +22,8 @@
 
 void *LbI_XMemCopy(void *dest, void *source, ulong len);
 
+void *LbI_XMemCopyFlip(void *dest, void *source, ulong len);
+
 void *LbI_XMemRectCopy(void *dest, void *source, ulong lineLen,
   ulong width, ulong height);
 
@@ -48,15 +50,51 @@ void LbScreenCopy(TbPixel *sourceBuf, TbPixel *destBuf, ushort height)
     short shift;
     short h;
 
-    s = sourceBuf;
-    d = destBuf;
     shift = lbDisplay.GraphicsScreenWidth - lbDisplay.GraphicsWindowWidth;
     // Note that source and destination buffers have different line lengths
-    for (h = height; h > 0; h--)
+    if ((lbDisplay.DrawFlags & Lb_SPRITE_FLIP_VERTIC) == 0)
     {
-        LbI_XMemCopy(d, s, lbDisplay.GraphicsWindowWidth);
-        s += lbDisplay.GraphicsWindowWidth;
-        d += lbDisplay.GraphicsWindowWidth + shift;
+        if ((lbDisplay.DrawFlags & Lb_SPRITE_FLIP_HORIZ) == 0) {
+            s = sourceBuf;
+            d = destBuf;
+            for (h = height; h > 0; h--)
+            {
+                LbI_XMemCopy(d, s, lbDisplay.GraphicsWindowWidth);
+                s += lbDisplay.GraphicsWindowWidth;
+                d += lbDisplay.GraphicsWindowWidth + shift;
+            }
+        } else {
+            s = sourceBuf;
+            d = destBuf;
+            for (h = height; h > 0; h--)
+            {
+                LbI_XMemCopyFlip(d, s, lbDisplay.GraphicsWindowWidth);
+                s += lbDisplay.GraphicsWindowWidth;
+                d += lbDisplay.GraphicsWindowWidth + shift;
+            }
+        }
+    }
+    else
+    {
+        if ((lbDisplay.DrawFlags & Lb_SPRITE_FLIP_HORIZ) == 0) {
+            s = sourceBuf + (height - 1) * lbDisplay.GraphicsWindowWidth;
+            d = destBuf;
+            for (h = height; h > 0; h--)
+            {
+                LbI_XMemCopy(d, s, lbDisplay.GraphicsWindowWidth);
+                s -= lbDisplay.GraphicsWindowWidth;
+                d += lbDisplay.GraphicsWindowWidth + shift;
+            }
+        } else {
+            s = sourceBuf + (height - 1) * lbDisplay.GraphicsWindowWidth;
+            d = destBuf;
+            for (h = height; h > 0; h--)
+            {
+                LbI_XMemCopyFlip(d, s, lbDisplay.GraphicsWindowWidth);
+                s -= lbDisplay.GraphicsWindowWidth;
+                d += lbDisplay.GraphicsWindowWidth + shift;
+            }
+        }
     }
 }
 

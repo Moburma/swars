@@ -27,22 +27,20 @@ extern "C" {
 /******************************************************************************/
 #pragma pack(1)
 
-struct MapCreater {
-    short MapX;
-    short MapY;
-    short Depth;
-    short Iterations;
-};
+struct Thing;
 
 #pragma pack()
 /******************************************************************************/
 
+void bang_init(void);
 void new_bang(int x, int y, int z, int type, int owner, int c);
 void bang_new5(int x, int y, int z, int type, int owner);
 void bang_new4(int x, int y, int z, int type);
 
 void unused_func_025(short a1, short a2, short a3);
 ubyte unused_func_026(ubyte a1);
+
+void do_shockwave(int x, int y, int z, int radius, int intensity, struct Thing *p_owner);
 
 /******************************************************************************/
 #ifdef __cplusplus

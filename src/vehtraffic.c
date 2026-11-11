@@ -29,6 +29,7 @@
 #include "vehicle.h"
 #include "swlog.h"
 /******************************************************************************/
+struct TrafficNode *game_traffic_nodes = NULL;
 ushort next_traffic_node = 1;
 
 extern uint dword_1C8470;
@@ -541,6 +542,12 @@ void VNAV_init_new_traffic_system(void)
         :  :  : "eax" );
 }
 
+void traffic_unkn_func_01(void)
+{
+    asm volatile ("call ASM_traffic_unkn_func_01\n"
+        :  :  : "eax" );
+}
+
 void process_next_tnode(struct Thing *p_vehicle)
 {
 #if 0
@@ -828,14 +835,17 @@ void process_next_tnode(struct Thing *p_vehicle)
                     }
                 }
                 if ((p_tnode->UTraffic.Flags[lnk] & 0x01) != 0)
-                    p_vehicle->Flag |= TngF_Unkn0800;
+                    p_vehicle->Flag |= TngF_TriggerUse;
                 else
-                    p_vehicle->Flag &= ~TngF_Unkn0800;
+                    p_vehicle->Flag &= ~TngF_TriggerUse;
             }
             else
             {
                 int i, lnk;
                 int dx, dz;
+
+                dx = 0;
+                dz = 1;
 
                 for (i = 0; i < 8; i++)
                 {

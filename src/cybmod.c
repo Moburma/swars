@@ -50,6 +50,8 @@ ubyte mod_tech_level[17] = {
   0, 1, 3, 6, 1, 3, 6, 1, 3, 6, 1, 3, 6, 2, 4, 6, 8,
 };
 
+ushort mod_group_type_strid[] = {74, 71, 72, 70, 73, };
+
 struct ModDefAdd mod_defs_a[33] = {0};
 struct TbNamedEnum mod_names[33] = {0};
 

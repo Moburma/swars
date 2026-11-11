@@ -27,6 +27,16 @@
 #include "swlog.h"
 /******************************************************************************/
 
+struct EmailItem email_store[EMAIL_STORE_COUNT];
+struct EmailItem brief_store[BRIEF_STORE_COUNT];
+struct NewMailItem newmail_store[NEWMAIL_STORE_COUNT];
+
+ubyte new_mail = 0;
+ushort next_email = 0;
+short next_ref = 0;
+
+/******************************************************************************/
+
 ushort activate_queued_mail(void)
 {
 #if 0

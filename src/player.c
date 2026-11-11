@@ -22,24 +22,98 @@
 #include "bfutility.h"
 #include "ssampply.h"
 
+#include "bigmap.h"
+#include "campaign.h"
 #include "display.h"
 #include "game.h"
 #include "game_options.h"
 #include "guitext.h"
 #include "hud_panel.h"
 #include "people.h"
+#include "pepgroup.h"
 #include "sound.h"
 #include "thing.h"
 #include "weapon.h"
 #include "swlog.h"
 /******************************************************************************/
+ubyte default_agent_tiles_x[8] = {
+    45, 64, 40, 60, 30, 70, 20, 80,
+};
+ubyte default_agent_tiles_z[8] = {
+    46, 44, 60, 60, 30, 30, 70, 70,
+};
 
-void player_mission_agents_reset(PlayerIdx plyr)
+ushort netgame_agent_pos_x[PLAYERS_LIMIT][4];
+ushort netgame_agent_pos_z[PLAYERS_LIMIT][4];
+
+struct AgentInfo cryo_agents;
+ubyte playable_agents;
+
+PlayerInfo players[PLAYERS_LIMIT];
+PlayerIdx local_player_no;
+
+char net_player_names[PLAYERS_LIMIT][16];
+/******************************************************************************/
+
+void player_mission_agents_toggle_reset(PlayerIdx plyr)
 {
     PlayerInfo *p_plyr;
 
     p_plyr = &players[plyr];
     p_plyr->MissionAgents = 0x0F;
+}
+
+void cryo_agents_assign_random_names_and_sex(void)
+{
+    ushort name_rnd, name_rnd_limit;
+    ushort i;
+
+    if (background_type == 1) {
+        name_rnd_limit = 51 - CRYO_PODS_MAX_COUNT;
+    } else {
+        name_rnd_limit = 101 - CRYO_PODS_MAX_COUNT;
+    }
+    name_rnd = LbRandomAnyShort() % name_rnd_limit;
+    for (i = 0; i < CRYO_PODS_MAX_COUNT; i++)
+    {
+        cryo_agents.RandomName[i] = name_rnd + i;
+    }
+    for (i = 0; i < 32; i++)
+    {
+        ushort slot1, slot2;
+        ubyte tmpval;
+
+        slot1 = LbRandomAnyShort() % CRYO_PODS_MAX_COUNT;
+        slot2 = LbRandomAnyShort() % CRYO_PODS_MAX_COUNT;
+        if (slot1 == slot2)
+            continue;
+        tmpval = cryo_agents.RandomName[slot1];
+        cryo_agents.RandomName[slot1] = cryo_agents.RandomName[slot2];
+        cryo_agents.RandomName[slot2] = tmpval;
+    }
+
+    cryo_agents.Sex = (LbRandomAnyShort() << 16) | LbRandomAnyShort();
+}
+
+void cryo_agent_clear_wep_mod(ushort cryo_no)
+{
+    ushort wepfp;
+
+    cryo_agents.Weapons[cryo_no] = 0;
+    cryo_agents.Mods[cryo_no].Mods = 0;
+
+    for (wepfp = 0; wepfp < WFRPK_COUNT; wepfp++) {
+        cryo_agents.FourPacks[cryo_no].Amount[wepfp] = 0;
+    }
+}
+
+void cryo_agents_clear_wep_mod(void)
+{
+    ushort cryo_no;
+
+    for (cryo_no = 0; cryo_no < CRYO_PODS_MAX_COUNT; cryo_no++) {
+        cryo_agent_clear_wep_mod(cryo_no);
+    }
 }
 
 void player_update_from_cryo_agent(ushort cryo_no, PlayerInfo *p_player, ushort plagent)
@@ -120,11 +194,11 @@ void player_agents_add_random_epidermises(PlayerInfo *p_player)
         p_person = p_player->MyAgent[plagent];
         if (p_person == NULL)
             continue;
-        if (cybmod_skin_level(&p_person->U.UPerson.UMod) == 0)
+        if (person_mod_skin_level(p_person) == 0)
         {
             ushort rnd;
             rnd = LbRandomAnyShort();
-            set_cybmod_skin_level(&p_person->U.UPerson.UMod, 1 + (rnd & 3));
+            set_person_mod_skin_level(p_person, 1 + (rnd & 3));
         }
     }
 }
@@ -137,44 +211,65 @@ void players_sync_from_cryo(void)
     player_update_agents_from_cryo(p_locplayer);
 }
 
-void player_agents_init_prev_weapon(PlayerIdx plyr)
-{
-    PlayerInfo *p_locplayer;
-    ushort plagent;
-
-    p_locplayer = &players[local_player_no];
-    for (plagent = 0; plagent < playable_agents; plagent++)
-    {
-        struct Thing *p_agent;
-        WeaponType wtype;
-
-        p_agent = p_locplayer->MyAgent[plagent];
-        if (p_agent->Type == TT_PERSON)
-            wtype = find_nth_weapon_held(p_agent->ThingOffset, 1);
-        else
-            wtype = WEP_NULL;
-        p_locplayer->PrevWeapon[plagent] = wtype;
-    }
-    for (; plagent < AGENTS_SQUAD_MAX_COUNT; plagent++)
-    {
-        p_locplayer->PrevWeapon[plagent] = WEP_NULL;
-    }
-}
-
-void player_agent_update_prev_weapon(struct Thing *p_agent)
+void player_agent_reset_prev_weapon(PlayerIdx plyr, ushort plagent)
 {
     PlayerInfo *p_player;
-    PlayerIdx plyr;
+    struct Thing *p_agent;
+    WeaponType wtype;
+
+    p_player = &players[plyr];
+    p_agent = p_player->MyAgent[plagent];
+
+    if (plagent >= playable_agents)
+    {
+        wtype = WEP_NULL;
+    }
+    else if (p_agent->Type == TT_PERSON)
+    {
+        wtype = find_nth_weapon_held(p_agent->ThingOffset, 1);
+    }
+    else
+    {
+        wtype = WEP_NULL;
+    }
+    p_player->PrevWeapon[plagent] = wtype;
+}
+
+void player_agent_update_prev_weapon(PlayerIdx plyr, ushort plagent)
+{
+    PlayerInfo *p_player;
+    struct Thing *p_agent;
+    WeaponType wtype;
+
+    p_player = &players[plyr];
+    p_agent = p_player->MyAgent[plagent];
+
+    if (plagent >= playable_agents)
+    {
+        wtype = WEP_NULL;
+    }
+    else if (p_agent->Type == TT_PERSON)
+    {
+        if (p_agent->U.UPerson.CurrentWeapon != 0)
+            wtype = p_agent->U.UPerson.CurrentWeapon;
+        else
+            wtype = find_nth_weapon_held(p_agent->ThingOffset, 1);
+    }
+    else
+    {
+        wtype = WEP_NULL;
+    }
+    p_player->PrevWeapon[plagent] = wtype;
+}
+
+void player_agents_init_prev_weapon(PlayerIdx plyr)
+{
     ushort plagent;
 
-    plyr = p_agent->U.UPerson.ComCur >> 2;
-    plagent = p_agent->U.UPerson.ComCur & 3;
-    p_player = &players[plyr];
-
-    if (p_agent->U.UPerson.CurrentWeapon != 0)
-        p_player->PrevWeapon[plagent] = p_agent->U.UPerson.CurrentWeapon;
-    else
-        p_player->PrevWeapon[plagent] = find_nth_weapon_held(p_agent->ThingOffset, 1);
+    for (plagent = 0; plagent < AGENTS_SQUAD_MAX_COUNT; plagent++)
+    {
+        player_agent_reset_prev_weapon(plyr, plagent);
+    }
 }
 
 short player_agent_current_or_prev_weapon(PlayerIdx plyr, ushort plagent)
@@ -378,26 +473,27 @@ TbBool player_cryo_transfer_weapon_between_agents(ushort from_cryo_no,
     return added;
 }
 
-const char *get_cryo_agent_name(ushort cryo_no)
+const char *get_cryo_agent_name(short cryo_no)
 {
     ushort rndname;
+    ushort strid;
 
-    if (selected_agent < 0)
+    if ((cryo_no < 0) || (cryo_no >= CRYO_PODS_MAX_COUNT))
         return gui_strings[536];
 
     rndname = cryo_agents.RandomName[cryo_no];
     if (background_type == 1)
     {
-        if (cryo_agents.Sex & (1 << selected_agent))
-            return gui_strings[227 + rndname];
+        if (cryo_agents.Sex & (1 << cryo_no))
+            strid = 227 + rndname;
         else
-            return gui_strings[177 + rndname];
+            strid = 177 + rndname;
     }
     else
     {
-        return gui_strings[77 + rndname];
+        strid = 77 + rndname;
     }
-
+    return gui_strings[strid];
 }
 
 void remove_agent(ubyte cryo_no)
@@ -425,15 +521,53 @@ ThingIdx direct_control_thing_for_player(PlayerIdx plyr)
     return dcthing;
 }
 
+TbBool thing_is_player_agent_under_direct_control(ThingIdx thing)
+{
+    PlayerInfo *p_player;
+    struct Thing *p_person;
+    PlayerIdx plyr;
+    ushort dmuser;
+
+    if (thing <= 0)
+        return false;
+    p_person = &things[thing];
+    if ((p_person->Flag & TngF_PlayerAgent) == 0)
+        return false;
+
+    plyr = p_person->U.UPerson.ComCur >> 2;
+    p_player = &players[plyr];
+
+    for (dmuser = 0; dmuser < p_player->DoubleMode + 1; dmuser++)
+    {
+        if (thing == (ThingIdx)p_player->DirectControl[dmuser])
+            return true;
+    }
+    return false;
+}
+
+void players_init_default_control_mode(void)
+{
+    PlayerIdx plyr;
+
+    reset_user_groups();
+    reset_user_input();
+
+    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++) {
+        user_input_control_mode_set(plyr, 0, UInpCtr_Mouse);
+    }
+}
+
 void set_default_player_control(void)
 {
     PlayerInfo *p_locplayer;
-    short i;
+    ubyte dmuser;
 
     p_locplayer = &players[local_player_no];
     p_locplayer->DoubleMode = 0;
-    for (i = 0; i < 4; i++)
-        p_locplayer->UserInput[i].ControlMode = UInpCtr_Mouse;
+
+    for (dmuser = 0; dmuser < LOCAL_USERS_MAX_COUNT; dmuser++) {
+        user_input_control_mode_set(local_player_no, dmuser, UInpCtr_Mouse);
+    }
 }
 
 void player_target_clear(PlayerIdx plyr)
@@ -445,10 +579,89 @@ void player_target_clear(PlayerIdx plyr)
     p_player->TargetType = TrgTp_NONE;
 }
 
+void player_agent_set_user_vect(PlayerIdx plyr, short plagent,
+  MapCoord vx, MapCoord vy, MapCoord vz)
+{
+    PlayerInfo *p_player;
+
+    assert(plyr < PLAYERS_LIMIT);
+    assert(plagent >= 0);
+    assert(plagent < LOCAL_USERS_MAX_COUNT);
+
+    p_player = &players[plyr];
+    p_player->UserVX[plagent] = vx;
+    p_player->UserVY[plagent] = vy;
+    p_player->UserVZ[plagent] = vz;
+}
+
+void player_agent_clear_user_vect(PlayerIdx plyr, short plagent)
+{
+    PlayerInfo *p_player;
+
+    assert(plyr < PLAYERS_LIMIT);
+    assert(plagent >= 0);
+    assert(plagent < LOCAL_USERS_MAX_COUNT);
+
+    p_player = &players[plyr];
+    p_player->UserVX[plagent] = 0;
+    p_player->UserVY[plagent] = 0;
+    p_player->UserVZ[plagent] = 0;
+}
+
+MapCoord player_agent_clear_user_vect_y(PlayerIdx plyr, short plagent)
+{
+    PlayerInfo *p_player;
+    MapCoord vy;
+
+    assert(plyr < PLAYERS_LIMIT);
+    assert(plagent >= 0);
+    assert(plagent < LOCAL_USERS_MAX_COUNT);
+
+    p_player = &players[plyr];
+    vy = p_player->UserVY[plagent];
+    p_player->UserVY[plagent] = 0;
+    return vy;
+}
+
+void player_agent_get_user_vect(PlayerIdx plyr, short plagent, struct MapCoords *p_usrv)
+{
+    PlayerInfo *p_player;
+
+    assert(plyr < PLAYERS_LIMIT);
+    assert(plagent >= 0);
+    assert(plagent < LOCAL_USERS_MAX_COUNT);
+
+    p_player = &players[plyr];
+
+    p_usrv->X = p_player->UserVX[plagent];
+    p_usrv->Z = p_player->UserVZ[plagent];
+    p_usrv->Y = p_player->UserVY[plagent];
+}
+
 void kill_my_players(PlayerIdx plyr)
 {
+#if 0
     asm volatile ("call ASM_kill_my_players\n"
         : : "a" (plyr));
+#endif
+    PlayerInfo *p_player;
+    ushort plagent;
+
+    p_player = &players[plyr];
+    for (plagent = 0; plagent < AGENTS_SQUAD_MAX_COUNT; plagent++)
+    {
+        struct Thing *p_agent;
+
+        p_agent = p_player->MyAgent[plagent];
+        if ((p_agent->Flag & TngF_Destroyed) == 0)
+        {
+            if ((p_agent->Flag & TngF_InVehicle) != 0)
+                person_self_destruct(p_agent);
+            else
+                set_person_dead(p_agent, ANIM_PERS_Unkn12);
+        }
+        p_agent->Flag &= ~(TngF_SelectedAgent|TngF_PlayerAgent);
+    }
 }
 
 TbBool player_can_toggle_thermal(PlayerIdx plyr)
@@ -506,6 +719,160 @@ void player_update_thermal(PlayerIdx plyr)
         ingame.Flags &= ~GamF_ThermalView;
         change_brightness(0);
     }
+}
+
+/** Figure out how many agents are attending the mission.
+ */
+ushort player_agents_place_in_mission_count(PlayerIdx plyr)
+{
+    PlayerInfo *p_player;
+    ushort nagents;
+
+    p_player = &players[plyr];
+    if (p_player->DoubleMode)
+        nagents = p_player->DoubleMode + 1;
+    else
+        nagents = 4;
+
+    if (p_player->MissionAgents < (1 << nagents) - 1)
+    {
+        switch (p_player->MissionAgents)
+        {
+        case 1:
+            nagents = 1;
+            break;
+        case 3:
+            nagents = 2;
+            break;
+        case 7:
+            nagents = 3;
+            break;
+        }
+    }
+    return nagents;
+}
+
+int place_default_player(PlayerIdx plyr, TbBool replace)
+{
+#if 0
+    int ret;
+    asm volatile ("call ASM_place_default_player\n"
+        : "=r" (ret) : "a" (plyr), "d" (replace));
+    return ret;
+#endif
+    PlayerInfo *p_player;
+    int cor_x, cor_z;
+    ushort nagents, plagent;
+    short new_type;
+    ubyte net_plyr_id;
+
+    nagents = player_agents_place_in_mission_count(plyr);
+    if (in_network_game)
+        nagents = 4;
+
+    cor_x = TILE_TO_MAPCOORD(default_agent_tiles_x[plyr], 0);
+    cor_z = TILE_TO_MAPCOORD(default_agent_tiles_z[plyr], 0);
+
+    net_plyr_id = plyr;
+    if (in_network_game)
+    {
+        if ((net_game_play_flags & NGPF_Unkn20) != 0)
+            net_plyr_id = LbRandomAnyShort() & 7;
+    }
+
+    p_player = &players[plyr];
+    if (in_network_game)
+        new_type = group_factions[plyr];
+    else
+        new_type = -1;
+
+    for (plagent = 0; plagent < nagents; plagent++)
+    {
+        struct Thing *p_pv_agent;
+        struct Thing *p_agent;
+
+        if (in_network_game) {
+            cor_x = netgame_agent_pos_x[net_plyr_id][plagent];
+            cor_z = netgame_agent_pos_z[net_plyr_id][plagent];
+        }
+        p_pv_agent = p_player->MyAgent[plagent];
+        if ((p_pv_agent == NULL) || ((p_pv_agent->Flag & TngF_Destroyed) != 0) || (replace))
+        {
+            ThingIdx pv_agent;
+
+            if (p_pv_agent != NULL)
+                pv_agent = p_pv_agent->ThingOffset;
+            else
+                pv_agent = 0;
+            p_agent = replace_thing_given_thing_idx(cor_x, 0, cor_z, 1, pv_agent);
+            reset_default_player_agent(plyr, plagent, p_agent, new_type);
+        }
+        cor_x += 256;
+    }
+    // Fill the rest of agents array, to avoid using leftovers
+    for (; plagent < AGENTS_SQUAD_MAX_COUNT; plagent++)
+        p_player->MyAgent[plagent] = &things[0];
+
+    playable_agents = AGENTS_SQUAD_MAX_COUNT;
+    player_agents_init_prev_weapon(plyr);
+    player_agents_clear_weapon_delays(plyr);
+    return 0;
+}
+
+void place_single_player(void)
+{
+    ulong n;
+    ushort nagents, pl_agents, pl_group;
+
+    nagents = player_agents_place_in_mission_count(local_player_no);
+
+    pl_group = level_def.PlayableGroups[0];
+    pl_agents = make_group_into_players(pl_group, local_player_no, nagents, -1);
+    if (pl_agents == 0) {
+        struct Thing *p_person;
+        LOGERR("Player %d group %d playable agents not found amongst %d things",
+          (int)local_player_no, (int)pl_group, (int)things_used_head);
+        p_person = new_sim_person(513, 1, 513, SubTT_PERS_AGENT);
+        p_person->U.UPerson.Group = pl_group;
+        p_person->U.UPerson.EffectiveGroup = pl_group;
+        pl_agents = make_group_into_players(pl_group, local_player_no, 1, -1);
+    } else {
+        LOGSYNC("Player %d group %d playable agents found %d expected %d",
+          (int)local_player_no, (int)pl_group, (int)pl_agents, (int)nagents);
+    }
+
+    n = things_used_head;
+    while (n != 0)
+    {
+        struct Thing *p_thing;
+
+        p_thing = &things[n];
+        n = p_thing->LinkChild;
+        if ((p_thing->U.UPerson.Group == pl_group) && (p_thing->Type == TT_PERSON)
+          && !(p_thing->Flag & TngF_PlayerAgent))
+        {
+            remove_thing(p_thing->ThingOffset);
+            delete_node(p_thing);
+        }
+    }
+    playable_agents = pl_agents;
+    if (pl_agents == 0)
+      place_default_player(0, 1);
+}
+
+void net_player_names_clear(void)
+{
+    ushort plyr;
+
+    for (plyr = 0; plyr < PLAYERS_LIMIT; plyr++) {
+        net_player_names[plyr][0] = '\0';
+    }
+}
+
+void net_player_name_set(PlayerIdx plyr, const char *nname)
+{
+    assert(plyr < PLAYERS_LIMIT);
+    strncpy(net_player_names[plyr], nname, sizeof(net_player_names[0]));
 }
 
 /******************************************************************************/

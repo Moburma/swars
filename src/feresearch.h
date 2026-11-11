@@ -31,6 +31,12 @@ extern "C" {
 #pragma pack()
 /******************************************************************************/
 
+extern u32 new_weapons_researched;
+extern u32 new_mods_researched;
+extern ubyte scientists_lost;
+
+/******************************************************************************/
+
 /** Progresses weapon research by one day.
  * @return Returns if something notable happened in regard to the research,
  *   like scientist lost or research completed.

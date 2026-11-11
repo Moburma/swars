@@ -29,16 +29,16 @@ OWN_TARGET="no"
 DEVICE=""
 SOURCE=""
 TARGET=""
-LANGS="eng fre ger ita spa swe"
+LANGS="eng fre ger ita pol spa swe"
 LANG="eng"
 
 LEVELS_VERSION="1.0.1.38"
 LEVELS_PACKAGE="syndwarsfx-levels-1_0_1_38"
 LEVELS_PKG_MD5="d6448c212093e1ddb653d09d55bcdf64"
 
-GFX_VERSION="1.0.3.239"
-GFX_PACKAGE="syndwarsfx-gfx-1_0_3_239"
-GFX_PKG_MD5="944b13618593cf7659959745b338d0f4"
+GFX_VERSION="1.0.4.312"
+GFX_PACKAGE="syndwarsfx-gfx-1_0_4_312"
+GFX_PKG_MD5="c4ff17e5ecd577b0148627765d8aa63e"
 
 SFX_VERSION="1.0.1.30"
 SFX_PACKAGE="syndwarsfx-sfx-1_0_1_30"
@@ -258,11 +258,6 @@ copy_data()
     install_file "data/${fn}" || return 1
   done
 
-  for fn in w-icons; do
-    install_file "data/${fn}.dat" || return 1
-    install_file "data/${fn}.tab" || return 1
-  done
-
   for fn in 00 01 02 03 04 05; do
     install_file "data/mapout${fn}.dat" || return 1
     install_file "data/tex${fn}.dat" || return 1
@@ -277,11 +272,6 @@ copy_data()
   for fn in s z; do
     install_file "data/outro-${fn}.smk" || return 1
     install_file "data/outro-${fn}.raw" || return 1
-  done
-
-  for fn in tit nam qot; do
-    install_file "data/${fn}-font.dat" || return 1
-    install_file "data/${fn}-font.tab" || return 1
   done
 
   for fn in pal s-proj; do
@@ -414,6 +404,9 @@ check_language()
     ita)
       LANG_NAME="Italian"
       ;;
+    pol)
+      LANG_NAME="Polish"
+      ;;
     spa)
       LANG_NAME="Spanish"
       ;;
@@ -441,6 +434,7 @@ Levels="Max"
 Data="Max"
 Maps="Max"
 DOS="Max"
+MouseCapture="FullScreen"
 EOF
   [ $? -eq 0 ] || return 1
   return 0

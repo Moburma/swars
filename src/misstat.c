@@ -19,6 +19,7 @@
 #include "misstat.h"
 
 #include "bfmemut.h"
+#include "bfutility.h"
 
 #include "febrief.h"
 #include "game.h"
@@ -27,6 +28,54 @@
 #include "swlog.h"
 #include "thing.h"
 /******************************************************************************/
+
+const ubyte month_days[12] = {
+  31, 28, 31, 30, 31, 30, 31, 31, 30, 31,
+};
+
+struct MissionStatus mission_status[MISSION_STATUS_LIMIT];
+
+/******************************************************************************/
+
+long time_difference(struct SynTime *tm1, struct SynTime *tm2)
+{
+    return 60 * (tm1->Hour - (long)tm2->Hour) + tm1->Minute - (long)tm2->Minute;
+}
+
+void syntime_inc_days(struct SynTime *tm, ushort ndays)
+{
+    uint tmday, tmmonth;
+
+    tmday = tm->Day + ndays;
+    tmmonth = tm->Month;
+    while (tmday > month_days[(tmmonth - 1) % 12])
+    {
+        tmday -= month_days[(tmmonth - 1) % 12];
+        tmmonth++;
+    }
+
+    while (tmmonth > 12) {
+        tm->Year++;
+        tmmonth -= 12;
+    }
+
+    tm->Day = tmday;
+    tm->Month = tmmonth;
+    tm->Year %= 100;
+}
+
+void syntime_inc_hours(struct SynTime *tm, ushort nhours)
+{
+    uint tmhours;
+
+    tmhours = tm->Hour + nhours;
+    while (tmhours >= 24)
+    {
+        syntime_inc_days(tm, 1);
+        tmhours -= 24;
+    }
+    tm->Hour = tmhours;
+}
 
 void clear_mission_status_all(void)
 {
@@ -70,40 +119,51 @@ void clear_open_mission_status(void)
     }
 }
 
+void mission_status_time_rand_progress(ushort brief)
+{
+    struct MissionStatus *p_mistat;
+    uint parttime;
+
+    p_mistat = &mission_status[brief];
+
+    parttime = (LbRandomAnyShort() % 72) + 15;
+    p_mistat->CityDays = parttime / 24;
+    p_mistat->CityHours = parttime % 24;
+
+    p_mistat->CityDays += (LbRandomAnyShort() % 2) + 1;
+    parttime = p_mistat->CityHours + (LbRandomAnyShort() % 24);
+    if (parttime >= 24) {
+        p_mistat->CityDays++;
+        p_mistat->CityHours = parttime - 24;
+    } else {
+        p_mistat->CityHours = parttime;
+    }
+
+    p_mistat->Days += p_mistat->CityDays;
+    parttime = p_mistat->CityHours + p_mistat->Hours;
+    if (parttime >= 24) {
+        p_mistat->Days++;
+        p_mistat->Hours = parttime - 24;
+    } else {
+        p_mistat->Hours = parttime;
+    }
+}
+
 void persuaded_person_add_to_stats(struct Thing *p_person, ushort brief)
 {
     struct MissionStatus *p_mistat;
 
     p_mistat = &mission_status[brief];
 
-    switch (p_person->SubType)
-    {
-    case SubTT_PERS_AGENT:
-          p_mistat->AgentsGained++;
-          // fall through
-    case SubTT_PERS_ZEALOT:
-    case SubTT_PERS_HIGH_PRIEST:
-    case SubTT_PERS_PUNK_F:
-    case SubTT_PERS_PUNK_M:
-          p_mistat->SP.EnemiesPersuaded++;
-          break;
-    case SubTT_PERS_BRIEFCASE_M:
-    case SubTT_PERS_WHITE_BRUN_F:
-    case SubTT_PERS_SCIENTIST:
-    case SubTT_PERS_SHADY_M:
-    case SubTT_PERS_WHIT_BLOND_F:
-    case SubTT_PERS_LETH_JACKT_M:
-    case SubTT_PERS_FAST_BLOND_F:
-          p_mistat->SP.CivsPersuaded++;
-          break;
-    case SubTT_PERS_MERCENARY:
-    case SubTT_PERS_MECH_SPIDER:
-    case SubTT_PERS_POLICE:
-          p_mistat->SP.SecurityPersuaded++;
-          break;
-    default:
-          break;
-    }
+    if (person_type_is_synd_agent(p_person->SubType))
+        p_mistat->AgentsGained++;
+
+    if (person_type_is_any_major_faction(p_person->SubType))
+        p_mistat->SP.EnemiesPersuaded++;
+    else if (person_type_is_wide_definition_civilian(p_person->SubType))
+        p_mistat->SP.CivsPersuaded++;
+    else if (person_type_is_security(p_person->SubType))
+        p_mistat->SP.SecurityPersuaded++;
 }
 
 void killed_person_add_to_stats(struct Thing *p_person, ushort brief)
@@ -112,48 +172,31 @@ void killed_person_add_to_stats(struct Thing *p_person, ushort brief)
 
     p_mistat = &mission_status[brief];
 
-    switch (p_person->SubType)
-    {
-    case SubTT_PERS_AGENT:
-          //p_mistat->AgentsKilled++; -- only in MP
-          // fall through
-    case SubTT_PERS_ZEALOT:
-    case SubTT_PERS_HIGH_PRIEST:
-    case SubTT_PERS_PUNK_F:
-    case SubTT_PERS_PUNK_M:
-          p_mistat->SP.EnemiesKilled++;
-          break;
-    case SubTT_PERS_BRIEFCASE_M:
-    case SubTT_PERS_WHITE_BRUN_F:
-    case SubTT_PERS_SCIENTIST:
-    case SubTT_PERS_SHADY_M:
-    case SubTT_PERS_WHIT_BLOND_F:
-    case SubTT_PERS_LETH_JACKT_M:
-    case SubTT_PERS_FAST_BLOND_F:
-          p_mistat->SP.CivsKilled++;
-          break;
-    case SubTT_PERS_MERCENARY:
-    case SubTT_PERS_MECH_SPIDER:
-    case SubTT_PERS_POLICE:
-          p_mistat->SP.SecurityKilled++;
-          break;
-    default:
-          break;
-    }
+#if 0 // only in MP
+    if (person_type_is_synd_agent(p_person->SubType))
+        p_mistat->AgentsKilled++;
+#endif
+
+    if (person_type_is_any_major_faction(p_person->SubType))
+        p_mistat->SP.EnemiesKilled++;
+    else if (person_type_is_wide_definition_civilian(p_person->SubType))
+        p_mistat->SP.CivsKilled++;
+    else if (person_type_is_security(p_person->SubType))
+        p_mistat->SP.SecurityKilled++;
 }
 
 void killed_mp_agent_add_to_stats(struct Thing *p_victim, PlayerIdx attack_plyr)
 {
     struct MissionStatus *p_mistat;
-    PlayerIdx victim_plyr;
+    short victim_plyr;
 
     if (attack_plyr >= PLAYERS_LIMIT) {
         LOGERR("Attacking player %d out of range", (int)attack_plyr);
         return;
     }
-    victim_plyr = p_victim->U.UPerson.ComCur >> 2;
-    if (victim_plyr >= PLAYERS_LIMIT) {
-        LOGERR("Victim player %d out of range", (int)victim_plyr);
+    victim_plyr = person_get_dcontrol_player(p_victim->ThingOffset);
+    if (victim_plyr < 0) {
+        LOGERR("Victim thing not player controlled");
         return;
     }
     p_mistat = &mission_status[attack_plyr];
@@ -167,34 +210,15 @@ void persuaded_person_remove_from_stats(struct Thing *p_person, ushort brief)
 
     p_mistat = &mission_status[brief];
 
-    switch (p_person->SubType)
-    {
-    case SubTT_PERS_AGENT:
+    if (person_type_is_synd_agent(p_person->SubType))
         p_mistat->AgentsGained--;
-        // fall through
-    case SubTT_PERS_ZEALOT:
-    case SubTT_PERS_PUNK_F:
-    case SubTT_PERS_PUNK_M:
-    case SubTT_PERS_HIGH_PRIEST:
+
+    if (person_type_is_any_major_faction(p_person->SubType))
         p_mistat->SP.EnemiesPersuaded--;
-        break;
-    case SubTT_PERS_BRIEFCASE_M:
-    case SubTT_PERS_WHITE_BRUN_F:
-    case SubTT_PERS_SCIENTIST:
-    case SubTT_PERS_SHADY_M:
-    case SubTT_PERS_WHIT_BLOND_F:
-    case SubTT_PERS_LETH_JACKT_M:
-    case SubTT_PERS_FAST_BLOND_F:
+    else if (person_type_is_wide_definition_civilian(p_person->SubType))
         p_mistat->SP.CivsPersuaded--;
-        break;
-    case SubTT_PERS_MERCENARY:
-    case SubTT_PERS_MECH_SPIDER:
-    case SubTT_PERS_POLICE:
+    else if (person_type_is_security(p_person->SubType))
         p_mistat->SP.SecurityPersuaded--;
-        break;
-    default:
-        break;
-    }
 }
 
 int stats_mp_count_players_agents_killed(PlayerIdx plyr)
@@ -207,7 +231,7 @@ int stats_mp_count_players_agents_killed(PlayerIdx plyr)
     p_mistat = &mission_status[plyr];
     for (k = 0; k < PLAYERS_LIMIT; k++)
     {
-        if (unkn2_names[k][0] == '\0')
+        if (net_player_names[k][0] == '\0')
             continue;
 
         n += p_mistat->MP.AgentsKilled[k];
@@ -225,7 +249,7 @@ int stats_mp_count_net_players_agents_kills(PlayerIdx plyr)
     p_mistat = &mission_status[plyr];
     for (k = 0; k < PLAYERS_LIMIT; k++)
     {
-        if (unkn2_names[k][0] == '\0')
+        if (net_player_names[k][0] == '\0')
             continue;
 
         if (k == plyr)

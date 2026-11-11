@@ -125,10 +125,11 @@ struct NetscanObjective { // sizeof = 20
 /******************************************************************************/
 extern struct Objective *game_used_objectives;
 extern ushort next_used_objective;
+
 extern struct Objective *game_objectives;
 extern ushort next_objective;
 
-extern const char *scroll_text;
+extern const char *scrollinfo_text;
 extern ubyte byte_1C844F;
 
 extern struct NetscanObjective mission_netscan_objectives[MISSION_NETSCAN_OBV_COUNT];

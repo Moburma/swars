@@ -96,8 +96,12 @@ TbBool tri_is_allocated(TrTriangId tri)
 {
     struct TrTriangle *p_tri;
 
-    if (tri < 0)
+    if (tri < 0) {
         return false;
+    }
+    if (tri >= triangulation[0].max_Triangles) {
+        return false;
+    }
     p_tri = &triangulation[0].Triangles[tri];
     return (p_tri->solid != TRIANGLE_UNALLOCATED_MARK);
 }

@@ -119,6 +119,27 @@ void *LbI_XMemCopy(void *dest, void *source, ulong len)
     return dest;
 }
 
+void *LbI_XMemCopyFlip(void *dest, void *source, ulong len)
+{
+    ulong remain;
+    ubyte *s;
+    ubyte *d;
+    s = (ubyte *)source + len - 4;
+    d = (ubyte *)dest;
+    for (remain = len >> 2; remain != 0; remain--)
+    {
+        ulong v;
+
+        v = *(ulong *)s;
+        v = (v & 0x000000ff) << 24 | (v & 0x0000ff00) << 8 |
+            (v & 0x00ff0000) >> 8 | (v & 0xff000000) >> 24;
+        *(ulong *)d = v;
+        d += 4;
+        s -= 4;
+    }
+    return dest;
+}
+
 void *LbI_XMemCopyAndSet(void *dest, void *source, ulong val, ulong len)
 {
     ulong remain;
@@ -445,6 +466,8 @@ TbResult LbScreenSetupAnyMode(TbScreenMode mode, TbScreenCoord width,
 #endif
 
     lbScreenInitialised = true;
+    // Apply stored capture state to the window
+    LbMouseChangeCapture(lbMouseCapture);
     LOGSYNC("mode %dx%dx%d setup succeeded", (int)to_SDLSurf(lbScreenSurface)->w,
       (int)to_SDLSurf(lbScreenSurface)->h,
       (int)to_SDLSurf(lbScreenSurface)->format->BitsPerPixel);
@@ -696,13 +719,14 @@ TbBool LbHwCheckIsModeAvailable(TbScreenMode mode)
         if (!secondSurfaceOk)
             reason = "cannot create second surface";
         LOGDBG("Mode %s unavailable - %s", mdinfo->Desc, reason);
+        (void) reason; // Variable unused in non-debug builds
     }
 
     return firstSurfaceOk && secondSurfaceOk;
 }
 
-static void LbI_SDL_BlitScaled_to8bpp(long src_w, long src_h, ubyte *src_buf,
-  long dst_w, long dst_h, ubyte *dst_buf)
+static void LbI_SDL_BlitScaled_to8bpp(long src_w, long src_h, long src_scanln,
+  ubyte *src_buf, long dst_w, long dst_h, long dst_scanln, ubyte *dst_buf)
 {
     // denominator of a (source) pixel's fraction part
     const long denom_i = 2 * dst_h;
@@ -730,7 +754,7 @@ static void LbI_SDL_BlitScaled_to8bpp(long src_w, long src_h, ubyte *src_buf,
     for (long i = 0; i != dst_h; ++i) {
         if (src_num_i > denom_i) {
             src_num_i -= denom_i;
-            src_offset += src_w;
+            src_offset += src_scanln;
         }
         for (long j = 0; j != dst_w; ++j) {
             if (src_num_j > denom_j) {
@@ -742,14 +766,15 @@ static void LbI_SDL_BlitScaled_to8bpp(long src_w, long src_h, ubyte *src_buf,
             src_offset += dsrc_j;
             src_num_j += dsrc_num_j;
         }
-        src_offset += (dsrc_i - 1) * src_w;
+        src_offset += dsrc_i * src_scanln - src_w;
+        dst_offset += dst_scanln - dst_w;
         src_num_i += dsrc_num_i;
     }
 }
 
-static void LbI_SDL_BlitScaled_totcbpp(long src_w, long src_h, ubyte *src_buf,
-  SDL_Color *pal, long rshift, long gshift, long bshift,
-  long dst_w, long dst_h, long dst_bpp, ubyte *dst_buf)
+static void LbI_SDL_BlitScaled_totcbpp(long src_w, long src_h, long src_scanln,
+  ubyte *src_buf, SDL_Color *pal, long rshift, long gshift, long bshift,
+  long dst_w, long dst_h, long dst_scanln, long dst_bpp, ubyte *dst_buf)
 {
     // denominator of a (source) pixel's fraction part
     const long denom_i = 2 * dst_h;
@@ -777,7 +802,7 @@ static void LbI_SDL_BlitScaled_totcbpp(long src_w, long src_h, ubyte *src_buf,
     for (long i = 0; i != dst_h; ++i) {
         if (src_num_i > denom_i) {
             src_num_i -= denom_i;
-            src_offset += src_w;
+            src_offset += src_scanln;
         }
         for (long j = 0; j != dst_w; ++j) {
             SDL_Color c;
@@ -791,21 +816,38 @@ static void LbI_SDL_BlitScaled_totcbpp(long src_w, long src_h, ubyte *src_buf,
             src_offset += dsrc_j;
             src_num_j += dsrc_num_j;
         }
-        src_offset += (dsrc_i - 1) * src_w;
+        src_offset += dsrc_i * src_scanln - src_w;
+        dst_offset += dst_scanln - (dst_w * dst_bpp);
         src_num_i += dsrc_num_i;
     }
+}
+
+static inline TbBool LbI_SDL_BlitAreasOfSameSize(const SDL_Surface *src, const SDL_Rect *srcrect,
+  const SDL_Surface *dst, const SDL_Rect *dstrect)
+{
+    if ((srcrect != NULL) && (dstrect != NULL))
+        return (srcrect->w == dstrect->w && srcrect->h == dstrect->h);
+    else if (srcrect != NULL)
+        return (srcrect->w == dst->w && srcrect->h == dst->h);
+    else if (dstrect != NULL)
+        return (src->w == dstrect->w && src->h == dstrect->h);
+    else
+        return (src->w == dst->w && src->h == dst->h);
 }
 
 /** @internal
  * Provides simplified SDL_BlitScaled() functionality for SDL1.
  */
-int LbI_SDL_BlitScaled(SDL_Surface *src, SDL_Surface *dst)
+int LbI_SDL_BlitScaled(SDL_Surface *src, const SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect)
 {
+    ubyte *src_buf, *dst_buf;
     long dst_bpp;
+    long src_x, src_y, dst_x, dst_y;
+    long src_w, src_h, dst_w, dst_h;
 
     // shortcircuit for 1:1
-    if (src->w == dst->w && src->h == dst->h)
-        return SDL_BlitSurface(src, NULL, dst, NULL);
+    if (LbI_SDL_BlitAreasOfSameSize(src, srcrect, dst, dstrect))
+        return SDL_BlitSurface(src, srcrect, dst, dstrect);
 
     if (src->format->BytesPerPixel != 1)
         LOGERR("unsupported source bit length");
@@ -816,14 +858,75 @@ int LbI_SDL_BlitScaled(SDL_Surface *src, SDL_Surface *dst)
     if (SDL_MUSTLOCK(dst) && SDL_LockSurface(dst) < 0)
         LOGERR("cannot lock destination surface: %s", SDL_GetError());
 
+    if (srcrect != NULL) {
+        src_x = srcrect->x;
+        src_y = srcrect->y;
+        src_w = srcrect->w;
+        src_h = srcrect->h;
+    } else {
+        src_x = 0;
+        src_y = 0;
+        src_w = src->w;
+        src_h = src->h;
+    }
     dst_bpp = dst->format->BytesPerPixel;
+    if (dstrect != NULL) {
+        dst_x = dstrect->x;
+        dst_y = dstrect->y;
+        dst_w = dstrect->w;
+        dst_h = dstrect->h;
+    } else {
+        dst_x = 0;
+        dst_y = 0;
+        dst_w = dst->w;
+        dst_h = dst->h;
+    }
+    // Make sure destination range is valid (only on writable surface area)
+    // If rect coords are negative, cut to 0 and adjust source area acordingly
+    if (dst_x < 0) {
+        long src_dt, dst_dt;
+        dst_dt = -dst_x;
+        src_dt = src_w * dst_dt / dst_w;
+        src_x += src_dt;
+        src_w -= src_dt;
+        dst_w -= dst_dt;
+        dst_x = 0;
+    }
+    if (dst_y < 0) {
+        long src_dt, dst_dt;
+        dst_dt = -dst_y;
+        src_dt = src_h * dst_dt / dst_h;
+        src_y += src_dt;
+        src_h -= src_dt;
+        dst_h -= dst_dt;
+        dst_y = 0;
+    }
+    // If rect coords are above surface size, cut to that size and adjust source acordingly
+    if (dst_x + dst_w > dst->w) {
+        long src_dt, dst_dt;
+        dst_dt = dst_x + dst_w - dst->w;
+        src_dt = src_w * dst_dt / dst_w;
+        src_w -= src_dt;
+        dst_w -= dst_dt;
+    }
+    if (dst_y + dst_h > dst->h) {
+        long src_dt, dst_dt;
+        dst_dt = dst_y + dst_h - dst->h;
+        src_dt = src_h * dst_dt / dst_h;
+        src_h -= src_dt;
+        dst_h -= dst_dt;
+    }
+    src_buf = src->pixels + src_y * src->w + src_x;
+    dst_buf = dst->pixels + dst_y * dst->w * dst_bpp + dst_x * dst_bpp;
+    LOGNO("Blit (%d,%d) %dx%d -> (%d,%d) %dx%d", (int)src_x, (int)src_y, (int)src_w, (int)src_h,
+      (int)dst_x, (int)dst_y, (int)dst_w, (int)dst_h);
     if (dst_bpp == 1)
-        LbI_SDL_BlitScaled_to8bpp(src->w, src->h, src->pixels,
-          dst->w, dst->h, dst->pixels);
+        LbI_SDL_BlitScaled_to8bpp(src_w, src_h, src->w, src_buf,
+          dst_w, dst_h, dst->w, dst_buf);
     else
-        LbI_SDL_BlitScaled_totcbpp(src->w, src->h, src->pixels,
+        LbI_SDL_BlitScaled_totcbpp(src_w, src_h, src->w, src_buf,
           src->format->palette->colors, dst->format->Rshift, dst->format->Gshift, dst->format->Bshift,
-          dst->w, dst->h, dst_bpp, dst->pixels);
+          dst_w, dst_h, dst->w * dst_bpp, dst_bpp, dst_buf);
 
     if (SDL_MUSTLOCK(dst)) SDL_UnlockSurface(dst);
     if (SDL_MUSTLOCK(src)) SDL_UnlockSurface(src);
@@ -888,8 +991,8 @@ TbResult LbScreenSwap(void)
     // Put the data from Draw Surface onto Screen Surface
     if ((ret == Lb_SUCCESS) && (lbHasSecondSurface))
     {
-        blresult = LbI_SDL_BlitScaled(to_SDLSurf(lbDrawSurface),
-                       to_SDLSurf(lbScreenSurface));
+        blresult = LbI_SDL_BlitScaled(to_SDLSurf(lbDrawSurface), NULL,
+          to_SDLSurf(lbScreenSurface), NULL);
         if (blresult < 0) {
             LOGERR("blit failed: %s", SDL_GetError());
             ret = Lb_FAIL;
@@ -924,8 +1027,8 @@ TbResult LbScreenSwapClear(TbPixel colour)
     // Put the data from Draw Surface onto Screen Surface
     if ((ret == Lb_SUCCESS) && (lbHasSecondSurface))
     {
-        blresult = LbI_SDL_BlitScaled(to_SDLSurf(lbDrawSurface),
-                                      to_SDLSurf(lbScreenSurface));
+        blresult = LbI_SDL_BlitScaled(to_SDLSurf(lbDrawSurface), NULL,
+          to_SDLSurf(lbScreenSurface), NULL);
         if (blresult < 0) {
             LOGERR("blit failed: %s", SDL_GetError());
             ret = Lb_FAIL;
@@ -978,8 +1081,8 @@ TbResult LbScreenSwapBox(ubyte *sourceBuf, long sourceX, long sourceY,
     {
         SDL_Rect clipRect = {destX, destY, width, height};
         SDL_SetClipRect(to_SDLSurf(lbScreenSurface), &clipRect);
-        blresult = LbI_SDL_BlitScaled(to_SDLSurf(lbDrawSurface),
-                                      to_SDLSurf(lbScreenSurface));
+        blresult = LbI_SDL_BlitScaled(to_SDLSurf(lbDrawSurface), NULL,
+          to_SDLSurf(lbScreenSurface), NULL);
         SDL_SetClipRect(to_SDLSurf(lbScreenSurface), NULL);
         if (blresult < 0) {
             LOGERR("blit failed: %s", SDL_GetError());

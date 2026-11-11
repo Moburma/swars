@@ -474,14 +474,14 @@ _SmackInternal004:	/* 0x139500 */
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (func_139590)
+GLOBAL_FUNC(func_139590)
 /*----------------------------------------------------------------*/
 		mov    $0x7468,%eax
 		ret
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (func_1395a0)
+GLOBAL_FUNC(ASM_SmackDoTables)
 /*----------------------------------------------------------------*/
 		push   %ebp
 		mov    %esp,%ebp
@@ -5670,7 +5670,7 @@ func_13c203:
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (Unsmack)
+GLOBAL_FUNC(Unsmack)
 /*----------------------------------------------------------------*/
 		push   %ebp
 		mov    %esp,%ebp
@@ -5931,7 +5931,7 @@ GLOBAL_FUNC (Unsmack)
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (SmackDoPCM)
+GLOBAL_FUNC(SmackDoPCM)
 /*----------------------------------------------------------------*/
 		push   %ebp
 		mov    %esp,%ebp
@@ -6593,7 +6593,7 @@ GLOBAL_FUNC (SmackDoPCM)
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (SmackGetSizeDeltas)
+GLOBAL_FUNC(SmackGetSizeDeltas)
 /*----------------------------------------------------------------*/
 		push   %ebp
 		mov    %esp,%ebp
@@ -6611,7 +6611,7 @@ GLOBAL_FUNC (SmackGetSizeDeltas)
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (SmackRemapTables)
+GLOBAL_FUNC(SmackRemapTables)
 /*----------------------------------------------------------------*/
 		push   %ebp
 		mov    %esp,%ebp
@@ -6705,14 +6705,14 @@ GLOBAL_FUNC (SmackRemapTables)
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (ASM_set_smack_malloc)
+GLOBAL_FUNC(ASM_set_smack_malloc)
 /*----------------------------------------------------------------*/
 		mov    %eax,_smack_malloc
 		ret
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (ASM_set_smack_free)
+GLOBAL_FUNC(ASM_set_smack_free)
 /*----------------------------------------------------------------*/
 		mov    %eax,_smack_free
 		ret
@@ -6721,7 +6721,7 @@ GLOBAL_FUNC (ASM_set_smack_free)
 /*----------------------------------------------------------------*/
 /* long play_smk_direct(char *, long , long)
  */
-GLOBAL_FUNC (ASM_play_smk_direct)
+GLOBAL_FUNC(ASM_play_smk_direct)
 /*----------------------------------------------------------------*/
 		push   %ecx
 		push   %esi
@@ -6756,7 +6756,7 @@ GLOBAL_FUNC (ASM_play_smk_direct)
 		push   %esi
 		push   %eax
 		push   %ebp
-		call   SMACKOPEN
+		call   ac_SMACKOPEN
 		mov    %eax,%ebp
 		test   %eax,%eax
 		je     jump_eb37e
@@ -6796,7 +6796,7 @@ GLOBAL_FUNC (ASM_play_smk_direct)
 		push   %eax
 	jump_eb279:
 		push   $0x0
-		call   SMACKTOBUFFER
+		call   ac_SMACKTOBUFFER
 		xor    %esi,%esi
 		lea    0x6c(%ebp),%eax
 		mov    %esi,0x8(%esp)
@@ -6817,7 +6817,7 @@ GLOBAL_FUNC (ASM_play_smk_direct)
 		test   %edx,%edx
 		je     jump_eb2d9
 		mov    $0x300,%ecx
-		mov    $data_1e56dc,%edi
+		mov    $EXPORT_SYMBOL(byte_1E56DC),%edi
 		mov    %edx,%esi
 		push   %edi
 		mov    %ecx,%eax
@@ -6832,7 +6832,7 @@ GLOBAL_FUNC (ASM_play_smk_direct)
 		add    $0x4,%esp
 	jump_eb2d9:
 		push   %ebp
-		call   SMACKDOFRAME
+		call   ac_SMACKDOFRAME
 		jmp    jump_eb334
 	jump_eb2e1:
 		xor    %al,%al
@@ -6842,7 +6842,7 @@ GLOBAL_FUNC (ASM_play_smk_direct)
 		mov    $0x1,%ah
 		mov    $0x300,%ecx
 		mov    (%esp),%esi
-		mov    $data_1e56dc,%edi
+		mov    $EXPORT_SYMBOL(byte_1E56DC),%edi
 		mov    %ah,0xc(%esp)
 		push   %edi
 		mov    %ecx,%eax
@@ -6854,27 +6854,26 @@ GLOBAL_FUNC (ASM_play_smk_direct)
 		pop    %edi
 	jump_eb310:
 		push   %ebp
-		call   SMACKDOFRAME
+		call   ac_SMACKDOFRAME
 		cmpb   $0x0,0xc(%esp)
 		je     jump_eb32f
 		call   ac_LbScreenWaitVbi
-		push   $data_1e56dc
+		push   $EXPORT_SYMBOL(byte_1E56DC)
 		call   ac_LbPaletteSet
 		add    $0x4,%esp
 	jump_eb32f:
 		call   ac_LbScreenSwap
 	jump_eb334:
 		push   %ebp
-		call   SMACKNEXTFRAME
+		call   ac_SMACKNEXTFRAME
 	jump_eb33a:
 		push   %ebp
-		call   SMACKWAIT
+		call   ac_SMACKWAIT
 		test   %eax,%eax
 		je     jump_eb28e
 		testb  $0x2,0x4(%esp)
 		jne    jump_eb33a
 		/* XXX: intro loop */
-		call   ac_game_handle_sdl_events
 		call   ac_LbScreenWaitVbi
 		call   ac_game_hacky_update
 		cmpb   $0x0,EXPORT_SYMBOL(lbKeyOn)+1
@@ -6887,7 +6886,7 @@ GLOBAL_FUNC (ASM_play_smk_direct)
 		je     jump_eb33a
 	jump_eb373:
 		push   %ebp
-		call   SMACKCLOSE
+		call   ac_SMACKCLOSE
 		mov    $0x1,%eax
 	jump_eb37e:
 		add    $0x10,%esp
@@ -6901,7 +6900,7 @@ GLOBAL_FUNC (ASM_play_smk_direct)
 /*----------------------------------------------------------------*/
 /* long play_smk_via_buffer(char *, long , long)
  */
-GLOBAL_FUNC (ASM_play_smk_via_buffer)
+GLOBAL_FUNC(ASM_play_smk_via_buffer)
 /*----------------------------------------------------------------*/
 		push   %ecx
 		push   %esi
@@ -6936,7 +6935,7 @@ GLOBAL_FUNC (ASM_play_smk_via_buffer)
 		push   %ebp
 		push   %eax
 		push   %esi
-		call   SMACKOPEN
+		call   ac_SMACKOPEN
 		mov    %eax,%esi
 		mov    %eax,%ebp
 		test   %eax,%eax
@@ -6948,7 +6947,7 @@ GLOBAL_FUNC (ASM_play_smk_via_buffer)
 		test   %eax,%eax
 		jne    jump_eb40a
 		push   %esi
-		call   SMACKCLOSE
+		call   ac_SMACKCLOSE
 		xor    %eax,%eax
 		jmp    jump_eb4e2
 	jump_eb40a:
@@ -6964,9 +6963,9 @@ GLOBAL_FUNC (ASM_play_smk_via_buffer)
 		mov    %edi,0x18(%esp)
 		add    $0x6c,%esi
 		push   $0x0
-		mov    $data_1e56dc,%edi
+		mov    $EXPORT_SYMBOL(byte_1E56DC),%edi
 		mov    %esi,0x24(%esp)
-		call   SMACKTOBUFFER
+		call   ac_SMACKTOBUFFER
 		jmp    jump_eb436
 	jump_eb433:
 		incl   (%esp)
@@ -6992,22 +6991,22 @@ GLOBAL_FUNC (ASM_play_smk_via_buffer)
 		pop    %edi
 	jump_eb468:
 		push   %ebp
-		call   SMACKDOFRAME
+		call   ac_SMACKDOFRAME
 		call   ac_LbScreenWaitVbi
 		call   ac_game_hacky_update
-		push   $data_1e56dc
+		push   $EXPORT_SYMBOL(byte_1E56DC)
 		call   ac_LbPaletteSet
 		add    $0x4,%esp
 		mov    0x8(%ebp),%ebx
 		mov    0x4(%ebp),%edx
 		mov    0xc(%esp),%ecx
 		mov    0x4(%esp),%eax
-		call   copy_to_screen_smk
+		call   ac_copy_to_screen_smk
 		push   %ebp
-		call   SMACKNEXTFRAME
+		call   ac_SMACKNEXTFRAME
 	jump_eb499:
 		push   %ebp
-		call   SMACKWAIT
+		call   ac_SMACKWAIT
 		test   %eax,%eax
 		je     jump_eb433
 		testb  $0x2,0xc(%esp)
@@ -7022,7 +7021,7 @@ GLOBAL_FUNC (ASM_play_smk_via_buffer)
 		je     jump_eb499
 	jump_eb4ce:
 		push   %ebp
-		call   SMACKCLOSE
+		call   ac_SMACKCLOSE
 		mov    0x4(%esp),%eax
 		call   ac_LbMemoryFree
 		mov    $0x1,%eax
@@ -7036,7 +7035,7 @@ GLOBAL_FUNC (ASM_play_smk_via_buffer)
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (ASM_SMACKSOUNDUSEMSS)
+GLOBAL_FUNC(ASM_SMACKSOUNDUSEMSS)
 /*----------------------------------------------------------------*/
 		push   %esi
 		push   %edi
@@ -7090,7 +7089,7 @@ GLOBAL_FUNC (ASM_SMACKSOUNDUSEMSS)
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (RADMALLOC)
+GLOBAL_FUNC(ASM_RADMALLOC)
 /*----------------------------------------------------------------*/
 		mov    0x4(%esp),%eax
 		test   %eax,%eax
@@ -7106,7 +7105,7 @@ GLOBAL_FUNC (RADMALLOC)
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (RADFREE)
+GLOBAL_FUNC(ASM_RADFREE)
 /*----------------------------------------------------------------*/
 		mov    0x4(%esp),%eax
 		call   *_smack_free
@@ -7114,9 +7113,9 @@ GLOBAL_FUNC (RADFREE)
 
 
 /*----------------------------------------------------------------*/
-/* void copy_to_screen_smk(unsigned char *, unsigned long, unsigned long, unsigned long)
+/* void copy_to_screen_smk(unsigned char *, unsigned long, unsigned long, unsigned short)
  */
-copy_to_screen_smk:
+GLOBAL_FUNC(ASM_copy_to_screen_smk)
 /*----------------------------------------------------------------*/
 		push   %esi
 		push   %edi
@@ -7367,7 +7366,7 @@ copy_to_screen_smk:
 
 
 /*----------------------------------------------------------------*/
-GLOBAL_FUNC (SMACKWRAPCOPY)
+GLOBAL_FUNC(ASM_SMACKWRAPCOPY)
 /*----------------------------------------------------------------*/
 		push   %esi
 		push   %edi
@@ -7423,7 +7422,7 @@ GLOBAL_FUNC (SMACKWRAPCOPY)
 
 
 /*----------------------------------------------------------------*/
-SMACKWAIT:	/* 0x0FC3C0 */
+GLOBAL_FUNC(ASM_SMACKWAIT)	/* 0x0FC3C0 */
 /*----------------------------------------------------------------*/
 		push   %esi
 		push   %edi
@@ -7513,7 +7512,7 @@ SMACKWAIT:	/* 0x0FC3C0 */
 		ret    $0x4
 	jump_fc4c3:
 		mov    %esi,%eax
-		call   backgroundload_
+		call   ac_backgroundload
 		mov    $0x1,%eax
 		pop    %edi
 		pop    %esi
@@ -7764,7 +7763,7 @@ func_fcbf3:
 
 
 /*----------------------------------------------------------------*/
-SMACKTOBUFFER:
+GLOBAL_FUNC(ASM_SMACKTOBUFFER)
 /*----------------------------------------------------------------*/
 		push   %esi
 		push   %edi
@@ -7779,7 +7778,7 @@ SMACKTOBUFFER:
 		test   %ecx,%ecx
 		je     jump_fcf27
 		push   %ecx
-		call   RADFREE
+		call   ac_RADFREE
 		mov    0x3a4(%esi),%eax
 		mov    0x45c(%esi),%ebp
 		movl   $0x0,0x3a0(%esi)
@@ -7814,7 +7813,7 @@ SMACKTOBUFFER:
 		cmp    $0x1,%bl
 		je     jump_fce34
 		push   %edi
-		call   RADFREE
+		call   ac_RADFREE
 		mov    0x3a4(%esi),%eax
 		sub    %eax,0x45c(%esi)
 	jump_fcdc4:
@@ -7836,7 +7835,7 @@ SMACKTOBUFFER:
 		mov    %eax,0x49c(%esi)
 	jump_fcdfe:
 		push   %edx
-		call   RADMALLOC
+		call   ac_RADMALLOC
 		mov    %eax,0x3a0(%esi)
 		test   %eax,%eax
 		je     jump_fcf27
@@ -7949,7 +7948,7 @@ SMACKTOBUFFER:
 
 
 /*----------------------------------------------------------------*/
-SMACKNEXTFRAME:
+GLOBAL_FUNC(ASM_SMACKNEXTFRAME)
 /*----------------------------------------------------------------*/
 		push   %esi
 		push   %edi
@@ -7983,10 +7982,10 @@ SMACKNEXTFRAME:
 		mov    %esi,%eax
 		mov    (%ebx,%edx,4),%ebx
 		mov    0x3ac(%esi),%edx
-		call   blockread_
+		call   ac_blockread
 	jump_fd556:
 		mov    %esi,%eax
-		call   setuptheframe_
+		call   ac_setuptheframe
 		cmpl   $0x0,_sounds
 		je     jump_fd56c
 		call   *EXPORT_SYMBOL(LowSoundCheckAddr)
@@ -8077,7 +8076,7 @@ timeframe_:	/* 0x0FD680 */
 
 
 /*----------------------------------------------------------------*/
-SMACKDOFRAME:	/* 0x0FD7A0 */
+GLOBAL_FUNC(ASM_SMACKDOFRAME)	/* 0x0FD7A0 */
 /*----------------------------------------------------------------*/
 		push   %esi
 		push   %ebp
@@ -8233,7 +8232,7 @@ soundnext_:
 		mov    0x384(%esi),%eax
 		mov    %eax,(%esp)
 		mov    %esp,%eax
-		call   GetFirstTrack_
+		call   ac_GetFirstTrack
 		mov    %al,0x10(%esp)
 		and    $0xff,%eax
 		shl    $0x2,%eax
@@ -8369,7 +8368,7 @@ soundnext_:
 		mov    %edx,0xc(%ebp)
 	jump_fdad1:
 		mov    %esp,%eax
-		call   GetFirstTrack_
+		call   ac_GetFirstTrack
 		mov    %al,0x10(%esp)
 		cmp    $0xff,%al
 		je     jump_fdb15
@@ -8416,7 +8415,7 @@ soundnext_:
 
 
 /*----------------------------------------------------------------*/
-SMACKCLOSE:
+GLOBAL_FUNC(ASM_SMACKCLOSE)
 /*----------------------------------------------------------------*/
 		push   %esi
 		push   %edi
@@ -8437,10 +8436,10 @@ SMACKCLOSE:
 		mov    0x404(%esi),%eax
 		mov    (%eax),%edx
 		push   %edx
-		call   RADFREE
+		call   ac_RADFREE
 		mov    0x404(%esi),%ebx
 		push   %ebx
-		call   RADFREE
+		call   ac_RADFREE
 		mov    _sounds,%ecx
 		dec    %ecx
 		movl   $0x0,0x404(%esi)
@@ -8458,7 +8457,7 @@ SMACKCLOSE:
 		test   %edi,%edi
 		je     jump_fdbd0
 		push   %edi
-		call   RADFREE
+		call   ac_RADFREE
 		mov    %esi,_trackbuf
 	jump_fdbd0:
 		mov    0x394(%ebp),%ebx
@@ -8467,38 +8466,38 @@ SMACKCLOSE:
 		testb  $0x10,0x385(%ebp)
 		jne    jump_fdbed
 		push   %ebx
-		call   ac_dos_low_level_close
+		call   ac_AIL_lowfclose
 		add    $0x4,%esp
 	jump_fdbed:
 		mov    0x3a0(%ebp),%esi
 		test   %esi,%esi
 		je     jump_fdbfd
 		push   %esi
-		call   RADFREE
+		call   ac_RADFREE
 	jump_fdbfd:
 		mov    0x39c(%ebp),%eax
 		test   %eax,%eax
 		je     jump_fdc0d
 		push   %eax
-		call   RADFREE
+		call   ac_RADFREE
 	jump_fdc0d:
 		mov    0x3bc(%ebp),%ebx
 		test   %ebx,%ebx
 		je     jump_fdc1d
 		push   %ebx
-		call   RADFREE
+		call   ac_RADFREE
 	jump_fdc1d:
 		mov    0x3ac(%ebp),%esi
 		test   %esi,%esi
 		je     jump_fdc2d
 		push   %esi
-		call   RADFREE
+		call   ac_RADFREE
 	jump_fdc2d:
 		mov    0x42c(%ebp),%eax
 		test   %eax,%eax
 		je     jump_fdc3d
 		push   %eax
-		call   RADFREE
+		call   ac_RADFREE
 	jump_fdc3d:
 		mov    $0x4ac,%ecx
 		mov    %ebp,%edi
@@ -8515,7 +8514,7 @@ SMACKCLOSE:
 		and    $0x3,%cl
 		rep stos %al,%es:(%edi)
 		push   %ebp
-		call   RADFREE
+		call   ac_RADFREE
 		call   *EXPORT_SYMBOL(SmackTimerDoneAddr)
 	jump_fdc6c:
 		pop    %ebp
@@ -8525,7 +8524,7 @@ SMACKCLOSE:
 
 
 /*----------------------------------------------------------------*/
-SMACKOPEN:
+GLOBAL_FUNC(ASM_SMACKOPEN)
 /*----------------------------------------------------------------*/
 		push   %esi
 		push   %edi
@@ -8538,7 +8537,7 @@ SMACKOPEN:
 		push   $0x4ac
 		xor    %ebp,%ebp
 		mov    %eax,0x8(%esp)
-		call   RADMALLOC
+		call   ac_RADMALLOC
 		mov    %eax,%esi
 		test   %eax,%eax
 		jne    jump_fdefb
@@ -8569,7 +8568,7 @@ SMACKOPEN:
 		mov    %esi,%edx
 		push   %eax
 		mov    %eax,0x394(%edx)
-		call   ac_dos_low_level_seek_relative
+		call   ac_AIL_lowfseekcur
 		mov    %esi,%edx
 		add    $0x8,%esp
 		mov    %eax,0x3a8(%edx)
@@ -8581,7 +8580,7 @@ SMACKOPEN:
 		push   %eax
 		mov    0x3c(%esp),%edi
 		push   %edi
-		call   ac_dos_low_level_open
+		call   ac_AIL_lowfopen
 		mov    %esi,%edx
 		add    $0xc,%esp
 		mov    %eax,0x394(%edx)
@@ -8590,7 +8589,7 @@ SMACKOPEN:
 		je     jump_fdfc0
 		testb  $0x8,0x31(%esp)
 		je     jump_fdf8a
-		mov    _simspeed,%eax
+		mov    EXPORT_SYMBOL(simspeed),%eax
 		mov    %eax,0x4a0(%esi)
 	jump_fdf8a:
 		lea    0x64(%esi),%eax
@@ -8601,7 +8600,7 @@ SMACKOPEN:
 		mov    %esi,%edx
 		mov    %esi,%eax
 		mov    %ecx,(%esi)
-		call   blockread_
+		call   ac_blockread
 		cmpl   $0x324b4d53,(%esi)
 		je     jump_fdfd7
 	jump_fdfaa:
@@ -8609,11 +8608,11 @@ SMACKOPEN:
 		jne    jump_fdfc0
 		mov    0x394(%esi),%eax
 		push   %eax
-		call   ac_dos_low_level_close
+		call   ac_AIL_lowfclose
 		add    $0x4,%esp
 	jump_fdfc0:
 		push   %esi
-		call   RADFREE
+		call   ac_RADFREE
 		call   *EXPORT_SYMBOL(SmackTimerDoneAddr)
 		xor    %eax,%eax
 		add    $0x1c,%esp
@@ -8624,7 +8623,7 @@ SMACKOPEN:
 	jump_fdfd7: /* XXX: abc */
 		testb  $0x80,0x30(%esp)
 		je     jump_fdfe6
-		mov    _forcerate,%eax
+		mov    EXPORT_SYMBOL(forcerate),%eax
 		mov    %eax,0x10(%esi)
 	jump_fdfe6:
 		mov    0x10(%esi),%eax
@@ -8676,7 +8675,7 @@ SMACKOPEN:
 		mov    %edi,0x49c(%esi)
 	jump_fe069: /* XXX: abc no */
 		push   %edx
-		call   RADMALLOC
+		call   ac_RADMALLOC
 		mov    %eax,0x3bc(%esi)
 		test   %eax,%eax
 		je     jump_fdfaa
@@ -8686,11 +8685,11 @@ SMACKOPEN:
 		mov    (%esp),%ebx
 		mov    %esi,%eax
 		shl    $0x2,%ebx
-		call   blockread_
+		call   ac_blockread
 		mov    (%esp),%ebx
 		mov    %esi,%eax
 		mov    0x3bc(%esi),%edx
-		call   blockread_
+		call   ac_blockread
 		mov    (%esp),%eax
 		mov    (%esp),%edi
 		shl    $0x2,%eax
@@ -8718,13 +8717,13 @@ SMACKOPEN:
 		mov    %ebx,0x49c(%esi)
 	jump_fe0f9: /* XXX: abc no */
 		push   %edx
-		call   RADMALLOC
+		call   ac_RADMALLOC
 		mov    %eax,0x39c(%esi)
 		test   %eax,%eax
 		jne    jump_fe11a
 		mov    0x3bc(%esi),%ebp
 		push   %ebp
-		call   RADFREE
+		call   ac_RADFREE
 		jmp    jump_fdfaa
 	jump_fe11a:
 		mov    0x34(%esi),%edx
@@ -8746,23 +8745,23 @@ SMACKOPEN:
 		mov    %ecx,0x49c(%eax)
 	jump_fe157:
 		push   %ebx
-		call   RADMALLOC
+		call   ac_RADMALLOC
 		mov    %eax,%edi
 		test   %eax,%eax
 		jne    jump_fe180
 	jump_fe163: /* XXX: abc - - */
 		mov    0x39c(%esi),%edi
 		push   %edi
-		call   RADFREE
+		call   ac_RADFREE
 		mov    0x3bc(%esi),%ebp
 		push   %ebp
-		call   RADFREE
+		call   ac_RADFREE
 		jmp    jump_fdfaa
 	jump_fe180:
 		lea    0x1000(%eax),%edx
 		mov    0x34(%esi),%ebx
 		mov    %esi,%eax
-		call   blockread_
+		call   ac_blockread
 		mov    0x44(%esi),%eax
 		push   %eax
 		mov    0x40(%esi),%edx
@@ -8774,10 +8773,10 @@ SMACKOPEN:
 		mov    0x39c(%esi),%eax
 		push   %eax
 		push   %edi
-		call   func_1395a0
+		call   ac_SmackDoTables
 		add    $0x18,%esp
 		push   %edi
-		call   RADFREE
+		call   ac_RADFREE
 		mov    0x34(%esi),%eax
 		mov    0x45c(%esi),%edx
 		add    $0x1000,%eax
@@ -8953,7 +8952,7 @@ SMACKOPEN:
 		mov    %ecx,0x49c(%esi)
 	jump_fe3b0:
 		push   %edx
-		call   RADMALLOC
+		call   ac_RADMALLOC
 		mov    %eax,0x42c(%esi)
 		mov    %eax,0x434(%esi)
 		mov    %eax,0x438(%esi)
@@ -8977,7 +8976,7 @@ SMACKOPEN:
 		mov    %ebx,0x49c(%esi)
 	jump_fe40b:
 		push   %edx
-		call   RADMALLOC
+		call   ac_RADMALLOC
 		mov    %eax,0x3ac(%esi)
 		test   %eax,%eax
 		jne    jump_fe434
@@ -8985,7 +8984,7 @@ SMACKOPEN:
 		test   %ebp,%ebp
 		je     jump_fe163
 		push   %ebp
-		call   RADFREE
+		call   ac_RADFREE
 		jmp    jump_fe163
 	jump_fe434:
 		mov    0x3a8(%esi),%eax
@@ -8995,12 +8994,12 @@ SMACKOPEN:
 		mov    %ebp,%ebx
 		mov    %esi,%eax
 		mov    0x3ac(%esi),%edx
-		call   blockread_
+		call   ac_blockread
 		testb  $0x10,0x31(%esp)
 		jne    jump_fe46c
 		mov    0x394(%esi),%ecx
 		push   %ecx
-		call   ac_dos_low_level_close
+		call   ac_AIL_lowfclose
 		add    $0x4,%esp
 	jump_fe46c:
 		movl   $0xffffffff,0x394(%esi)
@@ -9024,7 +9023,7 @@ SMACKOPEN:
 		push   %edx
 		mov    0x394(%esi),%ebx
 		push   %ebx
-		call   ac_dos_low_level_read
+		call   ac_AIL_fread
 		add    $0x14,%esp
 		mov    0x42c(%esi),%eax
 		mov    (%esp),%edx
@@ -9042,11 +9041,11 @@ SMACKOPEN:
 		mov    (%edx,%eax,4),%ebx
 		mov    %esi,%eax
 		mov    0x3ac(%esi),%edx
-		call   blockread_
+		call   ac_blockread
 	jump_fe508: /* XXX: abc no */
 		mov    %esi,%eax
 		movl   $0xffffffff,0x3b4(%esi)
-		call   setuptheframe_
+		call   ac_setuptheframe
 		movl   $0xffffffff,0x420(%esi)
 		mov    0x30(%esp),%eax
 		and    $0xffc01fff,%eax
@@ -9055,12 +9054,12 @@ SMACKOPEN:
 		je     jump_fe5d4
 	jump_fe540: /* XXX: abc - yes */
 		lea    0x30(%esp),%eax
-		call   GetFirstTrack_
+		call   ac_GetFirstTrack
 		and    $0xff,%eax
 		mov    $0x70,%edx
 		mov    %eax,(%esp)
 		mov    %esi,%eax
-		call   smkmalloc_
+		call   ac_smkmalloc
 		mov    (%esp),%edx
 		mov    %eax,0x404(%esi,%edx,4)
 		mov    (%esp),%eax
@@ -9069,7 +9068,7 @@ SMACKOPEN:
 		xor    %edx,%edx
 		mov    %esi,%eax
 		mov    (%esp),%dl
-		call   soundopen_
+		call   ac_soundopen
 		test   %al,%al
 		je     jump_fe5a1
 		mov    (%esp),%ecx
@@ -9084,7 +9083,7 @@ SMACKOPEN:
 		mov    (%esp),%eax
 		mov    0x404(%esi,%eax,4),%ecx
 		push   %ecx
-		call   RADFREE
+		call   ac_RADFREE
 		subl   $0x70,0x45c(%esi)
 		mov    (%esp),%eax
 		movl   $0x0,0x404(%esi,%eax,4)
@@ -9097,7 +9096,7 @@ SMACKOPEN:
 		je     jump_fe5f0
 	jump_fe5e5:
 		mov    %esi,%eax
-		call   backgroundload_
+		call   ac_backgroundload
 		test   %eax,%eax
 		jne    jump_fe5e5
 	jump_fe5f0:
@@ -9173,7 +9172,7 @@ SMACKOPEN:
 
 
 /*----------------------------------------------------------------*/
-GetFirstTrack_:
+GLOBAL_FUNC(ASM_GetFirstTrack)
 /*----------------------------------------------------------------*/
 		push   %ebx
 		push   %ecx
@@ -9209,7 +9208,7 @@ GetFirstTrack_:
 
 
 /*----------------------------------------------------------------*/
-soundopen_:
+GLOBAL_FUNC(ASM_soundopen)
 /*----------------------------------------------------------------*/
 		push   %ebx
 		push   %ecx
@@ -9283,7 +9282,7 @@ soundopen_:
 		mov    %ecx,0x49c(%esi)
 	jump_fe7ab:
 		push   %edx
-		call   RADMALLOC
+		call   ac_RADMALLOC
 		mov    %eax,_trackbuf
 		test   %eax,%eax
 		jne    jump_fe7c5
@@ -9344,7 +9343,7 @@ soundopen_:
 		mov    0x404(%edi),%edx
 		mov    %esi,%eax
 		mov    0x18(%edx),%edx
-		call   smkmalloc_
+		call   ac_smkmalloc
 		mov    %eax,%edx
 		mov    0x404(%edi),%eax
 		mov    %edx,0x8(%eax)
@@ -9391,7 +9390,7 @@ soundopen_:
 		mov    0x404(%edi),%eax
 		mov    (%eax),%edx
 		push   %edx
-		call   RADFREE
+		call   ac_RADFREE
 		mov    0x404(%edi),%eax
 		mov    0x45c(%esi),%ebx
 		sub    0x18(%eax),%ebx
@@ -9432,7 +9431,7 @@ soundopen_:
 
 
 /*----------------------------------------------------------------*/
-setuptheframe_:
+GLOBAL_FUNC(ASM_setuptheframe)
 /*----------------------------------------------------------------*/
 		push   %ebx
 		push   %ecx
@@ -9463,7 +9462,7 @@ setuptheframe_:
 		mov    0x300(%esp),%edx
 		mov    0x300(%esp),%eax
 		mov    0x3ac(%edx),%edx
-		call   blockread_
+		call   ac_blockread
 		jmp    jump_fea25
 	jump_fe9f5:
 		mov    0x300(%esp),%edx
@@ -9474,7 +9473,7 @@ setuptheframe_:
 		movl   $0x0,0x370(%edx)
 	jump_fea19:
 		mov    0x300(%esp),%eax
-		call   gotoframe_
+		call   ac_gotoframe
 	jump_fea25:
 		mov    0x300(%esp),%edx
 		mov    0x300(%esp),%ebx
@@ -9701,7 +9700,7 @@ setuptheframe_:
 
 
 /*----------------------------------------------------------------*/
-gotoframe_:
+GLOBAL_FUNC(ASM_gotoframe)
 /*----------------------------------------------------------------*/
 		push   %ebx
 		push   %ecx
@@ -9842,7 +9841,7 @@ gotoframe_:
 		add    %eax,%edx
 		push   %ecx
 		mov    %edx,0x430(%ebp)
-		call   ac_dos_low_level_seek
+		call   ac_AIL_lowfseekbegin
 		mov    %esi,%eax
 		add    $0x8,%esp
 		and    $0xfff,%eax
@@ -9852,7 +9851,7 @@ gotoframe_:
 		sub    %eax,%ebx
 		mov    %ebp,%eax
 		movl   $0x0,0x42c(%ebp)
-		call   blockread_
+		call   ac_blockread
 		mov    0x438(%ebp),%edi
 		mov    %eax,0x43c(%ebp)
 		add    %eax,%edi
@@ -9881,7 +9880,7 @@ gotoframe_:
 		mov    (%eax,%edx,4),%ebx
 		mov    %ebp,%eax
 		mov    0x3ac(%ebp),%edx
-		call   blockread_
+		call   ac_blockread
 	jump_fef2a:
 		add    $0x4,%esp
 		pop    %ebp
@@ -9894,7 +9893,7 @@ gotoframe_:
 
 
 /*----------------------------------------------------------------*/
-blockread_:
+GLOBAL_FUNC(ASM_blockread)
 /*----------------------------------------------------------------*/
 		push   %ecx
 		push   %esi
@@ -9923,7 +9922,7 @@ blockread_:
 		push   %edi
 		mov    0x394(%ebp),%eax
 		push   %eax
-		call   ac_dos_low_level_read
+		call   ac_AIL_fread
 		add    $0x14,%esp
 		mov    (%esp),%eax
 		mov    %eax,0x10(%esp)
@@ -10019,7 +10018,7 @@ blockread_:
 		push   %edi
 		mov    0x394(%ebp),%eax
 		push   %eax
-		call   ac_dos_low_level_read
+		call   ac_AIL_fread
 		add    $0x14,%esp
 		mov    0x4(%esp),%eax
 		mov    0xc(%esp),%edx
@@ -10057,7 +10056,7 @@ blockread_:
 		push   %esi
 		mov    0x394(%ebp),%ebx
 		push   %ebx
-		call   ac_dos_low_level_read
+		call   ac_AIL_fread
 		add    $0x14,%esp
 		mov    0x4(%esp),%eax
 		add    %eax,(%esp)
@@ -10107,7 +10106,7 @@ blockread_:
 
 
 /*----------------------------------------------------------------*/
-backgroundload_:
+GLOBAL_FUNC(ASM_backgroundload)
 /*----------------------------------------------------------------*/
 		push   %ebx
 		push   %ecx
@@ -10138,7 +10137,7 @@ backgroundload_:
 		push   %ebx
 		mov    0x394(%esi),%edi
 		push   %edi
-		call   ac_dos_low_level_read
+		call   ac_AIL_fread
 		add    $0x14,%esp
 		mov    0x43c(%esi),%edx
 		mov    (%esp),%eax
@@ -10197,7 +10196,7 @@ backgroundload_:
 
 
 /*----------------------------------------------------------------*/
-smkmalloc_:
+GLOBAL_FUNC(ASM_smkmalloc)
 /*----------------------------------------------------------------*/
 		push   %ebx
 		push   %ecx
@@ -10210,74 +10209,9 @@ smkmalloc_:
 		mov    %ebx,0x49c(%eax)
 	jump_ff360:
 		push   %edx
-		call   RADMALLOC
+		call   ac_RADMALLOC
 		pop    %ecx
 		pop    %ebx
-		ret
-
-
-/*----------------------------------------------------------------*/
-GLOBAL_FUNC (ASM_DEFSMACKTIMERSETUP)	/* 10f110 */
-/*----------------------------------------------------------------*/
-		mov    $ac_DEFSMACKTIMERREAD,%edx
-		mov    $0x46c,%eax
-		mov    $ac_DEFSMACKTIMERDONE,%ebx
-		mov    %edx,SmackTimerReadAddr
-
-		/* XXX: mov    (%eax),%eax */
-		call   ac_timer_get_18_2_hz_ticks
-
-		mov    %ebx,EXPORT_SYMBOL(SmackTimerDoneAddr)
-		mov    %eax,%ecx
-		mov    %eax,EXPORT_SYMBOL(timeradjust)
-		neg    %ecx
-		xor    %ebx,%ebx
-		mov    %ecx,EXPORT_SYMBOL(timeradjust)
-/* XXX: cut out */
-#if 0
-		mov    $0x34,%al
-		out    %al,$0x43
-		jmp    jump_10f144
-	jump_10f144:
-		mov    %bl,%al
-		out    %al,$0x40
-		jmp    jump_10f14a
-	jump_10f14a:
-		mov    %bh,%al
-		out    %al,$0x40
-#endif
-		ret
-
-
-/*----------------------------------------------------------------*/
-GLOBAL_FUNC (ASM_DEFSMACKTIMERDONE)	/* 0x10F150 */
-/*----------------------------------------------------------------*/
-		ret
-
-
-/*----------------------------------------------------------------*/
-GLOBAL_FUNC (ASM_DEFSMACKTIMERREAD)
-/*----------------------------------------------------------------*/
-		mov    $0x46c,%eax
-		mov    _lasttimerread,%edx
-
-		/* mov    (%eax),%eax */
-		call   ac_timer_get_18_2_hz_ticks
-
-		cmp    %edx,%eax
-		jae    jump_10f181
-		mov    EXPORT_SYMBOL(timeradjust),%ebx
-		sub    %eax,%edx
-		add    %edx,%ebx
-		mov    %ebx,EXPORT_SYMBOL(timeradjust)
-	jump_10f181:
-		mov    $0x32,%ebx
-		mov    EXPORT_SYMBOL(timeradjust),%ecx
-		mov    %eax,_lasttimerread
-		add    %ecx,%eax
-		mov    $0xaba,%ecx
-		mul    %ecx
-		div    %ebx
 		ret
 
 
@@ -10709,9 +10643,9 @@ _sounds:
 _trackbuf:
 		.long	0x0
 
-_simspeed:
+GLOBAL (simspeed)
 		.long	0x0
-_forcerate:
+GLOBAL (forcerate)
 		.long	0x0
 GLOBAL (LowSoundOnAddr)	/* 0x1592F8 */
 		.long	0x0
@@ -10741,12 +10675,12 @@ data_159e2c:
 data_159e30:
 		.fill   0x10
 
-data_1e56dc:
+GLOBAL (byte_1E56DC)	/* 0x1E56DC */
 		.fill   0x350
 GLOBAL (smack_draw_callback)	/* 0x1E5A2C */
 		.long	0x0
 GLOBAL (timeradjust)
 		.long	0x0
-_lasttimerread:	/* 0x1ED5E4 */
+GLOBAL (lasttimerread)	/* 0x1ED5E4 */
 		.long	0x0
 

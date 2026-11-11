@@ -24,6 +24,8 @@
 #include "bfmemut.h"
 #include "bfsprite.h"
 
+#include "frame_sprani.h"
+
 #include "game_data.h"
 #include "game_options.h"
 #include "game.h"
@@ -48,6 +50,44 @@ struct TbSprite *small_font_end;
 ubyte *small_font_data;
 ubyte *small_font_data_end;
 
+struct TbSprite *small2_font;
+struct TbSprite *small2_font_end;
+ubyte *small2_font_data;
+
+struct TbSprite *small_med_font;
+struct TbSprite *small_med_font_end;
+ubyte *small_med_font_data;
+
+struct TbSprite *med_font;
+struct TbSprite *med_font_end;
+ubyte *med_font_data;
+
+struct TbSprite *med2_font;
+struct TbSprite *med2_font_end;
+ubyte *med2_font_data;
+
+struct TbSprite *big_font;
+struct TbSprite *big_font_end;
+ubyte *big_font_data;
+
+struct TbSprite *fe_icons_sprites;
+struct TbSprite *fe_icons_sprites_end;
+ubyte *fe_icons_sprites_data;
+
+struct TbSprite *wepicons_sprites;
+struct TbSprite *wepicons_sprites_end;
+ubyte *wepicons_sprites_data;
+
+struct TbSprite *fe_mouseptr_sprites;
+struct TbSprite *fe_mouseptr_sprites_end;
+ubyte *fe_mouseptr_sprites_data;
+
+struct TbSprite *fepanel_sprites;
+struct TbSprite *fepanel_sprites_end;
+ubyte *fepanel_sprites_data;
+
+ubyte *m_sprites_data;
+ubyte *m_sprites_data_end;
 /******************************************************************************/
 
 /** Load sprites of given style and detail, to a preallocated area of specific size.
@@ -159,6 +199,10 @@ void setup_mouse_pointers(void)
 {
     struct TbSprite *spr;
 
+    if ((pointer_sprites == NULL) || (pointer_data == NULL)) {
+        LOGERR("Pointer sprite memory not allocated, skipping");
+        return;
+    }
     LbSpriteSetup(pointer_sprites, pointer_sprites_end, pointer_data);
     // Make mouse pointer sprite 1 an empty (zero size) sprite
     spr = &pointer_sprites[1];
@@ -206,37 +250,28 @@ void reset_sprites_fe_icons(void)
     LbSpriteReset(fe_icons_sprites, fe_icons_sprites_end, fe_icons_sprites_data);
 }
 
-TbResult load_sprites_wepicons(ubyte **pp_buf, const char *dir)
+TbResult load_sprites_wepicons(ubyte **pp_buf,
+  const char *dir, short styleno, short max_detail)
 {
-    char locstr[DISKPATH_SIZE];
     ubyte *p_buf;
-    long len;
+    ushort min_sprites;
     TbResult ret;
 
+    min_sprites = 34;
     p_buf = *pp_buf;
-    ret = Lb_OK;
-
-    wepicons_sprites_data = p_buf;
-    //TODO replace with "wepicon0-3.dat"
-    sprintf(locstr, "%s/w-icons.dat", dir);
-    len = LbFileLoadAt(locstr, p_buf);
-    if (len == -1) {
-        ret = Lb_FAIL;
-        len = 0;
-    }
-    p_buf += len;
     wepicons_sprites = (struct TbSprite *)p_buf;
-    sprintf(locstr, "%s/w-icons.tab", dir);
-    len = LbFileLoadAt(locstr, p_buf);
-    if (len == -1) {
-        ret = Lb_FAIL;
-        len = 32 * sizeof(struct TbSprite);
-        LbMemorySet(p_buf, '\0', len);
-    }
-    p_buf += len;
+    p_buf += min_sprites * sizeof(struct TbSprite);
     wepicons_sprites_end = (struct TbSprite *)p_buf;
+    wepicons_sprites_data = p_buf;
+    p_buf += min_sprites * 4096 * (max_detail + 1) * (max_detail + 1);
 
-    *pp_buf = p_buf;
+    ret = load_any_sprites_up_to(dir, "wepicon", min_sprites,
+      wepicons_sprites, wepicons_sprites_end,
+      wepicons_sprites_data, &p_buf, NULL, styleno, max_detail);
+
+    if (ret != Lb_FAIL)
+        *pp_buf = p_buf;
+
     return ret;
 }
 
@@ -269,8 +304,11 @@ TbResult load_sprites_fe_mouse_pointers(ubyte **pp_buf,
       fe_mouseptr_sprites, fe_mouseptr_sprites_end,
       fe_mouseptr_sprites_data, &p_buf, NULL, styleno, max_detail);
 
-    if (ret != Lb_FAIL)
+    if (ret != Lb_FAIL) {
         *pp_buf = p_buf;
+    } else { // If load failed, still allocate the area for TAB file - the buffer is zero-filled
+        *pp_buf = fe_mouseptr_sprites_data;
+    }
 
     return ret;
 }
@@ -482,13 +520,13 @@ TbResult load_multicolor_sprites(const char *dir)
     ret = Lb_OK;
 
     sprintf(locstr, "%s/mspr-%d.dat", dir, ingame.TrenchcoatPreference);
-    len = LbFileLoadAt(locstr, m_spr_data);
+    len = LbFileLoadAt(locstr, m_sprites_data);
     if (len == -1) {
         ret = Lb_FAIL;
         len = 0;
     }
     // additional 512 bytes are always reserved by LbDataLoad()
-    assert(m_spr_data_end + 512 >= m_spr_data + len);
+    assert(m_sprites_data_end + 512 >= m_sprites_data + len);
     sprintf(locstr, "%s/mspr-%d.tab", dir, ingame.TrenchcoatPreference);
     len = LbFileLoadAt(locstr, m_sprites);
     if (len == -1) {
@@ -503,12 +541,12 @@ TbResult load_multicolor_sprites(const char *dir)
 
 void setup_multicolor_sprites(void)
 {
-    LbSpriteSetup(m_sprites, m_sprites_end, m_spr_data);
+    LbSpriteSetup(m_sprites, m_sprites_end, m_sprites_data);
 }
 
 void reset_multicolor_sprites(void)
 {
-    LbSpriteReset(m_sprites, m_sprites_end, m_spr_data);
+    LbSpriteReset(m_sprites, m_sprites_end, m_sprites_data);
 }
 
 void debug_multicolor_sprite(int idx)

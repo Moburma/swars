@@ -19,6 +19,7 @@
 #include "fepause.h"
 
 #include "bfbox.h"
+#include "bfjoyst.h"
 #include "bfline.h"
 #include "bfscreen.h"
 #include "bfsprite.h"
@@ -30,7 +31,9 @@
 #include "bfscd.h"
 #include "ssampply.h"
 
-#include "bflib_joyst.h"
+#include "app_box.h"
+#include "engincolour.h"
+
 #include "campaign.h"
 #include "display.h"
 #include "game_data.h"
@@ -91,7 +94,7 @@ ubyte draw_ingame_button(struct ScreenButton *p_button, ubyte enabled)
             LbDrawBox(p_button->X + i, p_button->Y + i, p_button->Width - 2 * i, p_button->Height - 2 * i, p_button->Colour);
     }
 
-    line_h = font_height('A');
+    line_h = my_char_height('A');
     text_w = my_string_width(p_button->Text);
     text_x = p_button->X + 2 * margin + (p_button->Width - (text_w + 4 * margin)) / 2;
     text_y = p_button->Y + 2 * margin + (p_button->Height - (line_h + 4 * margin)) / 2;
@@ -207,7 +210,7 @@ void draw_box_cutedge(struct ScreenBox *box, TbPixel colr1)
 
 void draw_slant_box(struct ScreenBox *box, TbPixel colr2)
 {
-    ApDrawSlantBox(box->X, box->Y, box->Width, box->Height, colr2);
+    AppDrawSlantBox(box->X, box->Y, box->Width, box->Height, colr2);
 }
 
 void draw_slant_left_arrow_spr(struct ScreenBox *box, TbPixel colr2)
@@ -262,7 +265,7 @@ void draw_slant_left_arrow(struct ScreenBox *box, TbPixel colr2)
     y = box->Y - stp;
 
     LbDrawTriangle(x + 0, y + stp * 5, x + stp * 11, y - 1, x +  0, y + stp * 11, colour);
-    ApDrawSlantBox(x + stp * 11 - 1, y + 0, stp * 2 / 2, stp * 11, colour);
+    AppDrawSlantBox(x + stp * 11 - 1, y + 0, stp * 2 / 2, stp * 11, colour);
 }
 
 void draw_slant_right_arrow(struct ScreenBox *box, TbPixel colr2)
@@ -282,7 +285,7 @@ void draw_slant_right_arrow(struct ScreenBox *box, TbPixel colr2)
     x = box->X;
     y = box->Y - stp;
 
-    ApDrawSlantBox(x + stp * 10 - 1, y + 0, stp * 2 / 2, stp * 11, colour);
+    AppDrawSlantBox(x + stp * 10 - 1, y + 0, stp * 2 / 2, stp * 11, colour);
     LbDrawTriangle(x + stp * 11, y + stp * 5 + 1, x + 0, y + stp * 11, x +  stp * 11, y + 0, colour);
 }
 
@@ -313,7 +316,7 @@ void init_ingame_screen_button(struct ScreenButton *p_button, ushort x, ushort y
     init_screen_button(p_button, x, y, text, 0, font, 0, 0);
 
     border = pop1_sprites_scale - 1;
-    line_h = font_height('A');
+    line_h = my_char_height('A');
     text_w = my_string_width(p_button->Text);
     fnt_scale = pop1_sprites_scale / 2 + 1;
     if (line_h < fnt_scale * 6) { // detail 0 font has height equal 6
@@ -409,7 +412,7 @@ void wait_for_keypress_end(ushort game_key, TbBool impatient)
     ended = false;
     while (!ended)
     {
-        joy_func_065(&joy);
+        JoyUpdateInputs(&joy);
 
         if (!is_gamekey_pressed(game_key))
             ended = true;
@@ -632,7 +635,7 @@ TbBool pause_screen_handle(void)
     resume_game = false;
     while (!resume_game)
     {
-        joy_func_065(&joy);
+        JoyUpdateInputs(&joy);
 
         affected = input_pause_screen();
 

@@ -25,16 +25,17 @@
 extern "C" {
 #endif
 /******************************************************************************/
+#define SAVE_SLOTS_VISIBLE_COUNT 8
 
-extern ulong save_mortal_salt;
+extern u32 save_mortal_salt;
 
 extern ubyte *save_game_buffer;
-extern char save_active_desc[28];
+extern char save_active_desc[25];
 extern char login_name[16];
 
-extern short save_slot; // = -1;
-extern char save_slot_names[8][25];
-extern long save_slot_base;
+extern short save_slot;
+extern char save_slot_names[SAVE_SLOTS_VISIBLE_COUNT][25];
+extern s32 save_slot_base;
 
 /******************************************************************************/
 

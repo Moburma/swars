@@ -29,22 +29,25 @@
 
 #include "bigmap.h"
 #include "display.h"
+#include "drawtext_wrp.h"
 #include "game_bstype.h"
 #include "game_options.h"
 #include "game_speed.h"
 #include "game.h"
 #include "guitext.h"
 #include "hud_panel.h"
+#include "hud_target.h"
 #include "keyboard.h"
 #include "network.h"
 #include "packet.h"
 #include "player.h"
+#include "plyr_net.h"
 #include "research.h"
 #include "sound.h"
 #include "thing.h"
 #include "swlog.h"
 /******************************************************************************/
-extern struct ShortPacket shpackets[8];
+struct ShortPacket shpackets[8];
 
 /******************************************************************************/
 
@@ -57,16 +60,15 @@ void net_player_leave(PlayerIdx plyr)
         StopCD();
         StopAllSamples();
         SetMusicVolume(100, 0);
-        LbNetworkSessionStop();
-        if (nsvc.I.Type != NetSvc_IPX && byte_1C4A6F)
+        LbNetworkSessionStop(local_player_no);
+        if (nsvc.I.Type != NetSvc_IPX && net_serial_uses_modem)
             LbNetworkHangUp();
     }
     else
     {
         net_players_num--;
-        sprintf(player_unknCC9[plyr], "%s %s", unkn2_names[plyr], gui_strings[GSTR_NET_LEFT_GAME]);
-        player_unkn0C9[plyr] = -106;
-        LbNetworkSessionStop();
+        player_message_fmt(plyr, "%s %s", net_player_names[plyr], gui_strings[GSTR_NET_LEFT_GAME]);
+        LbNetworkSessionStop(plyr);
         ingame.InNetGame_UNSURE &= ~(1 << plyr);
     }
 }
@@ -193,33 +195,31 @@ void player_agent_weapon_switch(PlayerIdx plyr, ThingIdx person, short shift)
 
     p_person->U.UPerson.CurrentWeapon = select_new_weapon(person, shift);
     peep_change_weapon(p_person);
-    p_person->U.UPerson.AnimMode = gun_out_anim(p_person, 0);
-    reset_person_frame(p_person);
+    set_person_anim_mode(p_person, gun_out_anim(p_person, 0));
     p_person->Speed = calc_person_speed(p_person);
     p_person->U.UPerson.TempWeapon = p_person->U.UPerson.CurrentWeapon;
 
     if ((plyr == local_player_no) && (p_person->U.UPerson.CurrentWeapon != 0))
     {
         ushort smp;
-        // Weapon name speech
-        if (background_type == 1)
-            smp = weapon_sound_z[p_person->U.UPerson.CurrentWeapon];
-        else
-            smp = weapon_sound[p_person->U.UPerson.CurrentWeapon];
+        smp = weapon_sound_name_speech_index(p_person->U.UPerson.CurrentWeapon);
         play_disk_sample(local_player_no, smp, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
     }
 }
 
-void player_agent_init_drop_item(PlayerIdx plyr, struct Thing *p_person, ushort weapon)
+StateChRes player_agent_init_drop_item(PlayerIdx plyr, struct Thing *p_person, ThingIdx item)
 {
-    if ((weapon == 0) || (weapon == p_person->U.UPerson.CurrentWeapon)) {
-        p_person->U.UPerson.AnimMode = ANIM_PERS_IDLE;
-        reset_person_frame(p_person);
+    StateChRes res;
+    if ((item == 0) || (item == p_person->U.UPerson.CurrentWeapon)) {
+        set_person_anim_mode(p_person, ANIM_PERS_IDLE);
     }
     if (p_person->State == PerSt_PROTECT_PERSON)
         p_person->Flag2 |= TgF2_Unkn10000000;
-    person_init_drop(p_person, weapon);
+
+    res = person_init_drop_item_where_standing(p_person, item);
+    //TODO we've just initiated the drop, the weapon is not subtracted yet; a bit early for speed recalc?
     p_person->Speed = calc_person_speed(p_person);
+    return res;
 }
 
 void person_grp_switch_to_specific_weapon(struct Thing *p_person, PlayerIdx plyr,
@@ -307,9 +307,7 @@ void person_give_all_weapons(struct Thing *p_person)
         p_person->U.UPerson.WeaponsCarried |= wepflg;
     }
     player_agent_set_weapon_quantities_max(p_person);
-    if ((p_person->Flag & TngF_PlayerAgent) != 0) {
-        player_agent_update_prev_weapon(p_person);
-    }
+    person_weapons_update_previous(p_person);
 }
 
 void mark_all_weapons_researched(void)
@@ -342,8 +340,11 @@ void resurrect_any_dead_agents(PlayerIdx plyr)
         p_agent = p_player->MyAgent[i];
         if (p_agent->Type != TT_PERSON)
             continue;
+
         if ((p_agent->Flag & TngF_Destroyed) != 0)
             person_resurrect(p_agent);
+        else if (p_agent->State == PerSt_PERSON_BURNING)
+            person_burning_stifle_fire(p_agent);
     }
 }
 
@@ -415,20 +416,8 @@ int net_unkn_func_12(void *a1)
     return ret;
 }
 
-int show_message(const char *str)
-{
-    int ret;
-    asm volatile ("call ASM_show_message\n"
-        : "=r" (ret) : "a" (str));
-    return ret;
-}
-
 void net_unkn_check_1(void)
 {
-#if 0
-    asm volatile ("call ASM_net_unkn_check_1\n"
-        :  : );
-#endif
     char locstr[100];
     ushort i, m;
     s32 check_val;
@@ -439,10 +428,10 @@ void net_unkn_check_1(void)
     LbMemorySet(recvd, 0, 8);
     if ((PacketRecord_IsPlayback()) && in_network_game)
     {
-        for (i = 0; i < 8; i++)
+        for (i = 0; i < PLAYERS_LIMIT; i++)
         {
             if (((1 << i) & ingame.InNetGame_UNSURE) != 0) {
-                PacketRecord_Read(&packets[i]);
+                PacketRecord_Read(&packets[i], players[i].DoubleMode);
             }
         }
     }
@@ -462,14 +451,14 @@ void net_unkn_check_1(void)
         if (ret == -1)
         {
             net_unkn_func_12(recvd3);
-            for (i = 0; i < 8; i++)
+            for (i = 0; i < PLAYERS_LIMIT; i++)
             {
                 if (((1 << i) & ingame.InNetGame_UNSURE) == 0)
                     continue;
                 if (recvd2[i] == recvd3[i])
                     continue;
 
-                sprintf(locstr, " Player >%s< Has Timed Out", unkn2_names[i]);
+                sprintf(locstr, " Player >%s< Has Timed Out", net_player_names[i]);
                 show_message(locstr);
                 ingame.InNetGame_UNSURE &= ~(1 << i);
                 if (i == local_player_no)
@@ -507,7 +496,7 @@ void net_unkn_check_1(void)
 
         LbNetworkExchange(shpackets, sizeof(struct ShortPacket));
 
-        for (i = 0; i < 8; i++)
+        for (i = 0; i < PLAYERS_LIMIT; i++)
         {
             struct Packet *p_pckt;
             struct ShortPacket *p_shpckt;
@@ -533,11 +522,11 @@ void net_unkn_check_1(void)
         check_val = (ubyte)ingame.fld_unkC4B;
     if (nsvc.I.Type == NetSvc_IPX)
     {
-        for (i = 0; i < 8; i++)
+        for (i = 0; i < PLAYERS_LIMIT; i++)
         {
             if (((1 << i) & ingame.InNetGame_UNSURE) == 0)
                 continue;
-            for (m = 0; m < 8; m++)
+            for (m = 0; m < PLAYERS_LIMIT; m++)
             {
                 if ( ((1 << m) & ingame.InNetGame_UNSURE) == 0)
                     continue;
@@ -547,17 +536,17 @@ void net_unkn_check_1(void)
         }
     }
 
-    for (i = 0; i < 8; i++)
+    for (i = 0; i < PLAYERS_LIMIT; i++)
     {
         if (((1 << i) & ingame.InNetGame_UNSURE) == 0)
             continue;
 
-        if ((pktrec_mode == 1) && in_network_game && (net_host_player_no == local_player_no))
-            PacketRecord_Write(&packets[i]);
+        if (PacketRecord_IsRecord() && in_network_game && (net_host_player_no == local_player_no))
+            PacketRecord_Write(&packets[i], players[i].DoubleMode);
 
         if ((nsvc.I.Type == NetSvc_IPX) && (recvd[i] == 1) && (net_players_num > 2))
         {
-            sprintf(locstr, " Player >%s< is out of sync", unkn2_names[i]);
+            sprintf(locstr, " Player >%s< is out of sync", net_player_names[i]);
             show_message(locstr);
         }
         if (check_val != packets[i].D2Check)
@@ -627,24 +616,16 @@ void player_agent_select_specific_weapon(PlayerIdx plyr, struct Thing *p_person,
 {
     thing_select_specific_weapon(p_person, wtype, flag);
     peep_change_weapon(p_person);
-    p_person->U.UPerson.AnimMode = gun_out_anim(p_person, 0);
-    reset_person_frame(p_person);
+    set_person_anim_mode(p_person, gun_out_anim(p_person, 0));
     p_person->Speed = calc_person_speed(p_person);
     p_person->U.UPerson.TempWeapon = p_person->U.UPerson.CurrentWeapon;
+
     if ((plyr == local_player_no) && (p_person->U.UPerson.CurrentWeapon != 0))
     {
         ushort smp;
-        if (background_type == 1)
-            smp = weapon_sound_z[p_person->U.UPerson.CurrentWeapon];
-        else
-            smp = weapon_sound[p_person->U.UPerson.CurrentWeapon];
+        smp = weapon_sound_name_speech_index(p_person->U.UPerson.CurrentWeapon);
         play_disk_sample(local_player_no, smp, FULL_VOL, EQUL_PAN, NORM_PTCH, LOOP_NO, 3);
     }
-}
-
-void player_set_control_mode(PlayerIdx plyr, ushort ctrmode)
-{
-    players[plyr].UserInput[0].ControlMode = ctrmode;
 }
 
 void process_packet(PlayerIdx plyr, struct Packet *p_pckt, ushort i)
@@ -655,7 +636,7 @@ void process_packet(PlayerIdx plyr, struct Packet *p_pckt, ushort i)
     short result;
 
     result = PARes_EBADRQC;
-    switch (p_pckt->Action & 0x7FFF)
+    switch (p_pckt->Action & ~PActF_All)
     {
     case PAct_MISSN_ABORT:
         if (in_network_game) {
@@ -766,7 +747,7 @@ void process_packet(PlayerIdx plyr, struct Packet *p_pckt, ushort i)
             result = PARes_EBADSLT;
             break;
         }
-        if ((p_thing->Flag2 & TgF2_Unkn0800) != 0) {
+        if (person_is_executing_commands(p_thing->ThingOffset)) {
             result = PARes_TNGBADST;
             break;
         }
@@ -783,7 +764,7 @@ void process_packet(PlayerIdx plyr, struct Packet *p_pckt, ushort i)
             result = PARes_EBADSLT;
             break;
         }
-        if ((p_thing->Flag2 & TgF2_Unkn0800) != 0) {
+        if (person_is_executing_commands(p_thing->ThingOffset)) {
             result = PARes_TNGBADST;
             break;
         }
@@ -1022,7 +1003,7 @@ void process_packet(PlayerIdx plyr, struct Packet *p_pckt, ushort i)
             result = PARes_EBADSLT;
             break;
         }
-        if ((p_thing->Flag2 & TgF2_Unkn0800) != 0) {
+        if (person_is_executing_commands(p_thing->ThingOffset)) {
             result = PARes_TNGBADST;
             break;
         }
@@ -1034,7 +1015,7 @@ void process_packet(PlayerIdx plyr, struct Packet *p_pckt, ushort i)
             result = PARes_EINVAL;
             break;
         }
-        player_set_control_mode(plyr, p_pckt->Data);
+        user_input_control_mode_set(plyr, 0, p_pckt->Data);
         result = PARes_DONE;
         break;
     case PAct_AGENT_GOTO_FACE_PT_ABS:
@@ -1177,7 +1158,7 @@ void process_packet(PlayerIdx plyr, struct Packet *p_pckt, ushort i)
             result = PARes_EBADSLT;
             break;
         }
-        if ((p_thing->Flag2 & TgF2_Unkn0800) != 0) {
+        if (person_is_executing_commands(p_thing->ThingOffset)) {
             result = PARes_TNGBADST;
             break;
         }
@@ -1346,7 +1327,7 @@ void process_packet(PlayerIdx plyr, struct Packet *p_pckt, ushort i)
             result = PARes_EBADSLT;
             break;
         }
-        if ((p_thing->Flag2 & TgF2_Unkn0800) != 0) {
+        if (person_is_executing_commands(p_thing->ThingOffset)) {
             result = PARes_TNGBADST;
             break;
         }
@@ -1389,22 +1370,26 @@ void process_packet(PlayerIdx plyr, struct Packet *p_pckt, ushort i)
         result = PARes_DONE;
         break;
     }
-    if (result > PARes_SUCCESS) {
-        LOGWARN("Player %d action %s: %s", (int)plyr,
-          get_packet_action_name(p_pckt->Action & 0x7FFF),
-          get_packet_action_result_text(result));
+    if ((debug_log_things & 0x02) != 0)
+    {
+        char locstr[192];
+
+        snprint_packet(locstr, sizeof(locstr), p_pckt);
+
+        if ((p_pckt->Action & ~PActF_All) == PAct_NONE)
+            ; // no logging for empty packet
+        else if (result <= PARes_SUCCESS)
+            LOGSYNC_F("Player %d packet %s: %s", (int)plyr,
+              locstr, get_packet_action_result_text(result));
+        else
+            LOGWARN("Player %d packet %s: %s", (int)plyr,
+              locstr, get_packet_action_result_text(result));
     }
 }
 
 void process_packets(void)
 {
-    ushort v53;
     PlayerIdx plyr;
-
-    if (pktrec_mode == PktR_NONE)
-        v53 = 4;
-    else if (pktrec_mode <= PktR_PLAYBACK)
-        v53 = 1;
 
     if (in_network_game && (net_players_num > 1))
         net_unkn_check_1();
@@ -1417,7 +1402,7 @@ void process_packets(void)
         if (((1 << plyr) & ingame.InNetGame_UNSURE) == 0)
             continue;
         packet = &packets[plyr];
-        for (i = 0; i < v53; i++)
+        for (i = 0; i < LOCAL_USERS_MAX_COUNT; i++)
         {
             struct Thing *p_thing;
 
@@ -1428,16 +1413,16 @@ void process_packets(void)
 
             if (p_thing != INVALID_THING)
             {
-                if ((packet->Action & 0x8000) == 0)
-                    p_thing->Flag &= ~TngF_Unkn0800;
+                if ((packet->Action & PActF_TriggerUse) == 0)
+                    p_thing->Flag &= ~TngF_TriggerUse;
                 else
-                    p_thing->Flag |= TngF_Unkn0800;
+                    p_thing->Flag |= TngF_TriggerUse;
             }
 
             process_packet(plyr, packet, i);
 
             packet->Action = PAct_NONE;
-            packet = (struct Packet *)((char *)packet + 10);
+            packet = (struct Packet *)((ubyte *)packet + 10);
         }
     }
 }

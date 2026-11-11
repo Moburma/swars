@@ -252,6 +252,7 @@ void ogg_list_music_tracks(void)
     ushort trkno;
 
     trkno = 0;
+    // first is data track, not digital audio
     is_da_track[trkno] = false;
     for (trkno++; trkno < CD_TRACKS_MAX_COUNT; trkno++) {
         char file_name[FILENAME_MAX];
@@ -273,6 +274,22 @@ void ogg_list_music_tracks(void)
     for (trkno++; trkno < CD_TRACKS_MAX_COUNT; trkno++) {
         is_da_track[trkno] = false;
     }
+}
+
+ushort CountMusicTracks(void)
+{
+    ushort trkno, count, missing;
+
+    count = 0;
+    missing = 0;
+    for (trkno = 0; trkno < CD_TRACKS_MAX_COUNT; trkno++) {
+        if (is_da_track[trkno])
+            count++;
+        else if (missing <= 1)
+            missing = trkno;
+    }
+    SNDLOGSYNC("CDA list", "valid tracks: %d, first missing: %d", (int)count, (int)missing);
+    return count;
 }
 
 void PlayCDAudioTrack(ushort trkno)
@@ -418,39 +435,64 @@ void StopCD(void)
 
 void InitRedbook(void)
 {
+    const char *reason;
     EnsureAILStartup();
 
     if (cd_init()) {
-        InitialCDVolume = GetCDVolume();
         CDType = CDTYP_REAL;
+        InitialCDVolume = GetCDVolume();
     } else {
-        SNDLOGFAIL("CDA init", "real CD Audio disabled");
-        CDAble = false;
-        CDType = CDTYP_NONE;
+        reason = "init fail";
+        goto fail;
     }
+
+    if (CountMusicTracks() == 0) {
+        reason = "no tracks";
+        goto fail;
+    }
+    return;
+
+fail:
+    SNDLOGFAIL("CDA init", "real CD Audio disabled, reason: %s", reason);
+    CDAble = false;
+    CDType = CDTYP_NONE;
 }
 
 void InitMusicOGG(const char *nmusic_dir)
 {
+    const char *reason;
     EnsureAILStartup();
 
-    strncpy(music_dir, nmusic_dir, sizeof(music_dir));
+    strncpy(music_dir, nmusic_dir, sizeof(music_dir) - 1);
+    music_dir[sizeof(music_dir) - 1] = '\0';
 
     if (!ogg_vorbis_stream_init(&sound_music_stream)) {
-        SNDLOGFAIL("CDA init", "OGG Streamed Audio disabled");
-        CDAble = false;
-        CDType = CDTYP_NONE;
-        return;
+        reason = "init fail";
+        goto fail;
     }
-    InitialCDVolume = GetCDVolume();
     CDType = CDTYP_OGG;
+    InitialCDVolume = GetCDVolume();
     ogg_list_music_tracks();
 
+    if (CountMusicTracks() == 0) {
+        reason = "no tracks";
+        goto fail;
+    }
+
     CDPlayback_handle = AIL_register_timer(cbCDPlayback);
+    if (CDPlayback_handle == -1) {
+        reason = "timer fail";
+        goto fail;
+    }
     AIL_set_timer_period(CDPlayback_handle, 40000);
     AIL_start_timer(CDPlayback_handle);
     CDPlayTimerActive = true;
+    return;
 
+fail:
+    SNDLOGFAIL("CDA init", "OGG Streamed Audio disabled, reason: %s", reason);
+    CDAble = false;
+    CDType = CDTYP_NONE;
 }
 
 void FreeMusicOGG(void)

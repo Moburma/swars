@@ -23,6 +23,7 @@
 #include "bffile.h"
 #include "bfmemut.h"
 #include "bfutility.h"
+#include <assert.h>
 
 #include "campaign.h"
 #include "game_data.h"
@@ -36,7 +37,7 @@
 #pragma pack(1)
 
 struct PacketFileHead {
-    ulong magic;
+    u32 magic;
     ushort campgn;
     ushort missi;
     ushort mapno;
@@ -126,13 +127,16 @@ const char *packet_action_name[] = {
     "CHEAT_ALL_AGENTS",
 };
 
-void (*my_build_packet)(struct Packet *packet, ushort action, ulong param1, long x, long y, long z);
+void (*my_build_packet)(struct Packet *packet, ushort action, u32 param1, s32 x, s32 y, s32 z);
 
-/******************************************************************************/
+struct Packet packets[8];
 
-extern TbFileHandle packet_rec_fh;
+TbFileHandle packet_rec_fh = INVALID_FILE;
 ushort packet_rec_no = 0;
 ubyte packet_rec_use_levelno = 0;
+ubyte pktrec_mode = 0;
+
+/******************************************************************************/
 
 const char * get_packet_action_name(ushort atype)
 {
@@ -251,7 +255,55 @@ ubyte packet_action_params_count(ushort action)
     }
 }
 
-void build_packet(struct Packet *packet, ushort action, ulong param1, long x, long y, long z)
+void snprint_packet(char *buf, ulong buflen, struct Packet *p_pckt)
+{
+    const char *name;
+    char *s;
+    ubyte nparams;
+    ushort actn;
+
+    actn = (p_pckt->Action & 0x7FFF);
+    s = buf;
+
+    if (actn > sizeof(packet_action_name)/sizeof(packet_action_name[0])) {
+        snprintf(s, buflen - (s - buf), "%s%hu()", "OUTRANGED", actn);
+        return;
+    }
+
+    name = get_packet_action_name(actn);
+
+    snprintf(s, buflen - (s - buf), "%s( ", name);
+    s += strlen(s);
+
+    nparams = packet_action_params_count(actn);
+
+    if (nparams >= 1) {
+        snprintf(s, buflen - (s - buf), "Data(%d)", (int)p_pckt->Data);
+        s += strlen(s);
+    }
+
+    if (nparams >= 2) {
+        { snprintf(s, buflen - (s - buf), ", "); s += strlen(s); }
+        snprintf(s, buflen - (s - buf), "X(%d)", (int)p_pckt->X);
+        s += strlen(s);
+    }
+
+    if (nparams >= 3) {
+        { snprintf(s, buflen - (s - buf), ", "); s += strlen(s); }
+        snprintf(s, buflen - (s - buf), "Y(%d)", (int)p_pckt->Y);
+        s += strlen(s);
+    }
+
+    if (nparams >= 4) {
+        { snprintf(s, buflen - (s - buf), ", "); s += strlen(s); }
+        snprintf(s, buflen - (s - buf), "Z(%d)", (int)p_pckt->Z);
+        s += strlen(s);
+    }
+
+    snprintf(s, buflen - (s-buf), " )");
+}
+
+void build_packet(struct Packet *packet, ushort action, u32 param1, s32 x, s32 y, s32 z)
 {
 #if 0
     asm volatile (
@@ -294,7 +346,7 @@ void build_packet(struct Packet *packet, ushort action, ulong param1, long x, lo
     }
 }
 
-void build_packet2(struct Packet *packet, ushort action, ulong param1, long x, long y, long z)
+void build_packet2(struct Packet *packet, ushort action, u32 param1, s32 x, s32 y, s32 z)
 {
 #if 0
     asm volatile (
@@ -337,7 +389,7 @@ void build_packet2(struct Packet *packet, ushort action, ulong param1, long x, l
     }
 }
 
-void build_packet3(struct Packet *packet, ushort action, ulong param1, long x, long y, long z)
+void build_packet3(struct Packet *packet, ushort action, u32 param1, s32 x, s32 y, s32 z)
 {
 #if 0
     asm volatile (
@@ -380,7 +432,7 @@ void build_packet3(struct Packet *packet, ushort action, ulong param1, long x, l
     }
 }
 
-void build_packet4(struct Packet *packet, ushort action, ulong param1, long x, long y, long z)
+void build_packet4(struct Packet *packet, ushort action, u32 param1, s32 x, s32 y, s32 z)
 {
 #if 0
     asm volatile (
@@ -497,47 +549,72 @@ void PacketRecord_OpenRead(void)
     }
 }
 
-TbResult PacketRecord_Read(struct Packet *p_pckt)
+TbResult PacketRecord_Read(struct Packet *p_pckt, ushort dblmode)
 {
 #if 0
     asm volatile (
       "call ASM_PacketRecord_Read\n"
         : : "a" (p_pckt));
 #endif
-    ushort locbuf[6];
+    ushort locbuf[5];
+    struct Packet *p_subpckt;
     int nread, len;
+    ushort dmuser;
 
     if (packet_rec_fh == INVALID_FILE) {
         return Lb_FAIL;
     }
 
-    len = 2 * sizeof(ushort);
-    nread = LbFileRead(packet_rec_fh, locbuf, len);
-    locbuf[2] = 0;
-    locbuf[3] = 0;
-    locbuf[4] = 0;
-    if (locbuf[0] & 0xFF) {
-        len = 4 * sizeof(ushort);
-        nread += LbFileRead(packet_rec_fh, &locbuf[2], len);
-        len += 2 * sizeof(ushort);
+    assert(dblmode < LOCAL_USERS_MAX_COUNT);
+
+    len = 0;
+    nread = 0;
+    p_subpckt = p_pckt;
+    for (dmuser = 0; dmuser < dblmode + 1; dmuser++)
+    {
+        nread += LbFileRead(packet_rec_fh, &locbuf[0], 1 * sizeof(ushort));
+        len += 1;
+        locbuf[1] = 0;
+        locbuf[2] = 0;
+        locbuf[3] = 0;
+        locbuf[4] = 0;
+
+        if (locbuf[0] & 0xFF) {
+            nread += LbFileRead(packet_rec_fh, &locbuf[1], 4 * sizeof(ushort));
+            len += 4;
+        }
+
+        p_subpckt->Action = locbuf[0];
+        p_subpckt->Data = locbuf[1];
+        p_subpckt->X = locbuf[2];
+        p_subpckt->Y = locbuf[3];
+        p_subpckt->Z = locbuf[4];
+
+        p_subpckt = (struct Packet *)((ubyte *)p_subpckt + 10);
     }
-    p_pckt->Action = locbuf[0];
-    p_pckt->Data = locbuf[1];
-    p_pckt->X = locbuf[2];
-    p_pckt->Y = locbuf[3];
-    p_pckt->Z = locbuf[4];
-    return (nread == len) ? Lb_SUCCESS : Lb_FAIL;
+
+    nread += LbFileRead(packet_rec_fh, &locbuf[0], 1 * sizeof(ushort));
+    len++;
+#if 0 //TODO fix the check
+    if (locbuf[0] != lbSeed) {
+        LOGSYNC("Packet desync - seed mismatch");
+    }
+#endif
+
+    return (nread == len * (int)sizeof(ushort)) ? Lb_SUCCESS : Lb_FAIL;
 }
 
-void PacketRecord_Write(struct Packet *p_pckt)
+void PacketRecord_Write(struct Packet *p_pckt, ushort dblmode)
 {
 #if 0
     asm volatile (
       "call ASM_PacketRecord_Write\n"
         : : "a" (p_pckt));
 #endif
-    ushort locbuf[6];
+    ushort locbuf[5 * LOCAL_USERS_MAX_COUNT + 1];
+    struct Packet *p_subpckt;
     uint len;
+    ushort dmuser;
 
     if (in_network_game) {
         return;
@@ -546,17 +623,29 @@ void PacketRecord_Write(struct Packet *p_pckt)
         return;
     }
 
-    locbuf[0] = p_pckt->Action;
-    locbuf[1] = p_pckt->Data;
-    locbuf[2] = p_pckt->X;
-    locbuf[3] = p_pckt->Y;
-    locbuf[4] = p_pckt->Z;
-    locbuf[5] = lbSeed;
-    if (p_pckt->Action & 0xFF)
-        len = 6 * sizeof(ushort);
-    else
-        len = 2 * sizeof(ushort);
-    LbFileWrite(packet_rec_fh, locbuf, len);
+    assert(dblmode < LOCAL_USERS_MAX_COUNT);
+
+    len = 0;
+    p_subpckt = p_pckt;
+    for (dmuser = 0; dmuser < dblmode + 1; dmuser++)
+    {
+        locbuf[len+0] = p_subpckt->Action;
+        locbuf[len+1] = p_subpckt->Data;
+        locbuf[len+2] = p_subpckt->X;
+        locbuf[len+3] = p_subpckt->Y;
+        locbuf[len+4] = p_subpckt->Z;
+
+        if (p_subpckt->Action & 0xFF)
+            len += 5;
+        else
+            len += 1;
+        p_subpckt = (struct Packet *)((ubyte *)p_subpckt + 10);
+    }
+
+    locbuf[len] = lbSeed;
+    len++;
+
+    LbFileWrite(packet_rec_fh, locbuf, len * sizeof(ushort));
 }
 
 TbResult PacketRecord_ReadNP(struct NetworkPlayer *p_netplyr)

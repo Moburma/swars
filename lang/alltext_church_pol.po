@@ -21,7 +21,7 @@ msgstr ""
 "Project-Id-Version: Menu text for SyndWarsFX\n"
 "Report-Msgid-Bugs-To: https://github.com/swfans/syndwarsfx/issues\n"
 "POT-Creation-Date: 2023-09-05 11:30+0200\n"
-"PO-Revision-Date: 2025-12-14 04:58+0100\n"
+"PO-Revision-Date: 2025-12-15 22:03+0100\n"
 "Last-Translator: Mefistotelis <mefistotelis@gmail.com>\n"
 "Language-Team: Syndicate Wars Fans <github.com/swfans>\n"
 "Language: pl_PL\n"
@@ -34,7 +34,7 @@ msgstr ""
 #: mapscreen.heading:1
 msgctxt "church maps screen headings - name"
 msgid "Pilgrimage"
-msgstr "Pielgrzymka"
+msgstr "Parafia"
 
 #: mapscreen.heading:2
 msgctxt "church maps screen headings - population size"

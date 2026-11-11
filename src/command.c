@@ -231,7 +231,27 @@ struct CommandDef command_defs[] = {
     {NULL,							NULL,				CmDF_None },
 };
 
+struct Command *game_commands = NULL;
 ushort next_command = 1;
+ubyte execute_commands = 0;
+
+const char *command_codename(ushort cmd)
+{
+    struct Command *p_cmd;
+    struct CommandDef *p_cdef;
+
+    if (cmd >= next_command) {
+        return "TNG_CMD_INVALID";
+    }
+    p_cmd = &game_commands[cmd];
+
+    if (p_cmd->Type > PCmd_TYPES_COUNT) {
+        return "TNG_CMD_BADTYPE";
+    }
+    p_cdef = &command_defs[p_cmd->Type];
+
+    return p_cdef->CmdName;
+}
 
 void snprint_command(char *buf, ulong buflen, ushort cmd)
 {
@@ -401,6 +421,11 @@ TbBool is_command_any_until(struct Command *p_cmd)
     return true;
 }
 
+void init_commands(void)
+{
+    next_command = 1;
+}
+
 ushort get_new_command(void)
 {
     struct Command *p_cmd;
@@ -458,7 +483,7 @@ ubyte fix_thing_command_indexes(ushort cmd, TbBool deep)
     ret = 1;
     if ((p_cdef->Flags & CmDF_ReqGroup) != 0)
     {
-        if ((p_cmd->OtherThing < 0) || (p_cmd->OtherThing >= PEOPLE_GROUPS_COUNT)) {
+        if ((p_cmd->OtherThing < 0) || (p_cmd->OtherThing >= PEOPLE_GROUPS_LIMIT)) {
             LOGERR("Cmd%hu = %s Group(%hd) out of range",
               cmd, p_cdef->CmdName, p_cmd->OtherThing);
             p_cmd->OtherThing = 0;
@@ -801,25 +826,24 @@ void check_and_fix_commands(void)
 
 void check_and_fix_thing_commands(void)
 {
-    ThingIdx thing;
+    struct Thing *p_person;
+    ThingIdx person;
     short i;
     ushort cmd;
 
-    thing = same_type_head[1];
-    for (i = 0; thing != 0; i++)
+    person = get_thing_same_type_head(TT_PERSON, -1);
+    for (i = 0; person > 0; person = p_person->LinkSame, i++)
     {
-        struct Thing *p_thing;
-
-        if (i >= max(STHINGS_LIMIT,THINGS_LIMIT)) {
+        if (i >= THINGS_LIMIT) {
             LOGERR("Infinite loop in same type things list");
             break;
         }
-        p_thing = &things[thing];
+        p_person = &things[person];
 
-        cmd = p_thing->U.UPerson.ComHead;
+        cmd = p_person->U.UPerson.ComHead;
         if (cmd > next_command) {
             cmd = 0;
-            p_thing->U.UPerson.ComHead = cmd;
+            p_person->U.UPerson.ComHead = cmd;
         }
         while (cmd != 0)
         {
@@ -830,12 +854,11 @@ void check_and_fix_thing_commands(void)
             if (0) { // Commands debug code
                 char locbuf[256];
                 snprint_command(locbuf, sizeof(locbuf), cmd);
-                LOGSYNC("Person %hd Command %hu: %s", thing, cmd, locbuf);
+                LOGSYNC("Person %hd Command %hu: %s", person, cmd, locbuf);
             }
 
             cmd = p_cmd->Next;
         }
-        thing = p_thing->LinkSame;
     }
 }
 

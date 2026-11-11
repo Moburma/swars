@@ -24,11 +24,15 @@
 
 #include "bfmemut.h"
 #include "bfkeybd.h"
-#include "bflib_joyst.h"
+#include "bfjoyst.h"
+#include <stdio.h>
 
+#include "display.h"
 #include "game.h"
 #include "game_data.h"
+#include "game_speed.h"
 #include "guitext.h"
+#include "swlog.h"
 
 /******************************************************************************/
 
@@ -39,11 +43,21 @@
 
 ushort kbkeys[GKey_KEYS_COUNT];
 
-ushort jskeys[GKey_KEYS_COUNT];
+JoyButtonSet jskeys[GKey_KEYS_COUNT];
+ubyte ctl_joystick_type = JTyp_NONE;
 
 ulong buffered_keys[KEYBOARD_BUFFER_SIZE];
 ulong buffered_keys_read_index;
 ulong buffered_keys_write_index;
+
+ubyte keyboard_mode_direct = 0;
+
+ubyte joy_types_available[] = {
+  0, 0, 0, 0, 0, 5, 6, 0,
+  0, 9, 0, 0,12,13, 0, 0,
+  0, 0,18,19, 0, 0, 0, 0,
+  24, 0, 0, 0
+};
 
 #pragma pack()
 
@@ -85,7 +99,7 @@ void simulate_key_press(TbKeyCode key)
     }
 }
 
-ubyte is_joy_pressed(ushort jkeys, ubyte channel)
+ubyte is_joy_pressed(JoyButtonSet jkeys, ubyte channel)
 {
     return (jkeys && jkeys == joy.Buttons[channel]);
 }
@@ -95,11 +109,11 @@ ubyte is_joy_pressed_any(ubyte channel)
     return (joy.Buttons[channel] != 0);
 }
 
-ushort get_joy_pressed_key(ubyte channel)
+JoyButtonSet get_joy_pressed_key(ubyte channel)
 {
     uint jbtn_pressed;
     ushort jbtn, buttons_num, pressed_count;
-    ushort jskey_flags;
+    JoyButtonSet jskey_flags;
 
     jskey_flags = 0;
     buttons_num = joy.NumberOfButtons[channel];
@@ -117,14 +131,14 @@ ushort get_joy_pressed_key(ubyte channel)
     return jskey_flags;
 }
 
-void clear_joy_pressed(ushort jkeys, ubyte channel)
+void clear_joy_pressed(JoyButtonSet jkeys, ubyte channel)
 {
-    if (channel >= sizeof(joy.Buttons[0])/sizeof(joy.Buttons[0]))
+    if (channel >= MAX_JOYSTICK_COUNT)
         return;
     joy.Buttons[channel] &= ~jkeys;
 }
 
-void sprint_joy_key(char *ostr, int buttons_num, ushort jkeys)
+void sprint_joy_key(char *ostr, int buttons_num, JoyButtonSet jkeys)
 {
     int tx_len;
     ushort jbtn, pressed_count;
@@ -139,18 +153,9 @@ void sprint_joy_key(char *ostr, int buttons_num, ushort jkeys)
         {
             if (tx_len > 0)
                 ostr[tx_len++] = '+';
-            if (jbtn >= 9)
-            {
-                uint n;
-                n = jbtn + 1;
-                ostr[tx_len++] = '0' + (n / 10);
-                ostr[tx_len++] = '0' + (n % 10);
-            }
-            else
-            {
-                char c;
-                c = '1' + jbtn;
-                ostr[tx_len++] = c;
+            const char *label = JoyGetButtonLabel(jbtn);
+            while (*label && tx_len < 50) {
+                ostr[tx_len++] = *label++;
             }
             ++pressed_count;
         }
@@ -176,6 +181,12 @@ TbKeyMods get_gamekey_modifier(GameKey gkey)
     case GKey_CAMERA_PERSPECTV:
         kmodif = KMod_NONE;
         break;
+#ifdef MORE_GAME_KEYS
+    case GKey_VIEW_PAN_L:
+    case GKey_VIEW_PAN_R:
+        kmodif = KMod_SHIFT;
+        break;
+#endif
     default:
         kmodif = KMod_DONTCARE;
         break;
@@ -196,7 +207,7 @@ ubyte is_gamekey_kbd_pressed(GameKey gkey)
 
 ubyte is_gamekey_joy_pressed(GameKey gkey, ubyte channel)
 {
-    ushort jkeys;
+    JoyButtonSet jkeys;
 
     jkeys = jskeys[gkey];
 
@@ -218,7 +229,7 @@ void clear_gamekey_kbd_pressed(GameKey gkey)
 
 void clear_gamekey_joy_pressed(GameKey gkey, ubyte channel)
 {
-    ushort jkeys;
+    JoyButtonSet jkeys;
 
     jkeys = jskeys[gkey];
     clear_joy_pressed(jkeys, channel);
@@ -236,12 +247,23 @@ void clear_gamekey_pressed(GameKey gkey)
     }
 }
 
+/** Update hard-coded keys, either to const values or to values which depend on other keys.
+ */
+static void reset_hardcoded_kbd_gamekeys(void)
+{
+#ifdef MORE_GAME_KEYS
+    kbkeys[GKey_VIEW_PAN_L] = kbkeys[GKey_LEFT];
+    kbkeys[GKey_VIEW_PAN_R] = kbkeys[GKey_RIGHT];
+#endif
+}
+
 void set_gamekey_kbd(GameKey gkey, TbKeyCode key)
 {
     kbkeys[gkey] = key;
+    reset_hardcoded_kbd_gamekeys();
 }
 
-void set_gamekey_joy(GameKey gkey, ushort jkey)
+void set_gamekey_joy(GameKey gkey, JoyButtonSet jkey)
 {
     jskeys[gkey] = jkey;
 }
@@ -322,11 +344,14 @@ void sprint_gamekey_combination_kbd(char *ostr, GameKey gkey)
 
     switch (kmodif)
     {
-    case KMod_ALT:
-        sprintf(ostr, "ALT+%s", lbKeyNames[keyno]);
+    case KMod_SHIFT:
+        sprintf(ostr, "SHFT+%s", lbKeyNames[keyno]);
         break;
     case KMod_CONTROL:
         sprintf(ostr, "CTRL+%s", lbKeyNames[keyno]);
+        break;
+    case KMod_ALT:
+        sprintf(ostr, "ALT+%s", lbKeyNames[keyno]);
         break;
     default:
         sprintf(ostr, "%s", lbKeyNames[keyno]);
@@ -434,16 +459,30 @@ void input(void)
 void set_default_game_keys(void)
 {
     LbMemorySet(jskeys, 0, sizeof(jskeys));
+#if defined(DOS)||defined(GO32)
     jskeys[GKey_VIEW_SPIN_L] = 0x40;
     jskeys[GKey_VIEW_SPIN_R] = 0x80;
     jskeys[GKey_FIRE] = 0x01;
-    jskeys[GKey_CHANGE_MD_WP] = 0x02;
-    jskeys[GKey_CHANGE_AGENT] = 0x04;
-    jskeys[GKey_SELF_DESTRUCT] = 0x0F;
-    jskeys[GKey_GROUP] = 0x20;
     jskeys[GKey_GOTO_POINT] = 0x08;
     jskeys[GKey_DROP_WEAPON] = 0x10;
     ctl_joystick_type = JTyp_GRAVIS_GRIP;
+#else
+    jskeys[GKey_VIEW_SPIN_L]   = 1 << CONTROLLER_BUTTON_RIGHT_THUMB_RIGHT;
+    jskeys[GKey_VIEW_SPIN_R]   = 1 << CONTROLLER_BUTTON_RIGHT_THUMB_LEFT;
+    jskeys[GKey_FIRE]          = 1 << CONTROLLER_BUTTON_A;
+    jskeys[GKey_CHANGE_MD_WP]  = 1 << CONTROLLER_BUTTON_B;
+    jskeys[GKey_CHANGE_AGENT]  = 1 << CONTROLLER_BUTTON_X;
+    jskeys[GKey_SELF_DESTRUCT] = (1 << CONTROLLER_BUTTON_A | 1 << CONTROLLER_BUTTON_B | 1 << CONTROLLER_BUTTON_X | 1 << CONTROLLER_BUTTON_Y);
+    jskeys[GKey_GROUP]         = 1 << CONTROLLER_BUTTON_BACK;
+    jskeys[GKey_GOTO_POINT]    = 1 << CONTROLLER_BUTTON_Y;
+    jskeys[GKey_DROP_WEAPON]   = (1 << CONTROLLER_BUTTON_A | 1 << CONTROLLER_BUTTON_DPAD_LEFT);
+    jskeys[GKey_SEL_AGENT_1] = (1 << CONTROLLER_BUTTON_LEFTSHOULDER | 1 << CONTROLLER_BUTTON_DPAD_UP);
+    jskeys[GKey_SEL_AGENT_2] = (1 << CONTROLLER_BUTTON_LEFTSHOULDER | 1 << CONTROLLER_BUTTON_DPAD_DOWN);
+    jskeys[GKey_SEL_AGENT_4] = (1 << CONTROLLER_BUTTON_LEFTSHOULDER | 1 << CONTROLLER_BUTTON_DPAD_RIGHT);
+    jskeys[GKey_SEL_AGENT_3] = (1 << CONTROLLER_BUTTON_LEFTSHOULDER | 1 << CONTROLLER_BUTTON_DPAD_LEFT);
+    jskeys[GKey_PAUSE] = 1 << CONTROLLER_BUTTON_START;
+    ctl_joystick_type = JTyp_EXT_DRIVER;
+#endif
 
     LbMemorySet(kbkeys, 0, sizeof(kbkeys));
     kbkeys[GKey_NONE] = KC_UNASSIGNED;
@@ -496,10 +535,82 @@ void set_default_game_keys(void)
     kbkeys[GKey_SEL_WEP_5] = KC_9;
     kbkeys[GKey_SEL_WEP_6] = KC_0;
     kbkeys[GKey_USE_MEDIKIT] = KC_UNASSIGNED;
-#ifdef MORE_GAME_KEYS
     kbkeys[GKey_SUPERSHIELD] = KC_UNASSIGNED;
     kbkeys[GKey_VIEW_THERMAL] = KC_UNASSIGNED;
-#endif
+    reset_hardcoded_kbd_gamekeys();
+}
+
+TbResult joy_ext_driver_irq_init(int irqno)
+{
+    TbResult ret;
+
+    ret = JoySetInterrupt(irqno);
+    if (ret != Lb_FAIL)
+        joy_types_available[JTyp_EXT_DRIVER] = JTyp_EXT_DRIVER;
+    else
+        LOGERR("Joystick with external driver failed setup at IRQ %d", irqno);
+    return ret;
+}
+
+TbKeyCode screen_wait_seconds_or_until_continue_key(int sec)
+{
+    int i;
+    TbKeyCode key;
+
+    clear_key_pressed(KC_SPACE);
+    clear_key_pressed(KC_ESCAPE);
+    clear_key_pressed(KC_RETURN);
+
+    key = KC_UNASSIGNED;
+    for (i = sec*game_num_fps; i != 0; i--)
+    {
+        if (is_key_pressed(KC_SPACE, KMod_DONTCARE)) {
+            key = KC_SPACE;
+            break;
+        }
+        if (is_key_pressed(KC_ESCAPE, KMod_DONTCARE)) {
+            key = KC_ESCAPE;
+            break;
+        }
+        if (is_key_pressed(KC_RETURN, KMod_DONTCARE)) {
+            key = KC_RETURN;
+            break;
+        }
+
+        swap_wscreen();
+        game_update();
+    }
+    clear_key_pressed(key);
+
+    return key;
+}
+
+TbKeyCode screen_wait_seconds_or_until_yesno_key(int sec)
+{
+    int i;
+    TbKeyCode key;
+
+    clear_key_pressed(KC_Y);
+    clear_key_pressed(KC_N);
+
+    key = KC_UNASSIGNED;
+    for (i = sec*game_num_fps; i != 0; i--)
+    {
+        if (is_key_pressed(KC_Y, KMod_DONTCARE)) {
+            key = KC_Y;
+            break;
+        }
+        if (is_key_pressed(KC_N, KMod_DONTCARE)) {
+            key = KC_N;
+            break;
+        }
+
+        swap_wscreen();
+        game_update();
+    }
+    clear_key_pressed(key);
+
+    return key;
 }
 
 /******************************************************************************/
